@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, MoreVertical, Trash2, Edit2, Link } from 'lucide-react';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { SearchableSelect, SelectOption } from '../components/SearchableSelect';
@@ -27,6 +27,7 @@ interface ProductInfo {
   id: string;
   name: string;
   variations: any[];
+  wastes?: any[];
 }
 
 const getLocalDateString = () => {
@@ -74,6 +75,7 @@ export function Filamentos() {
   const [products, setProducts] = useState<ProductInfo[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isReconciling, setIsReconciling] = useState(false);
 
   const [filterColor, setFilterColor] = useState('');
   const [filterType, setFilterType] = useState('');
@@ -98,6 +100,77 @@ export function Filamentos() {
   // Get dynamic color options based on selected lineType
   const colorOptions: SelectOption[] = (COLORS_BY_TYPE[formData.lineType || 'Sólido (normal)'] || []).map(c => ({ value: c, label: c }));
 
+  const calculateProductFilamentUsage = (product: ProductInfo): Record<string, number> => {
+    const usage: Record<string, number> = {};
+
+    for (const variation of product.variations || []) {
+      const yieldPerBatch = Math.max(1, variation.quantityPerPrint || 1);
+
+      if (variation.materials && variation.materials.length > 0) {
+        for (const material of variation.materials) {
+          if (!material.filamentId) continue;
+          const stockPieces = material.pieces || 0;
+          const batches = stockPieces > 0 ? Math.ceil(stockPieces / yieldPerBatch) : 1;
+          const weightKg = (((material.weightGrams || 0) + (material.purgeGrams || 0)) * batches) / 1000;
+          usage[material.filamentId] = (usage[material.filamentId] || 0) + weightKg;
+        }
+      } else if (variation.filamentId) {
+        const weightKg = ((variation.weightGrams || 0) * 1) / 1000;
+        usage[variation.filamentId] = (usage[variation.filamentId] || 0) + weightKg;
+      }
+    }
+
+    for (const waste of product.wastes || []) {
+      if (!waste.filamentId) continue;
+      usage[waste.filamentId] = (usage[waste.filamentId] || 0) + ((waste.weightGrams || 0) / 1000);
+    }
+
+    return usage;
+  };
+
+  const usageByFilament = useMemo(() => {
+    const usage: Record<string, number> = {};
+
+    for (const product of products) {
+      const productUsage = calculateProductFilamentUsage(product);
+      for (const [filamentId, amount] of Object.entries(productUsage)) {
+        usage[filamentId] = (usage[filamentId] || 0) + amount;
+      }
+    }
+
+    return usage;
+  }, [products]);
+
+  const getPurchasedKg = (filament: Filament) => {
+    const consumedKg = usageByFilament[filament.id] || 0;
+    const storedInitial = Number(filament.initialStockKg);
+    const currentStock = Number(filament.stockKg) || 0;
+    return Number.isFinite(storedInitial) && storedInitial > 0
+      ? storedInitial
+      : currentStock + consumedKg;
+  };
+
+  const getCurrentStockKg = (filament: Filament) => {
+    const purchasedKg = getPurchasedKg(filament);
+    const consumedKg = usageByFilament[filament.id] || 0;
+    return Math.max(0, purchasedKg - consumedKg);
+  };
+
+  const filamentTotals = useMemo(() => {
+    return filaments.reduce((acc, filament) => {
+      const purchasedKg = getPurchasedKg(filament);
+      const currentStockKg = getCurrentStockKg(filament);
+      const spentKg = Math.max(0, purchasedKg - currentStockKg);
+      const pricePerKg = Number(filament.pricePerKg) || 0;
+
+      acc.purchasedKg += purchasedKg;
+      acc.currentStockKg += currentStockKg;
+      acc.purchasedValue += purchasedKg * pricePerKg;
+      acc.spentValue += spentKg * pricePerKg;
+      return acc;
+    }, { purchasedKg: 0, currentStockKg: 0, purchasedValue: 0, spentValue: 0 });
+  }, [filaments, usageByFilament]);
+
   useEffect(() => {
     if (!tenantId) return;
 
@@ -115,6 +188,7 @@ export function Filamentos() {
           id: doc.id,
           name: d.name,
           variations: d.variations || [],
+          wastes: d.wastes || [],
         };
       });
       setProducts(pData);
@@ -128,6 +202,8 @@ export function Filamentos() {
     if (!tenantId) return;
 
     try {
+      const purchasedKg = Number(formData.stockKg) || 0;
+      const consumedKg = editingId ? (usageByFilament[editingId] || 0) : 0;
       const dataToSave = {
         brand: formData.brand || '',
         material: formData.material || 'PLA',
@@ -136,7 +212,8 @@ export function Filamentos() {
         colorHex: formData.colorHex || '#000000',
         diameter: formData.diameter || '1.75mm',
         pricePerKg: Number(formData.pricePerKg) || 0,
-        stockKg: Number(formData.stockKg) || 0,
+        stockKg: Math.max(0, purchasedKg - consumedKg),
+        initialStockKg: purchasedKg,
         purchaseDate: formData.purchaseDate || getLocalDateString(),
         store: formData.store || ''
       };
@@ -147,7 +224,6 @@ export function Filamentos() {
       } else {
         await addDoc(collection(db, `tenants/${tenantId}/filaments`), {
           ...dataToSave,
-          initialStockKg: dataToSave.stockKg,
           createdAt: new Date().toISOString()
         });
         toast.success("Novo filamento adicionado!");
@@ -163,7 +239,15 @@ export function Filamentos() {
   };
 
   const handleEdit = (f: Filament) => {
-    setFormData({ ...f, colorHex: f.colorHex || '#000000', brand: f.brand || '', lineType: f.lineType || 'Sólido (normal)', store: f.store || '', purchaseDate: f.purchaseDate || getLocalDateString() });
+    setFormData({
+      ...f,
+      stockKg: getPurchasedKg(f),
+      colorHex: f.colorHex || '#000000',
+      brand: f.brand || '',
+      lineType: f.lineType || 'Sólido (normal)',
+      store: f.store || '',
+      purchaseDate: f.purchaseDate || getLocalDateString()
+    });
     setEditingId(f.id);
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -177,6 +261,33 @@ export function Filamentos() {
     } catch (error) {
       console.error("Error deleting filament:", error);
       toast.error("Erro ao excluir filamento.");
+    }
+  };
+
+  const handleReconcileStocks = async () => {
+    if (!tenantId || filaments.length === 0) return;
+
+    try {
+      setIsReconciling(true);
+      const batch = writeBatch(db);
+
+      filaments.forEach((filament) => {
+        const purchasedKg = getPurchasedKg(filament);
+        const reconciledStockKg = getCurrentStockKg(filament);
+
+        batch.update(doc(db, `tenants/${tenantId}/filaments`, filament.id), {
+          initialStockKg: purchasedKg,
+          stockKg: reconciledStockKg,
+        });
+      });
+
+      await batch.commit();
+      toast.success('Estoques recalculados com base nos produtos cadastrados!');
+    } catch (error) {
+      console.error("Error reconciling filament stocks:", error);
+      toast.error("Erro ao recalcular estoques dos filamentos.");
+    } finally {
+      setIsReconciling(false);
     }
   };
 
@@ -208,6 +319,13 @@ export function Filamentos() {
           <Plus className="w-4 h-4" />
           Novo Filamento
         </button>
+        <button
+          onClick={handleReconcileStocks}
+          disabled={isReconciling || filaments.length === 0}
+          className="w-full sm:w-auto px-4 py-2 bg-secondary text-on-primary text-sm font-bold rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+        >
+          {isReconciling ? 'Recalculando...' : 'Recalcular Estoques'}
+        </button>
       </div>
 
       {/* Metrics Cards */}
@@ -219,7 +337,7 @@ export function Filamentos() {
         <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm relative overflow-hidden">
           <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Estoque Físico Atual</h3>
           <p className="text-3xl font-headline font-bold text-on-surface tabular-nums">
-            {filaments.reduce((acc, f) => acc + (Number(f.stockKg) || 0), 0).toFixed(2)} Kg
+            {filamentTotals.currentStockKg.toFixed(2)} Kg
           </p>
         </div>
         <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm relative overflow-hidden group">
@@ -228,16 +346,16 @@ export function Filamentos() {
             <div className="px-1.5 py-0.5 bg-surface-container rounded text-[8px] opacity-0 group-hover:opacity-100 transition-opacity">Inclui já gasto</div>
           </h3>
           <p className="text-3xl font-headline font-bold text-primary tabular-nums">
-            R$ {filaments.reduce((acc, f) => acc + ((Number(f.initialStockKg || f.stockKg) || 0) * (Number(f.pricePerKg) || 0)), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            R$ {filamentTotals.purchasedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>
         </div>
         <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm relative overflow-hidden group">
           <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1 flex items-center justify-between">
-            Patrimônio (Estoque)
-            <div className="px-1.5 py-0.5 bg-surface-container rounded text-[8px] opacity-0 group-hover:opacity-100 transition-opacity">Só matéria-prima bruta</div>
+            Total Gasto em Filamento
+            <div className="px-1.5 py-0.5 bg-surface-container rounded text-[8px] opacity-0 group-hover:opacity-100 transition-opacity">Consumo dos produtos cadastrados</div>
           </h3>
           <p className="text-3xl font-headline font-bold text-secondary tabular-nums">
-            R$ {filaments.reduce((acc, f) => acc + ((Number(f.stockKg) || 0) * (Number(f.pricePerKg) || 0)), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            R$ {filamentTotals.spentValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>
         </div>
       </div>
@@ -303,7 +421,7 @@ export function Filamentos() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Estoque Inicial (Kg)</label>
+              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Total Comprado (Kg)</label>
               <input type="number" step="0.01" required value={formData.stockKg || ''} onChange={e => setFormData({...formData, stockKg: Number(e.target.value)})} className="w-full bg-surface-container border-none rounded p-2 text-sm focus:ring-2 focus:ring-primary tabular-nums" placeholder="1.0" />
             </div>
 
@@ -366,6 +484,7 @@ export function Filamentos() {
               )}
               {filteredFilaments.map((f) => {
                 const usedByProducts = products.filter(p => p.variations.some((v: any) => v.filamentId === f.id || (v.materials || []).some((m: any) => m.filamentId === f.id)));
+                const currentStockKg = getCurrentStockKg(f);
                 return (
                 <tr key={f.id} className="hover:bg-surface-container-low transition-colors group">
                   <td className="px-6 py-4">
@@ -395,12 +514,12 @@ export function Filamentos() {
                     R$ {f.pricePerKg.toFixed(2)}
                   </td>
                   <td className="px-6 py-4 text-right tabular-nums text-sm font-semibold">
-                    {f.stockKg.toFixed(2)} kg
+                    {currentStockKg.toFixed(2)} kg
                   </td>
                   <td className="px-6 py-4">
-                    {f.stockKg > 5 ? (
+                    {currentStockKg > 5 ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-tertiary-fixed text-on-tertiary-fixed-variant">Ideal</span>
-                    ) : f.stockKg > 0 ? (
+                    ) : currentStockKg > 0 ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-error-container text-on-error-container">Baixo</span>
                     ) : (
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-900 text-white">Sem Estoque</span>

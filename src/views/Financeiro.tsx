@@ -34,6 +34,7 @@ interface Filament {
   id: string;
   pricePerKg: number;
   stockKg: number;
+  initialStockKg?: number;
   purchaseDate?: string;
   createdAt?: string;
 }
@@ -138,7 +139,10 @@ export function Financeiro() {
 
   // Cálculos Compras de Materiais e Equipamentos
   const comprasInsumos = filteredSupplies.reduce((acc, s) => acc + (Number(s.costPerUnit) * Number(s.quantity) || 0), 0);
-  const comprasFilamentos = filteredFilaments.reduce((acc, f) => acc + (Number(f.pricePerKg) * Number(f.stockKg) || 0), 0);
+  const comprasFilamentos = filteredFilaments.reduce((acc, f) => {
+    const purchasedKg = Number(f.initialStockKg ?? f.stockKg) || 0;
+    return acc + ((Number(f.pricePerKg) || 0) * purchasedKg);
+  }, 0);
   const comprasImpressoras = filteredPrinters.reduce((acc, p) => acc + (Number(p.acquisitionCost) || 0), 0);
   const totalComprasMateriais = comprasInsumos + comprasFilamentos;
   const totalInvestimentos = comprasImpressoras;
@@ -407,7 +411,7 @@ export function Financeiro() {
                             <span className="bg-surface-container px-2 py-1 rounded text-xs font-medium">Material</span>
                           </td>
                           <td className="px-6 py-4 text-right tabular-nums text-sm font-bold text-error">
-                            - R$ {(f.pricePerKg * f.stockKg).toFixed(2)}
+                            - R$ {(f.pricePerKg * (Number(f.initialStockKg ?? f.stockKg) || 0)).toFixed(2)}
                           </td>
                           <td className="px-6 py-4 text-center">
                             <span className="inline-flex px-2 py-1 rounded text-[10px] font-bold uppercase bg-tertiary-fixed text-on-tertiary-fixed-variant">
