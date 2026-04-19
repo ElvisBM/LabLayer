@@ -175,6 +175,18 @@ export function Filamentos() {
     return totalValue / totalKg;
   };
 
+  const getPurchasedValue = (filament: Partial<Filament>) => {
+    const purchases = getPurchaseHistory(filament);
+    if (purchases.length === 0) {
+      const fallbackKg = Number(filament.initialStockKg ?? filament.stockKg) || 0;
+      return fallbackKg * (Number(filament.pricePerKg) || 0);
+    }
+
+    return purchases.reduce((acc, purchase) => {
+      return acc + ((Number(purchase.quantityKg) || 0) * (Number(purchase.pricePerKg) || 0));
+    }, 0);
+  };
+
   const getLatestPurchase = (filament: Partial<Filament>) => {
     const purchases = [...getPurchaseHistory(filament)];
     purchases.sort((a, b) => (b.purchaseDate || '').localeCompare(a.purchaseDate || ''));
@@ -236,13 +248,13 @@ export function Filamentos() {
     return filaments.reduce((acc, filament) => {
       const purchasedKg = getPurchasedKg(filament);
       const currentStockKg = getCurrentStockKg(filament);
-      const spentKg = Math.max(0, purchasedKg - currentStockKg);
+      const consumedKg = usageByFilament[filament.id] || 0;
       const pricePerKg = getAveragePricePerKg(filament);
 
       acc.purchasedKg += purchasedKg;
       acc.currentStockKg += currentStockKg;
-      acc.purchasedValue += purchasedKg * pricePerKg;
-      acc.spentValue += spentKg * pricePerKg;
+      acc.purchasedValue += getPurchasedValue(filament);
+      acc.spentValue += consumedKg * pricePerKg;
       return acc;
     }, { purchasedKg: 0, currentStockKg: 0, purchasedValue: 0, spentValue: 0 });
   }, [filaments, usageByFilament]);
