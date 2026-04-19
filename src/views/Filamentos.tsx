@@ -213,7 +213,6 @@ export function Filamentos() {
         diameter: formData.diameter || '1.75mm',
         pricePerKg: Number(formData.pricePerKg) || 0,
         stockKg: Math.max(0, purchasedKg - consumedKg),
-        initialStockKg: purchasedKg,
         purchaseDate: formData.purchaseDate || getLocalDateString(),
         store: formData.store || ''
       };
@@ -272,11 +271,9 @@ export function Filamentos() {
       const batch = writeBatch(db);
 
       filaments.forEach((filament) => {
-        const purchasedKg = getPurchasedKg(filament);
         const reconciledStockKg = getCurrentStockKg(filament);
 
         batch.update(doc(db, `tenants/${tenantId}/filaments`, filament.id), {
-          initialStockKg: purchasedKg,
           stockKg: reconciledStockKg,
         });
       });
