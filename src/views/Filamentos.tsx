@@ -143,11 +143,8 @@ export function Filamentos() {
 
   const getPurchasedKg = (filament: Filament) => {
     const consumedKg = usageByFilament[filament.id] || 0;
-    const storedInitial = Number(filament.initialStockKg);
     const currentStock = Number(filament.stockKg) || 0;
-    return Number.isFinite(storedInitial) && storedInitial > 0
-      ? storedInitial
-      : currentStock + consumedKg;
+    return currentStock + consumedKg;
   };
 
   const getCurrentStockKg = (filament: Filament) => {
@@ -271,7 +268,9 @@ export function Filamentos() {
       const batch = writeBatch(db);
 
       filaments.forEach((filament) => {
-        const reconciledStockKg = getCurrentStockKg(filament);
+        const purchasedKg = Number(filament.stockKg) || 0;
+        const consumedKg = usageByFilament[filament.id] || 0;
+        const reconciledStockKg = Math.max(0, purchasedKg - consumedKg);
 
         batch.update(doc(db, `tenants/${tenantId}/filaments`, filament.id), {
           stockKg: reconciledStockKg,
