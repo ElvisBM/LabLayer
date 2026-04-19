@@ -1,0 +1,276 @@
+{
+  "entities": {
+    "Tenant": {
+      "title": "Tenant",
+      "description": "Represents a company or user account in the SaaS.",
+      "type": "object",
+      "properties": {
+        "ownerUid": {
+          "type": "string",
+          "description": "The Firebase Auth UID of the owner."
+        },
+        "companyName": {
+          "type": "string",
+          "description": "The name of the company."
+        },
+        "plan": {
+          "type": "string",
+          "enum": ["free", "pro", "enterprise"],
+          "description": "The billing plan of the tenant."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["ownerUid", "companyName", "plan", "createdAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "A 3D printed product with industrial specifications.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "baseSku": { "type": "string" },
+        "category": { "type": "string" },
+        "status": { "type": "string", "enum": ["ativo", "inativo", "desenvolvimento"] },
+        "cost": { "type": "number" },
+        "suggestedPrice": { "type": "number" },
+        "technicalSheet": {
+          "type": "object",
+          "properties": {
+            "dimensions": { "type": "string" },
+            "infillPercentage": { "type": "number" },
+            "layerHeight": { "type": "number" },
+            "supports": { "type": "boolean" },
+            "postProcessing": { "type": "string" }
+          }
+        },
+        "variations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "skuSuffix": { "type": "string" },
+              "color": { "type": "string" },
+              "material": { "type": "string" },
+              "weightGrams": { "type": "number" },
+              "printTimeMinutes": { "type": "number" },
+              "quantityPerPrint": { "type": "number" },
+              "materialCostPerGram": { "type": "number" },
+              "printerCostPerHour": { "type": "number" },
+              "channelPrices": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "channel": { "type": "string" },
+                    "price": { "type": "number" },
+                    "feePercentage": { "type": "number" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "type": { "type": "string", "enum": ["STL", "GCODE", "3MF", "STEP", "PDF"] },
+              "url": { "type": "string" },
+              "version": { "type": "string" }
+            }
+          }
+        },
+        "versions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "version": { "type": "string" },
+              "date": { "type": "string" },
+              "changes": { "type": "string" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "baseSku", "status", "createdAt"]
+    },
+    "Printer": {
+      "title": "Printer",
+      "description": "A 3D printer owned by the tenant.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "model": { "type": "string" },
+        "acquisitionCost": { "type": "number" },
+        "lifespanMonths": { "type": "number" },
+        "powerConsumption": { "type": "number" },
+        "status": { "type": "string", "enum": ["operacional", "manutencao", "inativa"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "model", "acquisitionCost", "lifespanMonths", "powerConsumption", "status", "createdAt"]
+    },
+    "Filament": {
+      "title": "Filament",
+      "description": "3D printing material.",
+      "type": "object",
+      "properties": {
+        "sku": { "type": "string" },
+        "material": { "type": "string" },
+        "color": { "type": "string" },
+        "costPerKg": { "type": "number" },
+        "stockKg": { "type": "number" },
+        "status": { "type": "string", "enum": ["ideal", "baixo", "esgotado"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sku", "material", "color", "costPerKg", "stockKg", "status", "createdAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "A sales order.",
+      "type": "object",
+      "properties": {
+        "orderNumber": { "type": "string" },
+        "date": { "type": "string" },
+        "productName": { "type": "string" },
+        "channelName": { "type": "string" },
+        "status": { "type": "string", "enum": ["pago", "produzindo", "enviado"] },
+        "quantity": { "type": "number" },
+        "soldPrice": { "type": "number" },
+        "fees": { "type": "number" },
+        "realCost": { "type": "number" },
+        "realProfit": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["orderNumber", "date", "productName", "channelName", "status", "quantity", "soldPrice", "fees", "realCost", "realProfit", "createdAt"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "A financial transaction.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string" },
+        "description": { "type": "string" },
+        "type": { "type": "string", "enum": ["entrada", "saida"] },
+        "category": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pago", "pendente"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["date", "description", "type", "category", "amount", "status", "createdAt"]
+    },
+    "Marketplace": {
+      "title": "Marketplace",
+      "description": "A sales channel or marketplace.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "commissionPercent": { "type": "number" },
+        "fixedFee": { "type": "number" },
+        "averageShipping": { "type": "number" },
+        "affiliateCommission": { "type": "number" },
+        "payoutDays": { "type": "number" },
+        "status": { "type": "string", "enum": ["ativo", "inativo"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "commissionPercent", "fixedFee", "averageShipping", "affiliateCommission", "payoutDays", "status", "createdAt"]
+    },
+    "ProductionOrder": {
+      "title": "ProductionOrder",
+      "description": "A production order for 3D printing.",
+      "type": "object",
+      "properties": {
+        "number": { "type": "string" },
+        "productName": { "type": "string" },
+        "productId": { "type": "string" },
+        "quantity": { "type": "number" },
+        "completed": { "type": "number" },
+        "printerName": { "type": "string" },
+        "printerId": { "type": "string" },
+        "priority": { "type": "string", "enum": ["alta", "normal", "baixa"] },
+        "status": { "type": "string", "enum": ["pendente", "produzindo", "pausada", "concluida"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["number", "productName", "productId", "quantity", "completed", "printerName", "printerId", "priority", "status", "createdAt"]
+    },
+    "InventoryMovement": {
+      "title": "InventoryMovement",
+      "description": "A movement of inventory (e.g., filament).",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date-time" },
+        "filamentId": { "type": "string" },
+        "filamentName": { "type": "string" },
+        "type": { "type": "string", "enum": ["entrada", "saida", "ajuste"] },
+        "amount": { "type": "number" },
+        "reason": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["date", "filamentId", "filamentName", "type", "amount", "reason", "createdAt"]
+    },
+    "FailureRecord": {
+      "title": "FailureRecord",
+      "description": "A record of a printing failure.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date-time" },
+        "productName": { "type": "string" },
+        "printerName": { "type": "string" },
+        "type": { "type": "string" },
+        "materialLost": { "type": "number" },
+        "timeLost": { "type": "number" },
+        "financialLoss": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["date", "productName", "printerName", "type", "materialLost", "timeLost", "financialLoss", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/tenants/{tenantId}": {
+      "schema": { "$ref": "#/entities/Tenant" },
+      "description": "The root document for a company/tenant. The tenantId MUST match the owner's Firebase Auth UID."
+    },
+    "/tenants/{tenantId}/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Products belonging to the tenant."
+    },
+    "/tenants/{tenantId}/printers/{printerId}": {
+      "schema": { "$ref": "#/entities/Printer" },
+      "description": "Printers belonging to the tenant."
+    },
+    "/tenants/{tenantId}/filaments/{filamentId}": {
+      "schema": { "$ref": "#/entities/Filament" },
+      "description": "Filaments belonging to the tenant."
+    },
+    "/tenants/{tenantId}/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Orders belonging to the tenant."
+    },
+    "/tenants/{tenantId}/transactions/{transactionId}": {
+      "schema": { "$ref": "#/entities/Transaction" },
+      "description": "Financial transactions belonging to the tenant."
+    },
+    "/tenants/{tenantId}/marketplaces/{marketplaceId}": {
+      "schema": { "$ref": "#/entities/Marketplace" },
+      "description": "Sales channels and marketplaces belonging to the tenant."
+    },
+    "/tenants/{tenantId}/productionOrders/{orderId}": {
+      "schema": { "$ref": "#/entities/ProductionOrder" },
+      "description": "Production orders belonging to the tenant."
+    },
+    "/tenants/{tenantId}/inventoryMovements/{movementId}": {
+      "schema": { "$ref": "#/entities/InventoryMovement" },
+      "description": "Inventory movements belonging to the tenant."
+    },
+    "/tenants/{tenantId}/failures/{failureId}": {
+      "schema": { "$ref": "#/entities/FailureRecord" },
+      "description": "Failure records belonging to the tenant."
+    }
+  }
+}

@@ -1,0 +1,338 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: tenants
+    // Document ID: {tenantId} (Must match owner's UID)
+    // Fields:
+    //   - ownerUid: string (required, immutable)
+    //   - companyName: string (required, max 100 chars)
+    //   - plan: string (required, enum: ['free', 'pro', 'enterprise'])
+    //   - createdAt: string (required, immutable)
+    //
+    // Subcollections under tenants/{tenantId}:
+    //   - products
+    //   - printers
+    //   - filaments
+    //   - orders
+    //   - transactions
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == "elvisbmartins@gmail.com" ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin')
+      );
+    }
+
+    function isTenantOwner(tenantId) {
+      return isAuthenticated() && request.auth.uid == tenantId;
+    }
+
+    function hasOnlyAllowedFields(allowedFields) {
+      return request.resource.data.keys().hasOnly(allowedFields);
+    }
+
+    function hasRequiredFields(requiredFields) {
+      return request.resource.data.keys().hasAll(requiredFields);
+    }
+
+    function isValidString(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+             request.resource.data[field].size() >= minLen &&
+             request.resource.data[field].size() <= maxLen;
+    }
+
+    function isPositiveNumber(field) {
+      return request.resource.data[field] is number && request.resource.data[field] >= 0;
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidTenant(tenantId) {
+      let allowedFields = ['ownerUid', 'companyName', 'plan', 'createdAt'];
+      return hasOnlyAllowedFields(allowedFields) &&
+             hasRequiredFields(allowedFields) &&
+             request.resource.data.ownerUid == tenantId &&
+             isValidString('companyName', 1, 100) &&
+             request.resource.data.plan in ['free', 'pro', 'enterprise'] &&
+             request.resource.data.createdAt is string;
+    }
+
+    function isValidProduct() {
+      return hasRequiredFields(['name', 'status']) &&
+             isValidString('name', 1, 100) &&
+             (!('baseSku' in request.resource.data) || isValidString('baseSku', 0, 50)) &&
+             request.resource.data.status in ['ativo', 'inativo', 'desenvolvimento'];
+    }
+
+    function isValidSupply() {
+      let allowedFields = ['name', 'category', 'quantity', 'unit', 'costPerUnit', 'minStock', 'createdAt'];
+      return hasOnlyAllowedFields(allowedFields) &&
+             hasRequiredFields(['name', 'quantity', 'unit', 'costPerUnit', 'createdAt']) &&
+             isValidString('name', 1, 100) &&
+             isValidString('unit', 1, 20) &&
+             isPositiveNumber('quantity') &&
+             isPositiveNumber('costPerUnit') &&
+             request.resource.data.createdAt is string;
+    }
+
+    function isValidPrinter() {
+      let allowedFields = ['name', 'model', 'acquisitionCost', 'lifespanHours', 'usedHours', 'maintenanceBudget', 'powerConsumption', 'createdAt', 'status', 'lifespanMonths', 'purchaseDate'];
+      let requiredFields = ['name', 'model', 'acquisitionCost', 'lifespanHours', 'maintenanceBudget', 'powerConsumption', 'createdAt'];
+      return hasOnlyAllowedFields(allowedFields) &&
+             hasRequiredFields(requiredFields) &&
+             isValidString('name', 1, 100) &&
+             isValidString('model', 0, 100) &&
+             isPositiveNumber('acquisitionCost') &&
+             isPositiveNumber('lifespanHours') &&
+             (!('usedHours' in request.resource.data) || isPositiveNumber('usedHours')) &&
+             isPositiveNumber('maintenanceBudget') &&
+             isPositiveNumber('powerConsumption') &&
+             (!('status' in request.resource.data) || request.resource.data.status in ['operacional', 'manutenção', 'inativa']) &&
+             request.resource.data.createdAt is string;
+    }
+
+    function isValidFilament() {
+      let allowedFields = ['sku', 'material', 'color', 'colorHex', 'brand', 'lineType', 'diameter', 'pricePerKg', 'stockKg', 'status', 'createdAt', 'purchaseDate', 'store'];
+      return hasOnlyAllowedFields(allowedFields) &&
+             hasRequiredFields(['material', 'color', 'pricePerKg', 'stockKg']) &&
+             (!('sku' in request.resource.data) || isValidString('sku', 0, 50)) &&
+             isValidString('material', 1, 50) &&
+             isValidString('color', 1, 100) &&
+             isPositiveNumber('pricePerKg') &&
+             isPositiveNumber('stockKg') &&
+             (!('createdAt' in request.resource.data) || request.resource.data.createdAt is string) &&
+             (!('store' in request.resource.data) || isValidString('store', 0, 100));
+    }
+
+    function isValidOrder() {
+      let allowedFields = ['orderNumber', 'date', 'productName', 'channelName', 'status', 'quantity', 'soldPrice', 'fees', 'realCost', 'realProfit', 'createdAt'];
+      return hasOnlyAllowedFields(allowedFields) &&
+             hasRequiredFields(allowedFields) &&
+             isValidString('orderNumber', 1, 50) &&
+             isValidString('date', 1, 50) &&
+             isValidString('productName', 1, 100) &&
+             isValidString('channelName', 1, 50) &&
+             request.resource.data.status in ['pago', 'produzindo', 'enviado'] &&
+             isPositiveNumber('quantity') &&
+             isPositiveNumber('soldPrice') &&
+             isPositiveNumber('fees') &&
+             isPositiveNumber('realCost') &&
+             request.resource.data.realProfit is number && // Profit can be negative
+             request.resource.data.createdAt is string;
+    }
+
+    function isValidTransaction() {
+      let allowedFields = ['date', 'description', 'type', 'category', 'amount', 'status', 'createdAt'];
+      return hasOnlyAllowedFields(allowedFields) &&
+             hasRequiredFields(allowedFields) &&
+             isValidString('date', 1, 50) &&
+             isValidString('description', 1, 200) &&
+             request.resource.data.type in ['entrada', 'saida'] &&
+             isValidString('category', 1, 50) &&
+             isPositiveNumber('amount') &&
+             request.resource.data.status in ['pago', 'pendente'] &&
+             request.resource.data.createdAt is string;
+    }
+
+    function isValidMarketplace() {
+      let allowedFields = ['name', 'commissionPercent', 'fixedFee', 'averageShipping', 'affiliateCommission', 'payoutDays', 'status', 'createdAt'];
+      return hasOnlyAllowedFields(allowedFields) &&
+             hasRequiredFields(allowedFields) &&
+             isValidString('name', 1, 50) &&
+             isPositiveNumber('commissionPercent') &&
+             isPositiveNumber('fixedFee') &&
+             isPositiveNumber('averageShipping') &&
+             isPositiveNumber('affiliateCommission') &&
+             isPositiveNumber('payoutDays') &&
+             request.resource.data.status in ['ativo', 'inativo'] &&
+             request.resource.data.createdAt is string;
+    }
+
+    function isValidProductionOrder() {
+      let allowedFields = ['number', 'productName', 'productId', 'quantity', 'completed', 'printerName', 'printerId', 'priority', 'status', 'createdAt'];
+      return hasOnlyAllowedFields(allowedFields) &&
+             hasRequiredFields(allowedFields) &&
+             isValidString('number', 1, 50) &&
+             isValidString('productName', 1, 100) &&
+             isValidString('productId', 1, 100) &&
+             isPositiveNumber('quantity') &&
+             isPositiveNumber('completed') &&
+             isValidString('printerName', 1, 100) &&
+             isValidString('printerId', 1, 100) &&
+             request.resource.data.priority in ['alta', 'normal', 'baixa'] &&
+             request.resource.data.status in ['pendente', 'produzindo', 'pausada', 'concluida'] &&
+             request.resource.data.createdAt is string;
+    }
+
+    function isValidInventoryMovement() {
+      let allowedFields = ['date', 'filamentId', 'filamentName', 'type', 'amount', 'reason', 'createdAt'];
+      return hasOnlyAllowedFields(allowedFields) &&
+             hasRequiredFields(allowedFields) &&
+             isValidString('date', 1, 50) &&
+             isValidString('filamentId', 1, 100) &&
+             isValidString('filamentName', 1, 100) &&
+             request.resource.data.type in ['entrada', 'saida', 'ajuste'] &&
+             isPositiveNumber('amount') &&
+             isValidString('reason', 0, 200) &&
+             request.resource.data.createdAt is string;
+    }
+
+    function isValidFailureRecord() {
+      let allowedFields = ['date', 'productName', 'printerName', 'type', 'materialLost', 'timeLost', 'financialLoss', 'createdAt'];
+      return hasOnlyAllowedFields(allowedFields) &&
+             hasRequiredFields(allowedFields) &&
+             isValidString('date', 1, 50) &&
+             isValidString('productName', 1, 100) &&
+             isValidString('printerName', 1, 100) &&
+             isValidString('type', 1, 50) &&
+             isPositiveNumber('materialLost') &&
+             isPositiveNumber('timeLost') &&
+             isPositiveNumber('financialLoss') &&
+             request.resource.data.createdAt is string;
+    }
+
+    function isValidLoss() {
+      let allowedFields = ['date', 'type', 'weightGrams', 'filamentId', 'filamentName', 'cost', 'notes', 'productId', 'variationId'];
+      return hasOnlyAllowedFields(allowedFields) &&
+             hasRequiredFields(['date', 'type', 'weightGrams', 'filamentId', 'filamentName', 'cost']) &&
+             isValidString('date', 1, 50) &&
+             request.resource.data.type in ['purga', 'falha', 'outro'] &&
+             isPositiveNumber('weightGrams') &&
+             isValidString('filamentId', 1, 100) &&
+             isValidString('filamentName', 1, 100) &&
+             isPositiveNumber('cost') &&
+             (!('notes' in request.resource.data) || isValidString('notes', 0, 500)) &&
+             (!('productId' in request.resource.data) || isValidString('productId', 0, 100)) &&
+             (!('variationId' in request.resource.data) || isValidString('variationId', 0, 100));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());
+      allow delete: if isSuperAdmin();
+    }
+
+    match /tenants/{tenantId} {
+      // Owner or Super Admin can read
+      allow read: if isTenantOwner(tenantId) || isSuperAdmin();
+      
+      // Owner can create
+      allow create: if isTenantOwner(tenantId);
+      
+      // Owner or Super Admin can update
+      allow update: if (isTenantOwner(tenantId) && 
+                        request.resource.data.ownerUid == resource.data.ownerUid &&
+                        request.resource.data.createdAt == resource.data.createdAt) || 
+                       isSuperAdmin();
+      
+      allow delete: if isSuperAdmin();
+
+      // Subcollections
+      match /products/{productId} {
+        allow read: if isTenantOwner(tenantId);
+        allow create: if isTenantOwner(tenantId) && isValidProduct();
+        allow update: if isTenantOwner(tenantId) && isValidProduct() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+        allow delete: if isTenantOwner(tenantId);
+      }
+
+      match /printers/{printerId} {
+        allow read: if isTenantOwner(tenantId);
+        allow create: if isTenantOwner(tenantId) && isValidPrinter();
+        allow update: if isTenantOwner(tenantId) && isValidPrinter() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantOwner(tenantId);
+      }
+
+      match /filaments/{filamentId} {
+        allow read: if isTenantOwner(tenantId);
+        allow create: if isTenantOwner(tenantId) && isValidFilament();
+        allow update: if isTenantOwner(tenantId) && isValidFilament() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+        allow delete: if isTenantOwner(tenantId);
+      }
+
+      match /orders/{orderId} {
+        allow read: if isTenantOwner(tenantId);
+        allow create: if isTenantOwner(tenantId) && isValidOrder();
+        allow update: if isTenantOwner(tenantId) && isValidOrder() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantOwner(tenantId);
+      }
+
+      match /transactions/{transactionId} {
+        allow read: if isTenantOwner(tenantId);
+        allow create: if isTenantOwner(tenantId) && isValidTransaction();
+        allow update: if isTenantOwner(tenantId) && isValidTransaction() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantOwner(tenantId);
+      }
+
+      match /losses/{lossId} {
+        allow read: if isTenantOwner(tenantId);
+        allow create: if isTenantOwner(tenantId) && isValidLoss();
+        allow update: if isTenantOwner(tenantId) && isValidLoss();
+        allow delete: if isTenantOwner(tenantId);
+      }
+
+      match /supplies/{supplyId} {
+        allow read: if isTenantOwner(tenantId);
+        allow create: if isTenantOwner(tenantId) && isValidSupply();
+        allow update: if isTenantOwner(tenantId) && isValidSupply() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantOwner(tenantId);
+      }
+
+      match /marketplaces/{marketplaceId} {
+        allow read: if isTenantOwner(tenantId);
+        allow create: if isTenantOwner(tenantId) && isValidMarketplace();
+        allow update: if isTenantOwner(tenantId) && isValidMarketplace() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantOwner(tenantId);
+      }
+
+      match /productionOrders/{orderId} {
+        allow read: if isTenantOwner(tenantId);
+        allow create: if isTenantOwner(tenantId) && isValidProductionOrder();
+        allow update: if isTenantOwner(tenantId) && isValidProductionOrder() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantOwner(tenantId);
+      }
+
+      match /inventoryMovements/{movementId} {
+        allow read: if isTenantOwner(tenantId);
+        allow create: if isTenantOwner(tenantId) && isValidInventoryMovement();
+        allow update: if isTenantOwner(tenantId) && isValidInventoryMovement() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantOwner(tenantId);
+      }
+
+      match /failures/{failureId} {
+        allow read: if isTenantOwner(tenantId);
+        allow create: if isTenantOwner(tenantId) && isValidFailureRecord();
+        allow update: if isTenantOwner(tenantId) && isValidFailureRecord() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantOwner(tenantId);
+      }
+
+      match /settings/{settingId} {
+        allow read: if isTenantOwner(tenantId);
+        allow write: if isTenantOwner(tenantId);
+      }
+    }
+  }
+}
