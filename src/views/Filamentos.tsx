@@ -99,6 +99,7 @@ export function Filamentos() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isReconciling, setIsReconciling] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<FilamentSortKey>('material');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -446,7 +447,7 @@ export function Filamentos() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!tenantId || !window.confirm("Tem certeza que deseja excluir este filamento?")) return;
+    if (!tenantId) return;
 
     const linkedProducts = products
       .map(product => ({
@@ -562,6 +563,7 @@ export function Filamentos() {
   };
 
   const editingFilament = editingId ? filaments.find(f => f.id === editingId) : null;
+  const deleteTarget = deleteTargetId ? filaments.find(f => f.id === deleteTargetId) : null;
   const editingCurrentStockKg = editingFilament
     ? getCurrentStockKg(editingFilament)
     : Math.max(0, Number(formData.stockKg) || 0);
@@ -976,7 +978,7 @@ export function Filamentos() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleDelete(f.id);
+                          setDeleteTargetId(f.id);
                         }}
                         className="p-1.5 text-slate-400 hover:text-error transition-colors rounded"
                       >
@@ -990,6 +992,37 @@ export function Filamentos() {
           </table>
         </div>
       </section>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-surface-container-lowest rounded-xl border border-outline-variant/20 shadow-xl p-6">
+            <h3 className="font-headline font-bold text-lg text-on-surface">Excluir Filamento</h3>
+            <p className="text-sm text-on-surface-variant mt-2">
+              Tem certeza que deseja excluir <span className="font-bold text-on-surface">{deleteTarget.material} {deleteTarget.color}</span>?
+            </p>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setDeleteTargetId(null)}
+                className="px-5 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await handleDelete(deleteTarget.id);
+                  setDeleteTargetId(null);
+                }}
+                className="px-5 py-2 bg-error text-on-error rounded font-bold text-sm hover:opacity-90 transition-all"
+              >
+                Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
