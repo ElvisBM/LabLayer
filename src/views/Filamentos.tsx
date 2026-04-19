@@ -297,6 +297,11 @@ export function Filamentos() {
     return true;
   });
 
+  const editingFilament = editingId ? filaments.find(f => f.id === editingId) : null;
+  const editingCurrentStockKg = editingFilament
+    ? getCurrentStockKg(editingFilament)
+    : Math.max(0, Number(formData.stockKg) || 0);
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
@@ -422,6 +427,11 @@ export function Filamentos() {
             </div>
 
             <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Estoque Atual (Kg)</label>
+              <input type="text" value={editingCurrentStockKg.toFixed(2)} readOnly className="w-full bg-surface-container-low border-none rounded p-2 text-sm text-on-surface-variant tabular-nums cursor-not-allowed" />
+            </div>
+
+            <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Data da Compra</label>
               <input type="date" value={formData.purchaseDate || ''} onChange={e => setFormData({...formData, purchaseDate: e.target.value})} className="w-full bg-surface-container border-none rounded p-2 text-sm focus:ring-2 focus:ring-primary" />
             </div>
@@ -466,7 +476,8 @@ export function Filamentos() {
                 <th className="px-6 py-3">Material / Cor</th>
                 <th className="px-6 py-3">Data Compra</th>
                 <th className="px-6 py-3 text-right">Custo (Kg)</th>
-                <th className="px-6 py-3 text-right">Estoque</th>
+                <th className="px-6 py-3 text-right">Comprado</th>
+                <th className="px-6 py-3 text-right">Estoque Atual</th>
                 <th className="px-6 py-3">Status</th>
                 <th className="px-6 py-3">Vinculado</th>
                 <th className="px-6 py-3"></th>
@@ -475,12 +486,13 @@ export function Filamentos() {
             <tbody className="divide-y divide-outline-variant/10">
               {filteredFilaments.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-sm text-on-surface-variant">Nenhum filamento encontrado.</td>
+                  <td colSpan={8} className="px-6 py-8 text-center text-sm text-on-surface-variant">Nenhum filamento encontrado.</td>
                 </tr>
               )}
               {filteredFilaments.map((f) => {
                 const usedByProducts = products.filter(p => p.variations.some((v: any) => v.filamentId === f.id || (v.materials || []).some((m: any) => m.filamentId === f.id)));
                 const currentStockKg = getCurrentStockKg(f);
+                const purchasedKg = getPurchasedKg(f);
                 return (
                 <tr key={f.id} className="hover:bg-surface-container-low transition-colors group">
                   <td className="px-6 py-4">
@@ -508,6 +520,9 @@ export function Filamentos() {
                   </td>
                   <td className="px-6 py-4 text-right tabular-nums text-sm font-semibold">
                     R$ {f.pricePerKg.toFixed(2)}
+                  </td>
+                  <td className="px-6 py-4 text-right tabular-nums text-sm font-semibold">
+                    {purchasedKg.toFixed(2)} kg
                   </td>
                   <td className="px-6 py-4 text-right tabular-nums text-sm font-semibold">
                     {currentStockKg.toFixed(2)} kg
