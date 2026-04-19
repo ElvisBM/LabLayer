@@ -99,6 +99,7 @@ export function Filamentos() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isReconciling, setIsReconciling] = useState(false);
+  const [isRecalculatingPurchased, setIsRecalculatingPurchased] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<FilamentSortKey>('material');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -506,6 +507,49 @@ export function Filamentos() {
     }
   };
 
+  const handleRecalculatePurchasedTotals = async () => {
+    if (!tenantId || filaments.length === 0) return;
+
+    try {
+      setIsRecalculatingPurchased(true);
+      const batch = writeBatch(db);
+
+      filaments.forEach((filament) => {
+        const purchaseHistory = getPurchaseHistory(filament).map(purchase => ({
+          ...purchase,
+          quantityKg: Number(purchase.quantityKg) || 0,
+          pricePerKg: Number(purchase.pricePerKg) || 0,
+          purchaseDate: purchase.purchaseDate || getLocalDateString(),
+          store: purchase.store || '',
+          supplierId: purchase.supplierId || '',
+        }));
+        const purchasedKg = purchaseHistory.reduce((acc, purchase) => acc + purchase.quantityKg, 0);
+        const purchasedValue = purchaseHistory.reduce((acc, purchase) => acc + (purchase.quantityKg * purchase.pricePerKg), 0);
+        const averagePricePerKg = purchasedKg > 0 ? purchasedValue / purchasedKg : 0;
+        const latestPurchase = [...purchaseHistory].sort((a, b) => (b.purchaseDate || '').localeCompare(a.purchaseDate || ''))[0];
+        const consumedKg = usageByFilament[filament.id] || 0;
+
+        batch.update(doc(db, `tenants/${tenantId}/filaments`, filament.id), {
+          pricePerKg: averagePricePerKg,
+          initialStockKg: purchasedKg,
+          purchaseDate: latestPurchase?.purchaseDate || filament.purchaseDate || getLocalDateString(),
+          store: latestPurchase?.store || '',
+          supplierId: latestPurchase?.supplierId || '',
+          stockKg: Math.max(0, purchasedKg - consumedKg),
+          purchaseHistory,
+        });
+      });
+
+      await batch.commit();
+      toast.success('Totais comprados recalculados com base no histórico de compras!');
+    } catch (error) {
+      console.error("Error recalculating purchased totals:", error);
+      toast.error("Erro ao recalcular totais comprados.");
+    } finally {
+      setIsRecalculatingPurchased(false);
+    }
+  };
+
   const filteredFilaments = filaments.filter(f => {
     if (filterColor && !(f.color || '').toLowerCase().includes(filterColor.toLowerCase())) return false;
     if (filterType && !(f.lineType || '').toLowerCase().includes(filterType.toLowerCase())) return false;
@@ -619,37 +663,46 @@ export function Filamentos() {
           <h2 className="font-headline text-3xl font-bold text-primary tracking-tighter">Catálogo de Filamentos</h2>
           <p className="text-on-surface-variant font-sans text-sm mt-1">Gerencie materiais, custos e níveis de estoque.</p>
         </div>
-        <button 
-          onClick={() => {
-            setFormData({
-              brand: '',
-              material: 'PLA',
-              lineType: 'Sólido (normal)',
-              color: '',
-              colorHex: '#000000',
-              diameter: '1.75mm',
-              pricePerKg: 0,
-              stockKg: 0,
-              purchaseDate: getLocalDateString(),
-              store: '',
-              supplierId: '',
-              purchaseHistory: [createBlankPurchase()]
-            });
-            setEditingId(null);
-            setShowForm(!showForm);
-          }}
-          className="w-full sm:w-auto px-4 py-2 bg-primary text-on-primary text-sm font-bold rounded-md hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Novo Filamento
-        </button>
-        <button
-          onClick={handleReconcileStocks}
-          disabled={isReconciling || filaments.length === 0}
-          className="w-full sm:w-auto px-4 py-2 bg-secondary text-on-primary text-sm font-bold rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-        >
-          {isReconciling ? 'Recalculando...' : 'Recalcular Estoques'}
-        </button>
+        <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
+          <button 
+            onClick={() => {
+              setFormData({
+                brand: '',
+                material: 'PLA',
+                lineType: 'Sólido (normal)',
+                color: '',
+                colorHex: '#000000',
+                diameter: '1.75mm',
+                pricePerKg: 0,
+                stockKg: 0,
+                purchaseDate: getLocalDateString(),
+                store: '',
+                supplierId: '',
+                purchaseHistory: [createBlankPurchase()]
+              });
+              setEditingId(null);
+              setShowForm(!showForm);
+            }}
+            className="w-full sm:w-auto px-4 py-2 bg-primary text-on-primary text-sm font-bold rounded-md hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Novo Filamento
+          </button>
+          <button
+            onClick={handleRecalculatePurchasedTotals}
+            disabled={isRecalculatingPurchased || filaments.length === 0}
+            className="w-full sm:w-auto px-4 py-2 bg-tertiary text-on-primary text-sm font-bold rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+          >
+            {isRecalculatingPurchased ? 'Recalculando Compras...' : 'Recalcular Total Comprado'}
+          </button>
+          <button
+            onClick={handleReconcileStocks}
+            disabled={isReconciling || filaments.length === 0}
+            className="w-full sm:w-auto px-4 py-2 bg-secondary text-on-primary text-sm font-bold rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+          >
+            {isReconciling ? 'Recalculando...' : 'Recalcular Estoques'}
+          </button>
+        </div>
       </div>
 
       {/* Metrics Cards */}
