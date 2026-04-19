@@ -839,6 +839,12 @@ export function Produtos() {
     return Array.from(unique.values()).map((u, i) => ({ ...u, id: String(i) }));
   };
 
+  const isLightColor = (hex?: string) => {
+    if (!hex) return false;
+    const normalized = hex.trim().toLowerCase();
+    return normalized === '#fff' || normalized === '#ffffff' || normalized === 'white';
+  };
+
   // --- INTELLIGENCE CALCULATIONS ---
   const calculateUnitCostBreakdown = (v: Variation, fixedCost: number) => {
     let materialCost = 0;
@@ -1886,7 +1892,10 @@ export function Produtos() {
                         <div className="flex gap-0.5">
                           {getProductUniqueColors(p).slice(0,5).map((u: any) => (
                             <div key={u.id} className="relative group/tooltip">
-                              <span className="block w-3 h-3 rounded-full border border-outline-variant/30 shadow-sm" style={{ backgroundColor: u.hex }} />
+                              <span
+                                className={`block w-3 h-3 rounded-full shadow-sm ${isLightColor(u.hex) ? 'border border-slate-400' : 'border border-outline-variant/30'}`}
+                                style={{ backgroundColor: u.hex }}
+                              />
                               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-surface-container-highest text-on-surface text-[10px] rounded opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
                                 {u.colorName} ({u.materialName})
                               </div>
@@ -1990,7 +1999,12 @@ export function Produtos() {
                       <span className="font-bold text-on-surface">{p.variations.length}</span>
                       <div className="flex gap-0.5">
                         {getProductUniqueColors(p).slice(0,3).map((u: any) => (
-                          <span key={u.id} className="w-2.5 h-2.5 rounded-full border border-outline-variant/30" style={{ backgroundColor: u.hex }} title={`${u.colorName} - ${u.materialName}`}></span>
+                          <span
+                            key={u.id}
+                            className={`w-2.5 h-2.5 rounded-full ${isLightColor(u.hex) ? 'border border-slate-400' : 'border border-outline-variant/30'}`}
+                            style={{ backgroundColor: u.hex }}
+                            title={`${u.colorName} - ${u.materialName}`}
+                          ></span>
                         ))}
                         {getProductUniqueColors(p).length > 3 && <span className="text-[8px] text-on-surface-variant ml-0.5">+{getProductUniqueColors(p).length - 3}</span>}
                       </div>
