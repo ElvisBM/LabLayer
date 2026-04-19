@@ -39,6 +39,8 @@ interface ProductInfo {
   wastes?: any[];
 }
 
+type FilamentSortKey = 'material' | 'date' | 'price' | 'purchased' | 'stock';
+
 const getLocalDateString = () => {
   const d = new Date();
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -85,6 +87,8 @@ export function Filamentos() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isReconciling, setIsReconciling] = useState(false);
+  const [sortKey, setSortKey] = useState<FilamentSortKey>('material');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   const [filterColor, setFilterColor] = useState('');
   const [filterType, setFilterType] = useState('');
@@ -385,6 +389,54 @@ export function Filamentos() {
     return true;
   });
 
+  const getFilamentSortValue = (filament: Filament, key: FilamentSortKey) => {
+    switch (key) {
+      case 'date':
+        return getLatestPurchase(filament)?.purchaseDate || filament.purchaseDate || '';
+      case 'price':
+        return getAveragePricePerKg(filament);
+      case 'purchased':
+        return getPurchasedKg(filament);
+      case 'stock':
+        return getCurrentStockKg(filament);
+      case 'material':
+      default:
+        return `${filament.material || ''} ${filament.color || ''} ${filament.lineType || ''}`.toLowerCase();
+    }
+  };
+
+  const sortedFilaments = useMemo(() => {
+    return [...filteredFilaments].sort((a, b) => {
+      const valueA = getFilamentSortValue(a, sortKey);
+      const valueB = getFilamentSortValue(b, sortKey);
+
+      if (typeof valueA === 'number' && typeof valueB === 'number') {
+        return sortDirection === 'asc' ? valueA - valueB : valueB - valueA;
+      }
+
+      const textA = String(valueA);
+      const textB = String(valueB);
+      return sortDirection === 'asc'
+        ? textA.localeCompare(textB, 'pt-BR')
+        : textB.localeCompare(textA, 'pt-BR');
+    });
+  }, [filteredFilaments, sortDirection, sortKey]);
+
+  const handleSort = (key: FilamentSortKey) => {
+    if (sortKey === key) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+
+    setSortKey(key);
+    setSortDirection('asc');
+  };
+
+  const getSortIndicator = (key: FilamentSortKey) => {
+    if (sortKey !== key) return '↕';
+    return sortDirection === 'asc' ? '↑' : '↓';
+  };
+
   const editingFilament = editingId ? filaments.find(f => f.id === editingId) : null;
   const editingCurrentStockKg = editingFilament
     ? getCurrentStockKg(editingFilament)
@@ -637,23 +689,33 @@ export function Filamentos() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-surface-container-low text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">
-                <th className="px-6 py-3">Material / Cor</th>
-                <th className="px-6 py-3">Data Compra</th>
-                <th className="px-6 py-3 text-right">Custo (Kg)</th>
-                <th className="px-6 py-3 text-right">Comprado</th>
-                <th className="px-6 py-3 text-right">Estoque Atual</th>
+                <th className="px-6 py-3 cursor-pointer select-none" onClick={() => handleSort('material')}>
+                  Material / Cor {getSortIndicator('material')}
+                </th>
+                <th className="px-6 py-3 cursor-pointer select-none" onClick={() => handleSort('date')}>
+                  Data Compra {getSortIndicator('date')}
+                </th>
+                <th className="px-6 py-3 text-right cursor-pointer select-none" onClick={() => handleSort('price')}>
+                  Custo (Kg) {getSortIndicator('price')}
+                </th>
+                <th className="px-6 py-3 text-right cursor-pointer select-none" onClick={() => handleSort('purchased')}>
+                  Comprado {getSortIndicator('purchased')}
+                </th>
+                <th className="px-6 py-3 text-right cursor-pointer select-none" onClick={() => handleSort('stock')}>
+                  Estoque Atual {getSortIndicator('stock')}
+                </th>
                 <th className="px-6 py-3">Status</th>
                 <th className="px-6 py-3">Vinculado</th>
                 <th className="px-6 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/10">
-              {filteredFilaments.length === 0 && (
+              {sortedFilaments.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-6 py-8 text-center text-sm text-on-surface-variant">Nenhum filamento encontrado.</td>
                 </tr>
               )}
-              {filteredFilaments.map((f) => {
+              {sortedFilaments.map((f) => {
                 const usedByProducts = products.filter(p => p.variations.some((v: any) => v.filamentId === f.id || (v.materials || []).some((m: any) => m.filamentId === f.id)));
                 const currentStockKg = getCurrentStockKg(f);
                 const purchasedKg = getPurchasedKg(f);

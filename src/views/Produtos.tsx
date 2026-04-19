@@ -164,6 +164,8 @@ interface Product {
   wastes?: ProductWaste[];
 }
 
+type ProductSortKey = 'name' | 'category' | 'status' | 'stock' | 'cost';
+
 const mockProducts: Product[] = [
   { 
     id: '1', 
@@ -210,6 +212,8 @@ export function Produtos() {
   const [activeTab, setActiveTab] = useState<'basic' | 'advanced'>('basic');
   const [advancedTab, setAdvancedTab] = useState<'tech' | 'variations' | 'wastes' | 'intelligence' | 'files'>('tech');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [sortKey, setSortKey] = useState<ProductSortKey>('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [filterCategories, setFilterCategories] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterDateStart, setFilterDateStart] = useState<string>('');
@@ -315,6 +319,54 @@ export function Produtos() {
       return matchCategory && matchStatus && matchDate && matchError;
     });
   }, [products, filterCategories, filterStatus, filterDateStart, filterDateEnd, filterError]);
+
+  const getProductSortValue = (product: Product, key: ProductSortKey) => {
+    switch (key) {
+      case 'category':
+        return (product.category || '').toLowerCase();
+      case 'status':
+        return (product.status || '').toLowerCase();
+      case 'stock':
+        return getProductStockInfo(product).complete || 0;
+      case 'cost':
+        return Number(product.fixedCost) || 0;
+      case 'name':
+      default:
+        return (product.name || '').toLowerCase();
+    }
+  };
+
+  const sortedProducts = useMemo(() => {
+    return [...filteredProducts].sort((a, b) => {
+      const valueA = getProductSortValue(a, sortKey);
+      const valueB = getProductSortValue(b, sortKey);
+
+      if (typeof valueA === 'number' && typeof valueB === 'number') {
+        return sortDirection === 'asc' ? valueA - valueB : valueB - valueA;
+      }
+
+      const textA = String(valueA);
+      const textB = String(valueB);
+      return sortDirection === 'asc'
+        ? textA.localeCompare(textB, 'pt-BR')
+        : textB.localeCompare(textA, 'pt-BR');
+    });
+  }, [filteredProducts, sortDirection, sortKey]);
+
+  const handleSort = (key: ProductSortKey) => {
+    if (sortKey === key) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+
+    setSortKey(key);
+    setSortDirection('asc');
+  };
+
+  const getSortIndicator = (key: ProductSortKey) => {
+    if (sortKey !== key) return '↕';
+    return sortDirection === 'asc' ? '↑' : '↓';
+  };
 
   const uniqueCategories = useMemo(() => {
     const cats = new Set(products.map(p => p.category).filter(Boolean));
@@ -1708,7 +1760,7 @@ export function Produtos() {
             </div>
           </div>
           <div className="text-sm text-on-surface-variant font-medium">
-            Mostrando {filteredProducts.length} produto(s)
+            Mostrando {sortedProducts.length} produto(s)
           </div>
         </div>
         
@@ -1777,7 +1829,7 @@ export function Produtos() {
       </div>
 
       {/* Grade / Lista de Produtos */}
-      {filteredProducts.length === 0 ? (
+      {sortedProducts.length === 0 ? (
         <div className="text-center py-12 bg-surface-container-lowest rounded-xl border border-outline-variant/10">
           <p className="text-sm text-on-surface-variant">Nenhum produto encontrado com os filtros atuais.</p>
         </div>
@@ -1787,17 +1839,27 @@ export function Produtos() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-surface-container-low border-b border-outline-variant/20 text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">
-                  <th className="p-4 whitespace-nowrap">Produto</th>
-                  <th className="p-4 whitespace-nowrap">Categoria</th>
+                  <th className="p-4 whitespace-nowrap cursor-pointer select-none" onClick={() => handleSort('name')}>
+                    Produto {getSortIndicator('name')}
+                  </th>
+                  <th className="p-4 whitespace-nowrap cursor-pointer select-none" onClick={() => handleSort('category')}>
+                    Categoria {getSortIndicator('category')}
+                  </th>
                   <th className="p-4 whitespace-nowrap">Cores / Variações</th>
-                  <th className="p-4 whitespace-nowrap">Estoque</th>
-                  <th className="p-4 whitespace-nowrap">Custo Unitário</th>
-                  <th className="p-4 whitespace-nowrap">Status</th>
+                  <th className="p-4 whitespace-nowrap cursor-pointer select-none" onClick={() => handleSort('stock')}>
+                    Estoque {getSortIndicator('stock')}
+                  </th>
+                  <th className="p-4 whitespace-nowrap cursor-pointer select-none" onClick={() => handleSort('cost')}>
+                    Custo Unitário {getSortIndicator('cost')}
+                  </th>
+                  <th className="p-4 whitespace-nowrap cursor-pointer select-none" onClick={() => handleSort('status')}>
+                    Status {getSortIndicator('status')}
+                  </th>
                   <th className="p-4 text-right whitespace-nowrap">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/10">
-                {filteredProducts.map(p => (
+                {sortedProducts.map(p => (
                   <tr key={p.id} className="hover:bg-surface-container/50 transition-colors cursor-pointer group" onClick={() => handleEdit(p)}>
                     <td className="p-4">
                       <div className="flex items-center gap-3">
@@ -1878,7 +1940,7 @@ export function Produtos() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredProducts.map((p) => (
+          {sortedProducts.map((p) => (
             <div key={p.id} className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 overflow-hidden hover:shadow-md transition-shadow group flex flex-col">
               <div className="p-5 flex-1">
                 <div className="flex justify-between items-start mb-4">
