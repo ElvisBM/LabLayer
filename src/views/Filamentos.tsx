@@ -961,11 +961,25 @@ export function Filamentos() {
                     )}
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => handleEdit(f)} className="p-1.5 text-slate-400 hover:text-primary transition-colors rounded">
+                    <div className="flex items-center justify-end gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEdit(f);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-primary transition-colors rounded"
+                      >
                         <Edit2 className="w-4 h-4" />
                       </button>
-                      <button onClick={() => handleDelete(f.id)} className="p-1.5 text-slate-400 hover:text-error transition-colors rounded">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(f.id);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-error transition-colors rounded"
+                      >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
