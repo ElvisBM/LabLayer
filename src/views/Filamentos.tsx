@@ -545,6 +545,22 @@ export function Filamentos() {
   const editingCurrentStockKg = editingFilament
     ? getCurrentStockKg(editingFilament)
     : Math.max(0, Number(formData.stockKg) || 0);
+  const editingFilamentUsage = useMemo(() => {
+    if (!editingId) return [];
+
+    return products
+      .map(product => {
+        const usage = calculateProductFilamentUsage(product)[editingId] || 0;
+        return {
+          productId: product.id,
+          productName: product.name,
+          usedKg: usage,
+          usedGrams: usage * 1000,
+        };
+      })
+      .filter(item => item.usedKg > 0)
+      .sort((a, b) => b.usedKg - a.usedKg);
+  }, [editingId, products]);
 
   const addPurchaseEntry = () => {
     setFormData(prev => ({
@@ -718,6 +734,41 @@ export function Filamentos() {
               <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Última Compra</label>
               <input type="text" value={getLatestPurchase(formData)?.purchaseDate || '-'} readOnly className="w-full bg-surface-container-low border-none rounded p-2 text-sm text-on-surface-variant cursor-not-allowed" />
             </div>
+
+            {editingId && (
+              <div className="md:col-span-3 space-y-3 border border-outline-variant/20 rounded-xl p-4 bg-surface-container-low">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div>
+                    <h4 className="text-sm font-bold text-on-surface">Produtos Vinculados</h4>
+                    <p className="text-xs text-on-surface-variant">Visibilidade dos produtos que consomem este filamento e quanto cada um utiliza.</p>
+                  </div>
+                  <div className="text-xs font-bold text-on-surface-variant">
+                    {editingFilamentUsage.length} produto(s) • {(usageByFilament[editingId] || 0).toFixed(3)} kg consumidos
+                  </div>
+                </div>
+
+                {editingFilamentUsage.length === 0 ? (
+                  <div className="text-sm text-on-surface-variant bg-surface-container rounded-lg p-3">
+                    Nenhum produto cadastrado está usando este filamento no momento.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {editingFilamentUsage.map(item => (
+                      <div key={item.productId} className="flex items-center justify-between gap-3 bg-surface-container rounded-lg p-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-on-surface truncate">{item.productName}</div>
+                          <div className="text-[10px] uppercase tracking-widest text-on-surface-variant">Consumo registrado no cadastro do produto</div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-sm font-bold text-primary tabular-nums">{item.usedKg.toFixed(3)} kg</div>
+                          <div className="text-[10px] text-on-surface-variant tabular-nums">{item.usedGrams.toFixed(0)} g</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="md:col-span-3 space-y-3 border border-outline-variant/20 rounded-xl p-4 bg-surface-container-low">
               <div className="flex items-center justify-between gap-3">
