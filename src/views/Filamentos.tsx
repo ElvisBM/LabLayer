@@ -447,12 +447,32 @@ export function Filamentos() {
 
   const handleDelete = async (id: string) => {
     if (!tenantId || !window.confirm("Tem certeza que deseja excluir este filamento?")) return;
+
+    const linkedProducts = products
+      .map(product => ({
+        id: product.id,
+        name: product.name,
+        usageKg: calculateProductFilamentUsage(product)[id] || 0,
+      }))
+      .filter(product => product.usageKg > 0);
+
+    if (linkedProducts.length > 0) {
+      const productNames = linkedProducts.slice(0, 3).map(product => product.name).join(', ');
+      toast.error(`Este filamento está vinculado a ${linkedProducts.length} produto(s): ${productNames}${linkedProducts.length > 3 ? '...' : ''}`);
+      return;
+    }
+
     try {
       await deleteDoc(doc(db, `tenants/${tenantId}/filaments`, id));
+      if (editingId === id) {
+        setShowForm(false);
+        setEditingId(null);
+      }
       toast.success("Filamento excluído com sucesso!");
     } catch (error) {
       console.error("Error deleting filament:", error);
-      toast.error("Erro ao excluir filamento.");
+      const message = error instanceof Error ? error.message : "Erro ao excluir filamento.";
+      toast.error(message);
     }
   };
 
