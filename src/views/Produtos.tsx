@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Plus, MoreVertical, Box, Calculator, FileText, Layers, FileUp, Settings, Trash2, Save, TrendingUp, AlertTriangle, DollarSign, Target, Edit2, Upload, X, LayoutGrid, List } from 'lucide-react';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, where, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, updateDoc, deleteDoc, doc, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
@@ -249,6 +249,12 @@ export function Produtos() {
     wastes: []
   });
 
+  const parseLocaleNumber = (value: string) => {
+    const normalized = value.replace(',', '.').trim();
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
   useEffect(() => {
     if (!tenantId) return;
 
@@ -364,7 +370,7 @@ export function Produtos() {
       const sanitizedWastes = (formData.wastes || []).map(w => ({
         id: w.id || Date.now().toString(),
         filamentId: w.filamentId || '',
-        weightGrams: Number(w.weightGrams) || 0,
+        weightGrams: Number.isFinite(Number(w.weightGrams)) ? Number(w.weightGrams) : 0,
         includeInCost: !!w.includeInCost,
         notes: w.notes || ''
       }));
@@ -407,11 +413,15 @@ export function Produtos() {
         if (delta !== 0) deltaUsage[id] = delta;
       });
 
+      const batch = writeBatch(db);
+      const productRef = editingId
+        ? doc(db, `tenants/${tenantId}/products`, editingId)
+        : doc(collection(db, `tenants/${tenantId}/products`));
+
       if (editingId) {
-        await updateDoc(doc(db, `tenants/${tenantId}/products`, editingId), dataToSave);
-        toast.success("Produto salvo com sucesso!");
+        batch.update(productRef, dataToSave);
       } else {
-        const docRef = await addDoc(collection(db, `tenants/${tenantId}/products`), {
+        batch.set(productRef, {
           ...dataToSave,
           createdAt: new Date().toISOString()
         });
@@ -428,7 +438,8 @@ export function Produtos() {
                 if (batches > 0) {
                   const costPerGram = filament.pricePerKg / 1000;
                   const purgeCost = (mat.purgeGrams * batches) * costPerGram;
-                  await addDoc(collection(db, `tenants/${tenantId}/losses`), {
+                  const lossRef = doc(collection(db, `tenants/${tenantId}/losses`));
+                  batch.set(lossRef, {
                     date: new Date().toISOString(),
                     type: 'purga',
                     weightGrams: mat.purgeGrams * batches,
@@ -436,7 +447,7 @@ export function Produtos() {
                     filamentName: `${filament.material} ${filament.color}`,
                     cost: purgeCost,
                     notes: `Purga gerada no lote do produto ${dataToSave.name}`,
-                    productId: docRef.id,
+                    productId: productRef.id,
                   });
                 }
               }
@@ -449,11 +460,13 @@ export function Produtos() {
       for (const [fId, delta] of Object.entries(deltaUsage)) {
         const filament = filaments.find(f => f.id === fId);
         if (filament) {
-          await updateDoc(doc(db, `tenants/${tenantId}/filaments`, filament.id), {
+          batch.update(doc(db, `tenants/${tenantId}/filaments`, filament.id), {
             stockKg: Math.max(0, (filament.stockKg || 0) - delta)
           });
         }
       }
+
+      await batch.commit();
 
       setShowForm(false);
       setEditingId(null);
@@ -466,7 +479,7 @@ export function Produtos() {
         files: [],
         wastes: []
       });
-      if (!editingId) toast.success("Novo produto adicionado e materiais deduzidos!");
+      toast.success(editingId ? "Produto salvo com sucesso!" : "Novo produto adicionado e materiais deduzidos!");
     } catch (error: any) {
       console.error("Error saving product:", error);
       toast.error(`Erro: ${error.message || 'Desconhecido'}`);
@@ -487,12 +500,14 @@ export function Produtos() {
       const productToDelete = products.find(p => p.id === id);
       
       if (productToDelete) {
+        const batch = writeBatch(db);
+
         // Restaurar estoque de filamentos
         const usageToReturn = calculateFilamentUsageMap(productToDelete);
         for (const [fId, amount] of Object.entries(usageToReturn)) {
             const filament = filaments.find(f => f.id === fId);
             if (filament) {
-              await updateDoc(doc(db, `tenants/${tenantId}/filaments`, filament.id), {
+              batch.update(doc(db, `tenants/${tenantId}/filaments`, filament.id), {
                 stockKg: (filament.stockKg || 0) + amount
               });
             }
@@ -520,11 +535,15 @@ export function Produtos() {
         // Excluir registros de perdas (purgas) associados a este produto
         const lossesQuery = query(collection(db, `tenants/${tenantId}/losses`), where("productId", "==", id));
         const lossesSnapshot = await getDocs(lossesQuery);
-        const deletePromises = lossesSnapshot.docs.map(lossDoc => deleteDoc(doc(db, `tenants/${tenantId}/losses`, lossDoc.id)));
-        await Promise.all(deletePromises);
-      }
+        lossesSnapshot.docs.forEach(lossDoc => {
+          batch.delete(doc(db, `tenants/${tenantId}/losses`, lossDoc.id));
+        });
 
-      await deleteDoc(doc(db, `tenants/${tenantId}/products`, id));
+        batch.delete(doc(db, `tenants/${tenantId}/products`, id));
+        await batch.commit();
+      } else {
+        await deleteDoc(doc(db, `tenants/${tenantId}/products`, id));
+      }
       toast.success("Produto excluído com sucesso!");
     } catch (error) {
       console.error("Error deleting product:", error);
@@ -1075,10 +1094,10 @@ export function Produtos() {
                                 <div className="absolute left-0 -bottom-8 hidden group-hover:block bg-surface-container-highest text-on-surface text-[10px] p-1 rounded z-10 w-48 shadow-lg">Partes com o mesmo nome agem como alternativas para o estoque.</div>
                               </div>
                               <div className="w-16">
-                                <input type="number" value={mat.weightGrams || ''} onChange={e => updateMaterial(formData.variations![0].id, mat.id, 'weightGrams', Number(e.target.value))} className="w-full bg-surface-container border-none rounded p-1.5 text-xs" placeholder="Peso(g)" />
+                                <input type="number" value={mat.weightGrams || ''} onChange={e => updateMaterial(formData.variations![0].id, mat.id, 'weightGrams', parseLocaleNumber(e.target.value))} className="w-full bg-surface-container border-none rounded p-1.5 text-xs" placeholder="Peso(g)" />
                               </div>
                               <div className="w-16">
-                                <input type="number" value={mat.purgeGrams || ''} onChange={e => updateMaterial(formData.variations![0].id, mat.id, 'purgeGrams', Number(e.target.value))} className="w-full bg-surface-container border-none rounded p-1.5 text-xs" placeholder="Purga" />
+                                <input type="number" value={mat.purgeGrams || ''} onChange={e => updateMaterial(formData.variations![0].id, mat.id, 'purgeGrams', parseLocaleNumber(e.target.value))} className="w-full bg-surface-container border-none rounded p-1.5 text-xs" placeholder="Purga" />
                               </div>
                               <div className="w-14">
                                 <input type="number" value={mat.pieces === undefined ? '' : mat.pieces} onChange={e => updateMaterial(formData.variations![0].id, mat.id, 'pieces', Math.max(0, Number(e.target.value)))} className="w-full bg-surface-container border-none rounded p-1.5 text-xs" placeholder="Qtd" title="Qtd de Peças Feitas" />
@@ -1284,10 +1303,10 @@ export function Produtos() {
                                   <div className="absolute left-0 -bottom-8 hidden group-hover:block bg-surface-container-highest text-on-surface text-[10px] p-1 rounded z-10 w-48 shadow-lg">Partes com o mesmo nome agem como alternativas para o estoque.</div>
                                 </div>
                                 <div className="w-16">
-                                  <input type="number" value={mat.weightGrams || ''} onChange={e => updateMaterial(v.id, mat.id, 'weightGrams', Number(e.target.value))} className="w-full bg-surface-container border-none rounded p-1.5 text-xs" placeholder="Peso (g)" />
+                                  <input type="number" value={mat.weightGrams || ''} onChange={e => updateMaterial(v.id, mat.id, 'weightGrams', parseLocaleNumber(e.target.value))} className="w-full bg-surface-container border-none rounded p-1.5 text-xs" placeholder="Peso (g)" />
                                 </div>
                                 <div className="w-16">
-                                  <input type="number" value={mat.purgeGrams || ''} onChange={e => updateMaterial(v.id, mat.id, 'purgeGrams', Number(e.target.value))} className="w-full bg-surface-container border-none rounded p-1.5 text-xs" placeholder="Purga (g)" />
+                                  <input type="number" value={mat.purgeGrams || ''} onChange={e => updateMaterial(v.id, mat.id, 'purgeGrams', parseLocaleNumber(e.target.value))} className="w-full bg-surface-container border-none rounded p-1.5 text-xs" placeholder="Purga (g)" />
                                 </div>
                                 <div className="w-14">
                                   <input type="number" value={mat.pieces === undefined ? '' : mat.pieces} onChange={e => updateMaterial(v.id, mat.id, 'pieces', Math.max(0, Number(e.target.value)))} className="w-full bg-surface-container border-none rounded p-1.5 text-xs" placeholder="Qtd" title="Qtd de Peças Feitas" />
@@ -1457,7 +1476,7 @@ export function Produtos() {
                               onChange={(e) => {
                                 setFormData(prev => ({
                                   ...prev,
-                                  wastes: prev.wastes?.map(waste => waste.id === w.id ? { ...waste, weightGrams: Number(e.target.value) } : waste)
+                                  wastes: prev.wastes?.map(waste => waste.id === w.id ? { ...waste, weightGrams: parseLocaleNumber(e.target.value) } : waste)
                                 }));
                               }}
                               className="w-full bg-surface-container border-none rounded p-2 text-sm focus:ring-2 focus:ring-error tabular-nums" 

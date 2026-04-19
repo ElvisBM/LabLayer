@@ -111,7 +111,7 @@ service cloud.firestore {
     }
 
     function isValidFilament() {
-      let allowedFields = ['sku', 'material', 'color', 'colorHex', 'brand', 'lineType', 'diameter', 'pricePerKg', 'stockKg', 'status', 'createdAt', 'purchaseDate', 'store'];
+      let allowedFields = ['sku', 'material', 'color', 'colorHex', 'brand', 'lineType', 'diameter', 'pricePerKg', 'stockKg', 'initialStockKg', 'status', 'createdAt', 'purchaseDate', 'store'];
       return hasOnlyAllowedFields(allowedFields) &&
              hasRequiredFields(['material', 'color', 'pricePerKg', 'stockKg']) &&
              (!('sku' in request.resource.data) || isValidString('sku', 0, 50)) &&
@@ -119,6 +119,7 @@ service cloud.firestore {
              isValidString('color', 1, 100) &&
              isPositiveNumber('pricePerKg') &&
              isPositiveNumber('stockKg') &&
+             (!('initialStockKg' in request.resource.data) || isPositiveNumber('initialStockKg')) &&
              (!('createdAt' in request.resource.data) || request.resource.data.createdAt is string) &&
              (!('store' in request.resource.data) || isValidString('store', 0, 100));
     }
