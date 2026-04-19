@@ -162,6 +162,26 @@ interface Product {
   variations: Variation[];
   files: ProductFile[];
   wastes?: ProductWaste[];
+  latestSuggestedPrice?: {
+    savedAt?: string;
+    channelName?: string;
+    variationLabel?: string;
+    suggestedPrice?: number;
+  };
+  pricingHistory?: Array<{
+    id: string;
+    savedAt: string;
+    variationId: string;
+    variationLabel: string;
+    channelId: string;
+    channelName: string;
+    targetType: string;
+    targetValue: number;
+    suggestedPrice: number;
+    cost: number;
+    profit: number;
+    margin: number;
+  }>;
 }
 
 type ProductSortKey = 'name' | 'category' | 'status' | 'stock' | 'cost';
@@ -950,6 +970,19 @@ export function Produtos() {
     const maxPrice = Math.max(...prices);
     if (minPrice === maxPrice) return `R$ ${minPrice.toFixed(2)}`;
     return `R$ ${minPrice.toFixed(2)} - R$ ${maxPrice.toFixed(2)}`;
+  };
+
+  const getSuggestedSalePrice = (product: Product) => {
+    const latestPrice = Number(product.latestSuggestedPrice?.suggestedPrice) || 0;
+    if (latestPrice > 0) return `R$ ${latestPrice.toFixed(2)}`;
+    return 'Não salvo';
+  };
+
+  const getSuggestedSalePriceMeta = (product: Product) => {
+    if (!product.latestSuggestedPrice?.savedAt) return '';
+    const savedAt = new Date(product.latestSuggestedPrice.savedAt).toLocaleDateString('pt-BR');
+    const channelName = product.latestSuggestedPrice.channelName || 'Sem canal';
+    return `${channelName} • ${savedAt}`;
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1858,6 +1891,7 @@ export function Produtos() {
                   <th className="p-4 whitespace-nowrap cursor-pointer select-none" onClick={() => handleSort('cost')}>
                     Custo Unitário {getSortIndicator('cost')}
                   </th>
+                  <th className="p-4 whitespace-nowrap">Preço de Venda</th>
                   <th className="p-4 whitespace-nowrap cursor-pointer select-none" onClick={() => handleSort('status')}>
                     Status {getSortIndicator('status')}
                   </th>
@@ -1915,6 +1949,14 @@ export function Produtos() {
                     </td>
                     <td className="p-4">
                       <span className="font-bold text-sm text-error whitespace-nowrap">{getProductCostRange(p)}</span>
+                    </td>
+                    <td className="p-4">
+                      <div className="flex flex-col gap-1">
+                        <span className="font-bold text-sm text-primary whitespace-nowrap">{getSuggestedSalePrice(p)}</span>
+                        {getSuggestedSalePriceMeta(p) && (
+                          <span className="text-[10px] text-on-surface-variant">{getSuggestedSalePriceMeta(p)}</span>
+                        )}
+                      </div>
                     </td>
                     <td className="p-4">
                       {p.status === 'ativo' ? (
@@ -1992,6 +2034,14 @@ export function Produtos() {
                   )}
                 </div>
 
+                <div className="mb-4 p-3 rounded-lg bg-surface-container border border-outline-variant/20">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Preço de Venda</div>
+                  <div className="text-lg font-bold text-primary">{getSuggestedSalePrice(p)}</div>
+                  {getSuggestedSalePriceMeta(p) && (
+                    <div className="text-[10px] text-on-surface-variant mt-1">{getSuggestedSalePriceMeta(p)}</div>
+                  )}
+                </div>
+                
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-on-surface-variant">Variações</span>

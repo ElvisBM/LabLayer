@@ -1,10 +1,26 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Calculator, DollarSign, TrendingUp, Percent, Target, AlertCircle, Save, CheckCircle2, ArrowRightLeft } from 'lucide-react';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
+import toast from 'react-hot-toast';
 
 type TargetType = 'profit' | 'margin' | 'markup' | 'custom';
+
+interface ProductPricingHistoryEntry {
+  id: string;
+  savedAt: string;
+  variationId: string;
+  variationLabel: string;
+  channelId: string;
+  channelName: string;
+  targetType: TargetType;
+  targetValue: number;
+  suggestedPrice: number;
+  cost: number;
+  profit: number;
+  margin: number;
+}
 
 export function Precificacao() {
   const { tenantId } = useAuth();
@@ -19,6 +35,7 @@ export function Precificacao() {
   
   const [targetType, setTargetType] = useState<TargetType>('profit');
   const [targetValue, setTargetValue] = useState<number>(10.00);
+  const [isSavingPrice, setIsSavingPrice] = useState(false);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -214,6 +231,45 @@ export function Precificacao() {
     }).sort((a, b) => b.realMargin - a.realMargin);
   }, [unitCost, marketplaces, targetType, targetValue]);
 
+  const handleSaveSuggestedPrice = async () => {
+    if (!tenantId || !product || !variation || !channel || !calculations) return;
+
+    try {
+      setIsSavingPrice(true);
+      const savedAt = new Date().toISOString();
+      const newEntry: ProductPricingHistoryEntry = {
+        id: `${savedAt}-${variation.id}-${channel.id}`,
+        savedAt,
+        variationId: variation.id,
+        variationLabel: `${variation.color} (${variation.material})`,
+        channelId: channel.id,
+        channelName: channel.name,
+        targetType,
+        targetValue,
+        suggestedPrice: calculations.finalPrice,
+        cost: calculations.cost,
+        profit: calculations.netProfit,
+        margin: calculations.realMargin,
+      };
+
+      const currentHistory = Array.isArray(product.pricingHistory) ? product.pricingHistory : [];
+
+      await updateDoc(doc(db, `tenants/${tenantId}/products`, product.id), {
+        pricingHistory: [newEntry, ...currentHistory].slice(0, 50),
+        latestSuggestedPrice: {
+          ...newEntry,
+        }
+      });
+
+      toast.success('Preço sugerido salvo no produto!');
+    } catch (error) {
+      console.error('Error saving suggested price:', error);
+      toast.error('Erro ao salvar preço sugerido no produto.');
+    } finally {
+      setIsSavingPrice(false);
+    }
+  };
+
   if (products.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-on-surface-variant">
@@ -398,6 +454,21 @@ export function Precificacao() {
                     Margem inviável com as taxas deste canal.
                   </div>
                 )}
+
+                <div className="mt-6 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleSaveSuggestedPrice}
+                    disabled={isSavingPrice || calculations.finalPrice <= 0}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-on-primary font-bold text-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    {isSavingPrice ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                    {isSavingPrice ? 'Salvando...' : 'Salvar no Produto'}
+                  </button>
+                  <span className="text-xs opacity-80">
+                    Salva o preço sugerido com data, canal e variação no cadastro do produto.
+                  </span>
+                </div>
               </div>
             </div>
 
