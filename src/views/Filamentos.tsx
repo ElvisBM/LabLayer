@@ -6,6 +6,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { SearchableSelect, SelectOption } from '../components/SearchableSelect';
 import toast from 'react-hot-toast';
 
+interface FilamentPurchase {
+  id: string;
+  quantityKg: number;
+  pricePerKg: number;
+  purchaseDate: string;
+  store: string;
+}
+
 interface Filament {
   id: string;
   sku?: string;
@@ -21,6 +29,7 @@ interface Filament {
   purchaseDate?: string;
   store?: string;
   createdAt?: string;
+  purchaseHistory?: FilamentPurchase[];
 }
 
 interface ProductInfo {
@@ -94,11 +103,63 @@ export function Filamentos() {
     pricePerKg: 0,
     stockKg: 0,
     purchaseDate: getLocalDateString(),
-    store: ''
+    store: '',
+    purchaseHistory: [{
+      id: Date.now().toString(),
+      quantityKg: 0,
+      pricePerKg: 0,
+      purchaseDate: getLocalDateString(),
+      store: '',
+    }]
   });
 
   // Get dynamic color options based on selected lineType
   const colorOptions: SelectOption[] = (COLORS_BY_TYPE[formData.lineType || 'Sólido (normal)'] || []).map(c => ({ value: c, label: c }));
+
+  const createBlankPurchase = (): FilamentPurchase => ({
+    id: Date.now().toString(),
+    quantityKg: 0,
+    pricePerKg: 0,
+    purchaseDate: getLocalDateString(),
+    store: '',
+  });
+
+  const getPurchaseHistory = (filament: Partial<Filament>) => {
+    const purchaseHistory = (filament.purchaseHistory || []).filter(p => (Number(p.quantityKg) || 0) > 0);
+    if (purchaseHistory.length > 0) return purchaseHistory;
+
+    const fallbackQuantity = Number(filament.initialStockKg ?? filament.stockKg) || 0;
+    if (fallbackQuantity <= 0) return [];
+
+    return [{
+      id: `${filament.id || 'legacy'}-initial`,
+      quantityKg: fallbackQuantity,
+      pricePerKg: Number(filament.pricePerKg) || 0,
+      purchaseDate: filament.purchaseDate || getLocalDateString(),
+      store: filament.store || '',
+    }];
+  };
+
+  const getPurchasedKgFromHistory = (filament: Partial<Filament>) => {
+    return getPurchaseHistory(filament).reduce((acc, purchase) => acc + (Number(purchase.quantityKg) || 0), 0);
+  };
+
+  const getAveragePricePerKg = (filament: Partial<Filament>) => {
+    const purchases = getPurchaseHistory(filament);
+    const totalKg = purchases.reduce((acc, purchase) => acc + (Number(purchase.quantityKg) || 0), 0);
+    if (totalKg <= 0) return Number(filament.pricePerKg) || 0;
+
+    const totalValue = purchases.reduce((acc, purchase) => {
+      return acc + ((Number(purchase.quantityKg) || 0) * (Number(purchase.pricePerKg) || 0));
+    }, 0);
+    return totalValue / totalKg;
+  };
+
+  const getLatestPurchase = (filament: Partial<Filament>) => {
+    const purchases = [...getPurchaseHistory(filament)];
+    purchases.sort((a, b) => (b.purchaseDate || '').localeCompare(a.purchaseDate || ''));
+    return purchases[0] || null;
+  };
 
   const calculateProductFilamentUsage = (product: ProductInfo): Record<string, number> => {
     const usage: Record<string, number> = {};
@@ -142,9 +203,7 @@ export function Filamentos() {
   }, [products]);
 
   const getPurchasedKg = (filament: Filament) => {
-    const consumedKg = usageByFilament[filament.id] || 0;
-    const currentStock = Number(filament.stockKg) || 0;
-    return currentStock + consumedKg;
+    return getPurchasedKgFromHistory(filament);
   };
 
   const getCurrentStockKg = (filament: Filament) => {
@@ -158,7 +217,7 @@ export function Filamentos() {
       const purchasedKg = getPurchasedKg(filament);
       const currentStockKg = getCurrentStockKg(filament);
       const spentKg = Math.max(0, purchasedKg - currentStockKg);
-      const pricePerKg = Number(filament.pricePerKg) || 0;
+      const pricePerKg = getAveragePricePerKg(filament);
 
       acc.purchasedKg += purchasedKg;
       acc.currentStockKg += currentStockKg;
@@ -199,8 +258,21 @@ export function Filamentos() {
     if (!tenantId) return;
 
     try {
-      const purchasedKg = Number(formData.stockKg) || 0;
+      const purchaseHistory = (formData.purchaseHistory || [])
+        .map(purchase => ({
+          ...purchase,
+          quantityKg: Number(purchase.quantityKg) || 0,
+          pricePerKg: Number(purchase.pricePerKg) || 0,
+          purchaseDate: purchase.purchaseDate || getLocalDateString(),
+          store: purchase.store || '',
+        }))
+        .filter(purchase => purchase.quantityKg > 0);
+      const purchasedKg = purchaseHistory.reduce((acc, purchase) => acc + purchase.quantityKg, 0);
       const consumedKg = editingId ? (usageByFilament[editingId] || 0) : 0;
+      const averagePricePerKg = purchasedKg > 0
+        ? purchaseHistory.reduce((acc, purchase) => acc + (purchase.quantityKg * purchase.pricePerKg), 0) / purchasedKg
+        : 0;
+      const latestPurchase = [...purchaseHistory].sort((a, b) => b.purchaseDate.localeCompare(a.purchaseDate))[0];
       const dataToSave = {
         brand: formData.brand || '',
         material: formData.material || 'PLA',
@@ -208,10 +280,12 @@ export function Filamentos() {
         color: formData.color || '',
         colorHex: formData.colorHex || '#000000',
         diameter: formData.diameter || '1.75mm',
-        pricePerKg: Number(formData.pricePerKg) || 0,
+        pricePerKg: averagePricePerKg,
         stockKg: Math.max(0, purchasedKg - consumedKg),
-        purchaseDate: formData.purchaseDate || getLocalDateString(),
-        store: formData.store || ''
+        initialStockKg: purchasedKg,
+        purchaseDate: latestPurchase?.purchaseDate || getLocalDateString(),
+        store: latestPurchase?.store || '',
+        purchaseHistory,
       };
 
       if (editingId) {
@@ -227,7 +301,19 @@ export function Filamentos() {
 
       setShowForm(false);
       setEditingId(null);
-      setFormData({ brand: '', material: 'PLA', lineType: 'Sólido (normal)', color: '', colorHex: '#000000', diameter: '1.75mm', pricePerKg: 0, stockKg: 0, purchaseDate: getLocalDateString(), store: '' });
+      setFormData({
+        brand: '',
+        material: 'PLA',
+        lineType: 'Sólido (normal)',
+        color: '',
+        colorHex: '#000000',
+        diameter: '1.75mm',
+        pricePerKg: 0,
+        stockKg: 0,
+        purchaseDate: getLocalDateString(),
+        store: '',
+        purchaseHistory: [createBlankPurchase()]
+      });
     } catch (error) {
       console.error("Error saving filament:", error);
       toast.error("Erro ao salvar filamento.");
@@ -238,11 +324,13 @@ export function Filamentos() {
     setFormData({
       ...f,
       stockKg: getPurchasedKg(f),
+      pricePerKg: getAveragePricePerKg(f),
+      purchaseDate: getLatestPurchase(f)?.purchaseDate || getLocalDateString(),
+      store: getLatestPurchase(f)?.store || '',
+      purchaseHistory: getPurchaseHistory(f),
       colorHex: f.colorHex || '#000000',
       brand: f.brand || '',
       lineType: f.lineType || 'Sólido (normal)',
-      store: f.store || '',
-      purchaseDate: f.purchaseDate || getLocalDateString()
     });
     setEditingId(f.id);
     setShowForm(true);
@@ -268,7 +356,7 @@ export function Filamentos() {
       const batch = writeBatch(db);
 
       filaments.forEach((filament) => {
-        const purchasedKg = Number(filament.stockKg) || 0;
+        const purchasedKg = getPurchasedKg(filament);
         const consumedKg = usageByFilament[filament.id] || 0;
         const reconciledStockKg = Math.max(0, purchasedKg - consumedKg);
 
@@ -302,6 +390,32 @@ export function Filamentos() {
     ? getCurrentStockKg(editingFilament)
     : Math.max(0, Number(formData.stockKg) || 0);
 
+  const addPurchaseEntry = () => {
+    setFormData(prev => ({
+      ...prev,
+      purchaseHistory: [...(prev.purchaseHistory || []), createBlankPurchase()]
+    }));
+  };
+
+  const updatePurchaseEntry = (purchaseId: string, field: keyof FilamentPurchase, value: string | number) => {
+    setFormData(prev => ({
+      ...prev,
+      purchaseHistory: (prev.purchaseHistory || []).map(purchase =>
+        purchase.id === purchaseId ? { ...purchase, [field]: value } : purchase
+      )
+    }));
+  };
+
+  const removePurchaseEntry = (purchaseId: string) => {
+    setFormData(prev => {
+      const nextPurchases = (prev.purchaseHistory || []).filter(purchase => purchase.id !== purchaseId);
+      return {
+        ...prev,
+        purchaseHistory: nextPurchases.length > 0 ? nextPurchases : [createBlankPurchase()]
+      };
+    });
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
@@ -311,7 +425,19 @@ export function Filamentos() {
         </div>
         <button 
           onClick={() => {
-            setFormData({ brand: '', material: 'PLA', lineType: 'Sólido (normal)', color: '', colorHex: '#000000', diameter: '1.75mm', pricePerKg: 0, stockKg: 0, purchaseDate: getLocalDateString(), store: '' });
+            setFormData({
+              brand: '',
+              material: 'PLA',
+              lineType: 'Sólido (normal)',
+              color: '',
+              colorHex: '#000000',
+              diameter: '1.75mm',
+              pricePerKg: 0,
+              stockKg: 0,
+              purchaseDate: getLocalDateString(),
+              store: '',
+              purchaseHistory: [createBlankPurchase()]
+            });
             setEditingId(null);
             setShowForm(!showForm);
           }}
@@ -417,13 +543,8 @@ export function Filamentos() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Preço por Kg (R$)</label>
-              <input type="number" step="0.01" required value={formData.pricePerKg || ''} onChange={e => setFormData({...formData, pricePerKg: Number(e.target.value)})} className="w-full bg-surface-container border-none rounded p-2 text-sm focus:ring-2 focus:ring-primary tabular-nums" placeholder="120.00" />
-            </div>
-
-            <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Total Comprado (Kg)</label>
-              <input type="number" step="0.01" required value={formData.stockKg || ''} onChange={e => setFormData({...formData, stockKg: Number(e.target.value)})} className="w-full bg-surface-container border-none rounded p-2 text-sm focus:ring-2 focus:ring-primary tabular-nums" placeholder="1.0" />
+              <input type="text" value={(formData.purchaseHistory || []).reduce((acc, purchase) => acc + (Number(purchase.quantityKg) || 0), 0).toFixed(2)} readOnly className="w-full bg-surface-container-low border-none rounded p-2 text-sm text-on-surface-variant tabular-nums cursor-not-allowed" />
             </div>
 
             <div className="space-y-1">
@@ -432,13 +553,56 @@ export function Filamentos() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Data da Compra</label>
-              <input type="date" value={formData.purchaseDate || ''} onChange={e => setFormData({...formData, purchaseDate: e.target.value})} className="w-full bg-surface-container border-none rounded p-2 text-sm focus:ring-2 focus:ring-primary" />
+              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Preço Médio (R$/Kg)</label>
+              <input type="text" value={getAveragePricePerKg(formData).toFixed(2)} readOnly className="w-full bg-surface-container-low border-none rounded p-2 text-sm text-on-surface-variant tabular-nums cursor-not-allowed" />
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Loja da Compra</label>
-              <input type="text" value={formData.store || ''} onChange={e => setFormData({...formData, store: e.target.value})} className="w-full bg-surface-container border-none rounded p-2 text-sm focus:ring-2 focus:ring-primary" placeholder="Site, Mercado Livre, etc." />
+              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Última Compra</label>
+              <input type="text" value={getLatestPurchase(formData)?.purchaseDate || '-'} readOnly className="w-full bg-surface-container-low border-none rounded p-2 text-sm text-on-surface-variant cursor-not-allowed" />
+            </div>
+
+            <div className="md:col-span-3 space-y-3 border border-outline-variant/20 rounded-xl p-4 bg-surface-container-low">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-bold text-on-surface">Historico de Compras</h4>
+                  <p className="text-xs text-on-surface-variant">Adicione novas compras desta cor/material para compor o estoque ao longo do tempo.</p>
+                </div>
+                <button type="button" onClick={addPurchaseEntry} className="px-3 py-1.5 bg-primary text-on-primary rounded text-xs font-bold">
+                  Adicionar Compra
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {(formData.purchaseHistory || []).map((purchase, index) => (
+                  <div key={purchase.id} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end bg-surface-container rounded-lg p-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Qtd (Kg)</label>
+                      <input type="number" step="0.01" value={purchase.quantityKg || ''} onChange={e => updatePurchaseEntry(purchase.id, 'quantityKg', Number(e.target.value))} className="w-full bg-surface-container-lowest border-none rounded p-2 text-sm tabular-nums" placeholder="1.00" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Preco (R$/Kg)</label>
+                      <input type="number" step="0.01" value={purchase.pricePerKg || ''} onChange={e => updatePurchaseEntry(purchase.id, 'pricePerKg', Number(e.target.value))} className="w-full bg-surface-container-lowest border-none rounded p-2 text-sm tabular-nums" placeholder="120.00" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Loja</label>
+                      <input type="text" value={purchase.store || ''} onChange={e => updatePurchaseEntry(purchase.id, 'store', e.target.value)} className="w-full bg-surface-container-lowest border-none rounded p-2 text-sm" placeholder="Fornecedor / loja" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Data</label>
+                      <input type="date" value={purchase.purchaseDate || ''} onChange={e => updatePurchaseEntry(purchase.id, 'purchaseDate', e.target.value)} className="w-full bg-surface-container-lowest border-none rounded p-2 text-sm" />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs text-on-surface-variant">
+                        Compra {index + 1}
+                      </div>
+                      <button type="button" onClick={() => removePurchaseEntry(purchase.id)} className="p-2 text-error hover:bg-surface-container-lowest rounded">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="flex items-end gap-3 md:col-span-2 justify-end mt-2">
@@ -519,7 +683,7 @@ export function Filamentos() {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-right tabular-nums text-sm font-semibold">
-                    R$ {f.pricePerKg.toFixed(2)}
+                    R$ {getAveragePricePerKg(f).toFixed(2)}
                   </td>
                   <td className="px-6 py-4 text-right tabular-nums text-sm font-semibold">
                     {purchasedKg.toFixed(2)} kg

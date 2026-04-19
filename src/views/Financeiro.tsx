@@ -37,6 +37,26 @@ interface Filament {
   initialStockKg?: number;
   purchaseDate?: string;
   createdAt?: string;
+  material?: string;
+  color?: string;
+  purchaseHistory?: Array<{
+    id: string;
+    quantityKg: number;
+    pricePerKg: number;
+    purchaseDate: string;
+    store: string;
+  }>;
+}
+
+interface FilamentPurchaseFlow {
+  id: string;
+  filamentId: string;
+  material: string;
+  color: string;
+  quantityKg: number;
+  pricePerKg: number;
+  purchaseDate: string;
+  store: string;
 }
 
 interface Printer {
@@ -131,7 +151,35 @@ export function Financeiro() {
     return s.purchaseDate?.startsWith(selectedMonth) || s.createdAt?.startsWith(selectedMonth);
   });
   const filteredFilaments = filaments.filter(f => {
-    return f.purchaseDate?.startsWith(selectedMonth) || f.createdAt?.startsWith(selectedMonth);
+    return (f.purchaseHistory || []).some(purchase => purchase.purchaseDate?.startsWith(selectedMonth))
+      || ((!f.purchaseHistory || f.purchaseHistory.length === 0) && (f.purchaseDate?.startsWith(selectedMonth) || f.createdAt?.startsWith(selectedMonth)));
+  });
+  const filamentPurchases: FilamentPurchaseFlow[] = filteredFilaments.flatMap(f => {
+    if (f.purchaseHistory && f.purchaseHistory.length > 0) {
+      return f.purchaseHistory
+        .filter(purchase => purchase.purchaseDate?.startsWith(selectedMonth))
+        .map(purchase => ({
+          id: `${f.id}-${purchase.id}`,
+          filamentId: f.id,
+          material: f.material || 'Filamento',
+          color: f.color || '',
+          quantityKg: Number(purchase.quantityKg) || 0,
+          pricePerKg: Number(purchase.pricePerKg) || 0,
+          purchaseDate: purchase.purchaseDate,
+          store: purchase.store || '',
+        }));
+    }
+
+    return (f.purchaseDate?.startsWith(selectedMonth) || f.createdAt?.startsWith(selectedMonth)) ? [{
+      id: `${f.id}-legacy`,
+      filamentId: f.id,
+      material: f.material || 'Filamento',
+      color: f.color || '',
+      quantityKg: Number(f.initialStockKg ?? f.stockKg) || 0,
+      pricePerKg: Number(f.pricePerKg) || 0,
+      purchaseDate: f.purchaseDate || f.createdAt || '',
+      store: '',
+    }] : [];
   });
   const filteredPrinters = printers.filter(p => {
     return p.purchaseDate?.startsWith(selectedMonth) || p.createdAt?.startsWith(selectedMonth);
@@ -139,10 +187,7 @@ export function Financeiro() {
 
   // Cálculos Compras de Materiais e Equipamentos
   const comprasInsumos = filteredSupplies.reduce((acc, s) => acc + (Number(s.costPerUnit) * Number(s.quantity) || 0), 0);
-  const comprasFilamentos = filteredFilaments.reduce((acc, f) => {
-    const purchasedKg = Number(f.initialStockKg ?? f.stockKg) || 0;
-    return acc + ((Number(f.pricePerKg) || 0) * purchasedKg);
-  }, 0);
+  const comprasFilamentos = filamentPurchases.reduce((acc, purchase) => acc + (purchase.quantityKg * purchase.pricePerKg), 0);
   const comprasImpressoras = filteredPrinters.reduce((acc, p) => acc + (Number(p.acquisitionCost) || 0), 0);
   const totalComprasMateriais = comprasInsumos + comprasFilamentos;
   const totalInvestimentos = comprasImpressoras;
@@ -367,7 +412,7 @@ export function Financeiro() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/10">
-                  {filteredTransactions.length > 0 || filteredSupplies.length > 0 || filteredFilaments.length > 0 ? (
+                  {filteredTransactions.length > 0 || filteredSupplies.length > 0 || filamentPurchases.length > 0 ? (
                     <>
                       {filteredTransactions.map((t) => (
                         <tr key={t.id} className="hover:bg-surface-container-low transition-colors group whitespace-nowrap">
@@ -403,15 +448,15 @@ export function Financeiro() {
                           </td>
                         </tr>
                       ))}
-                      {filteredFilaments.map((f) => (
-                        <tr key={f.id} className="hover:bg-surface-container-low transition-colors group whitespace-nowrap">
-                          <td className="px-6 py-4 text-sm text-on-surface-variant">{new Date(f.purchaseDate || f.createdAt || '').toLocaleDateString('pt-BR')}</td>
-                          <td className="px-6 py-4 text-sm font-bold">Compra de Filamento: {(f as any).material} {(f as any).color}</td>
+                      {filamentPurchases.map((purchase) => (
+                        <tr key={purchase.id} className="hover:bg-surface-container-low transition-colors group whitespace-nowrap">
+                          <td className="px-6 py-4 text-sm text-on-surface-variant">{new Date(purchase.purchaseDate || '').toLocaleDateString('pt-BR')}</td>
+                          <td className="px-6 py-4 text-sm font-bold">Compra de Filamento: {purchase.material} {purchase.color}{purchase.store ? ` • ${purchase.store}` : ''}</td>
                           <td className="px-6 py-4">
                             <span className="bg-surface-container px-2 py-1 rounded text-xs font-medium">Material</span>
                           </td>
                           <td className="px-6 py-4 text-right tabular-nums text-sm font-bold text-error">
-                            - R$ {(f.pricePerKg * (Number(f.initialStockKg ?? f.stockKg) || 0)).toFixed(2)}
+                            - R$ {(purchase.pricePerKg * purchase.quantityKg).toFixed(2)}
                           </td>
                           <td className="px-6 py-4 text-center">
                             <span className="inline-flex px-2 py-1 rounded text-[10px] font-bold uppercase bg-tertiary-fixed text-on-tertiary-fixed-variant">
