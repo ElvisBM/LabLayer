@@ -489,6 +489,8 @@ export function Filamentos() {
         const consumedKg = usageByFilament[filament.id] || 0;
         const reconciledStockKg = Math.max(0, purchasedKg - consumedKg);
 
+        // Recalculate only the physical stock left.
+        // Purchase totals and cost history stay anchored to purchaseHistory / initialStockKg.
         batch.update(doc(db, `tenants/${tenantId}/filaments`, filament.id), {
           stockKg: reconciledStockKg,
         });
@@ -651,9 +653,15 @@ export function Filamentos() {
       </div>
 
       {/* Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
         <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm relative overflow-hidden">
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Rolos Cadastrados</h3>
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Rolos Cadastrados (Kg)</h3>
+          <p className="text-3xl font-headline font-bold text-on-surface tabular-nums">
+            {filamentTotals.purchasedKg.toFixed(2)} Kg
+          </p>
+        </div>
+        <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm relative overflow-hidden">
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Qtd de Cores</h3>
           <p className="text-3xl font-headline font-bold text-on-surface tabular-nums">{filaments.length}</p>
         </div>
         <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm relative overflow-hidden">
