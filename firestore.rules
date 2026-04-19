@@ -111,7 +111,7 @@ service cloud.firestore {
     }
 
     function isValidFilament() {
-      let allowedFields = ['sku', 'material', 'color', 'colorHex', 'brand', 'lineType', 'diameter', 'pricePerKg', 'stockKg', 'initialStockKg', 'status', 'createdAt', 'purchaseDate', 'store', 'purchaseHistory'];
+      let allowedFields = ['sku', 'material', 'color', 'colorHex', 'brand', 'lineType', 'diameter', 'pricePerKg', 'stockKg', 'initialStockKg', 'status', 'createdAt', 'purchaseDate', 'store', 'supplierId', 'purchaseHistory'];
       return hasOnlyAllowedFields(allowedFields) &&
              hasRequiredFields(['material', 'color', 'pricePerKg', 'stockKg']) &&
              (!('sku' in request.resource.data) || isValidString('sku', 0, 50)) &&
@@ -121,7 +121,20 @@ service cloud.firestore {
              isPositiveNumber('stockKg') &&
              (!('initialStockKg' in request.resource.data) || isPositiveNumber('initialStockKg')) &&
              (!('createdAt' in request.resource.data) || request.resource.data.createdAt is string) &&
-             (!('store' in request.resource.data) || isValidString('store', 0, 100));
+             (!('store' in request.resource.data) || isValidString('store', 0, 100)) &&
+             (!('supplierId' in request.resource.data) || isValidString('supplierId', 0, 100));
+    }
+
+    function isValidSupplier() {
+      let allowedFields = ['name', 'phone', 'address', 'notes', 'status', 'createdAt'];
+      return hasOnlyAllowedFields(allowedFields) &&
+             hasRequiredFields(['name']) &&
+             isValidString('name', 1, 100) &&
+             (!('phone' in request.resource.data) || isValidString('phone', 0, 30)) &&
+             (!('address' in request.resource.data) || isValidString('address', 0, 300)) &&
+             (!('notes' in request.resource.data) || isValidString('notes', 0, 500)) &&
+             (!('status' in request.resource.data) || request.resource.data.status in ['ativo', 'inativo']) &&
+             (!('createdAt' in request.resource.data) || request.resource.data.createdAt is string);
     }
 
     function isValidOrder() {
@@ -271,6 +284,13 @@ service cloud.firestore {
         allow read: if isTenantOwner(tenantId);
         allow create: if isTenantOwner(tenantId) && isValidFilament();
         allow update: if isTenantOwner(tenantId) && isValidFilament() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+        allow delete: if isTenantOwner(tenantId);
+      }
+
+      match /suppliers/{supplierId} {
+        allow read: if isTenantOwner(tenantId);
+        allow create: if isTenantOwner(tenantId) && isValidSupplier();
+        allow update: if isTenantOwner(tenantId) && isValidSupplier() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
         allow delete: if isTenantOwner(tenantId);
       }
 

@@ -12,6 +12,7 @@ interface FilamentPurchase {
   pricePerKg: number;
   purchaseDate: string;
   store: string;
+  supplierId?: string;
 }
 
 interface Filament {
@@ -28,6 +29,7 @@ interface Filament {
   initialStockKg?: number;
   purchaseDate?: string;
   store?: string;
+  supplierId?: string;
   createdAt?: string;
   purchaseHistory?: FilamentPurchase[];
 }
@@ -37,6 +39,15 @@ interface ProductInfo {
   name: string;
   variations: any[];
   wastes?: any[];
+}
+
+interface Supplier {
+  id: string;
+  name: string;
+  phone?: string;
+  address?: string;
+  status?: 'ativo' | 'inativo';
+  createdAt?: string;
 }
 
 type FilamentSortKey = 'material' | 'date' | 'price' | 'purchased' | 'stock';
@@ -84,6 +95,7 @@ export function Filamentos() {
   const { tenantId } = useAuth();
   const [filaments, setFilaments] = useState<Filament[]>([]);
   const [products, setProducts] = useState<ProductInfo[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isReconciling, setIsReconciling] = useState(false);
@@ -108,12 +120,14 @@ export function Filamentos() {
     stockKg: 0,
     purchaseDate: getLocalDateString(),
     store: '',
+    supplierId: '',
     purchaseHistory: [{
       id: Date.now().toString(),
       quantityKg: 0,
       pricePerKg: 0,
       purchaseDate: getLocalDateString(),
       store: '',
+      supplierId: '',
     }]
   });
 
@@ -126,6 +140,7 @@ export function Filamentos() {
     pricePerKg: 0,
     purchaseDate: getLocalDateString(),
     store: '',
+    supplierId: '',
   });
 
   const getPurchaseHistory = (filament: Partial<Filament>) => {
@@ -141,6 +156,7 @@ export function Filamentos() {
       pricePerKg: Number(filament.pricePerKg) || 0,
       purchaseDate: filament.purchaseDate || getLocalDateString(),
       store: filament.store || '',
+      supplierId: filament.supplierId || '',
     }];
   };
 
@@ -231,6 +247,11 @@ export function Filamentos() {
     }, { purchasedKg: 0, currentStockKg: 0, purchasedValue: 0, spentValue: 0 });
   }, [filaments, usageByFilament]);
 
+  const getSupplierNameById = (supplierId?: string) => {
+    if (!supplierId) return '';
+    return suppliers.find(supplier => supplier.id === supplierId)?.name || '';
+  };
+
   useEffect(() => {
     if (!tenantId) return;
 
@@ -254,8 +275,72 @@ export function Filamentos() {
       setProducts(pData);
     });
 
-    return () => { unsubscribe(); unsubscribeProducts(); };
+    const unsubscribeSuppliers = onSnapshot(collection(db, `tenants/${tenantId}/suppliers`), (snapshot) => {
+      const supplierData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier));
+      setSuppliers(supplierData);
+    }, (error) => {
+      console.error("Error fetching suppliers:", error);
+    });
+
+    return () => { unsubscribe(); unsubscribeProducts(); unsubscribeSuppliers(); };
   }, [tenantId]);
+
+  const legacySupplierNames = useMemo(() => {
+    const names = new Set<string>();
+
+    filaments.forEach(filament => {
+      getPurchaseHistory(filament).forEach(purchase => {
+        if (!purchase.supplierId && purchase.store) names.add(purchase.store);
+      });
+    });
+
+    (formData.purchaseHistory || []).forEach(purchase => {
+      if (!purchase.supplierId && purchase.store) names.add(purchase.store);
+    });
+
+    return Array.from(names).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [filaments, formData.purchaseHistory]);
+
+  const supplierOptions: SelectOption[] = useMemo(() => {
+    const activeSuppliers = suppliers
+      .filter(supplier => supplier.status !== 'inativo')
+      .map(supplier => ({ value: supplier.id, label: supplier.name, group: 'Fornecedores' }));
+    const inactiveSuppliers = suppliers
+      .filter(supplier => supplier.status === 'inativo')
+      .map(supplier => ({ value: supplier.id, label: `${supplier.name} (Inativo)`, group: 'Fornecedores Inativos' }));
+    const legacySuppliers = legacySupplierNames.map(name => ({ value: `legacy:${name}`, label: name, group: 'Historico' }));
+
+    return [...activeSuppliers, ...inactiveSuppliers, ...legacySuppliers];
+  }, [legacySupplierNames, suppliers]);
+
+  const getPurchaseSupplierValue = (purchase: FilamentPurchase) => {
+    if (purchase.supplierId && suppliers.some(supplier => supplier.id === purchase.supplierId)) {
+      return purchase.supplierId;
+    }
+    if (purchase.store) return `legacy:${purchase.store}`;
+    return '';
+  };
+
+  const handlePurchaseSupplierChange = (purchaseId: string, value: string) => {
+    if (value.startsWith('legacy:')) {
+      const legacyName = value.replace('legacy:', '');
+      setFormData(prev => ({
+        ...prev,
+        purchaseHistory: (prev.purchaseHistory || []).map(purchase =>
+          purchase.id === purchaseId ? { ...purchase, supplierId: '', store: legacyName } : purchase
+        )
+      }));
+      return;
+    }
+
+    const supplierName = getSupplierNameById(value);
+    setFormData(prev => ({
+      ...prev,
+      purchaseHistory: (prev.purchaseHistory || []).map(purchase =>
+        purchase.id === purchaseId ? { ...purchase, supplierId: value, store: supplierName } : purchase
+      )
+    }));
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -268,7 +353,8 @@ export function Filamentos() {
           quantityKg: Number(purchase.quantityKg) || 0,
           pricePerKg: Number(purchase.pricePerKg) || 0,
           purchaseDate: purchase.purchaseDate || getLocalDateString(),
-          store: purchase.store || '',
+          supplierId: purchase.supplierId || '',
+          store: purchase.supplierId ? (getSupplierNameById(purchase.supplierId) || purchase.store || '') : (purchase.store || ''),
         }))
         .filter(purchase => purchase.quantityKg > 0);
       const purchasedKg = purchaseHistory.reduce((acc, purchase) => acc + purchase.quantityKg, 0);
@@ -289,6 +375,7 @@ export function Filamentos() {
         initialStockKg: purchasedKg,
         purchaseDate: latestPurchase?.purchaseDate || getLocalDateString(),
         store: latestPurchase?.store || '',
+        supplierId: latestPurchase?.supplierId || '',
         purchaseHistory,
       };
 
@@ -316,6 +403,7 @@ export function Filamentos() {
         stockKg: 0,
         purchaseDate: getLocalDateString(),
         store: '',
+        supplierId: '',
         purchaseHistory: [createBlankPurchase()]
       });
     } catch (error) {
@@ -331,7 +419,11 @@ export function Filamentos() {
       pricePerKg: getAveragePricePerKg(f),
       purchaseDate: getLatestPurchase(f)?.purchaseDate || getLocalDateString(),
       store: getLatestPurchase(f)?.store || '',
-      purchaseHistory: getPurchaseHistory(f),
+      supplierId: getLatestPurchase(f)?.supplierId || '',
+      purchaseHistory: getPurchaseHistory(f).map(purchase => ({
+        ...purchase,
+        supplierId: purchase.supplierId || '',
+      })),
       colorHex: f.colorHex || '#000000',
       brand: f.brand || '',
       lineType: f.lineType || 'Sólido (normal)',
@@ -488,6 +580,7 @@ export function Filamentos() {
               stockKg: 0,
               purchaseDate: getLocalDateString(),
               store: '',
+              supplierId: '',
               purchaseHistory: [createBlankPurchase()]
             });
             setEditingId(null);
@@ -618,7 +711,7 @@ export function Filamentos() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h4 className="text-sm font-bold text-on-surface">Historico de Compras</h4>
-                  <p className="text-xs text-on-surface-variant">Adicione novas compras desta cor/material para compor o estoque ao longo do tempo.</p>
+                  <p className="text-xs text-on-surface-variant">Adicione novas compras desta cor/material e selecione o fornecedor cadastrado para manter o historico organizado.</p>
                 </div>
                 <button type="button" onClick={addPurchaseEntry} className="px-3 py-1.5 bg-primary text-on-primary rounded text-xs font-bold">
                   Adicionar Compra
@@ -637,8 +730,13 @@ export function Filamentos() {
                       <input type="number" step="0.01" value={purchase.pricePerKg || ''} onChange={e => updatePurchaseEntry(purchase.id, 'pricePerKg', Number(e.target.value))} className="w-full bg-surface-container-lowest border-none rounded p-2 text-sm tabular-nums" placeholder="120.00" />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Loja</label>
-                      <input type="text" value={purchase.store || ''} onChange={e => updatePurchaseEntry(purchase.id, 'store', e.target.value)} className="w-full bg-surface-container-lowest border-none rounded p-2 text-sm" placeholder="Fornecedor / loja" />
+                      <SearchableSelect
+                        label="Fornecedor"
+                        options={supplierOptions}
+                        value={getPurchaseSupplierValue(purchase)}
+                        onChange={(value) => handlePurchaseSupplierChange(purchase.id, value)}
+                        placeholder={suppliers.length > 0 ? "Selecione um fornecedor" : "Cadastre em Fornecedores"}
+                      />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Data</label>
@@ -675,7 +773,7 @@ export function Filamentos() {
         <input type="text" placeholder="Filtrar por cor..." value={filterColor} onChange={e => setFilterColor(e.target.value)} className="bg-surface-container border-none rounded p-2 text-xs flex-1 min-w-[120px]" />
         <input type="text" placeholder="Filtrar por tipo..." value={filterType} onChange={e => setFilterType(e.target.value)} className="bg-surface-container border-none rounded p-2 text-xs flex-1 min-w-[120px]" />
         <input type="text" placeholder="Filtrar por marca..." value={filterBrand} onChange={e => setFilterBrand(e.target.value)} className="bg-surface-container border-none rounded p-2 text-xs flex-1 min-w-[120px]" />
-        <input type="text" placeholder="Filtrar por loja..." value={filterStore} onChange={e => setFilterStore(e.target.value)} className="bg-surface-container border-none rounded p-2 text-xs flex-1 min-w-[120px]" />
+        <input type="text" placeholder="Filtrar por fornecedor..." value={filterStore} onChange={e => setFilterStore(e.target.value)} className="bg-surface-container border-none rounded p-2 text-xs flex-1 min-w-[120px]" />
         
         <div className="flex items-center gap-2 flex-1 min-w-[200px]">
           <input type="date" value={filterDateStart} onChange={e => setFilterDateStart(e.target.value)} className="w-full bg-surface-container border-none rounded p-2 text-xs" title="Data Compra (Início)" />

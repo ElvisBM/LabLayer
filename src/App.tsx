@@ -3,6 +3,7 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { Dashboard } from './views/Dashboard';
 import { Filamentos } from './views/Filamentos';
+import { Fornecedores } from './views/Fornecedores';
 import { Impressoras } from './views/Impressoras';
 import { Insumos } from './views/Insumos';
 import { Produtos } from './views/Produtos';
@@ -52,6 +53,8 @@ function MainApp() {
         return <EstoqueInteligente />;
       case 'filamentos':
         return <Filamentos />;
+      case 'fornecedores':
+        return <Fornecedores />;
       case 'impressoras':
         return <Impressoras />;
       case 'insumos':
@@ -76,6 +79,7 @@ function MainApp() {
       case 'perdas': return 'Controle de Perdas';
       case 'estoque': return 'Estoque Inteligente';
       case 'filamentos': return 'Gestão de Filamentos';
+      case 'fornecedores': return 'Cadastro de Fornecedores';
       case 'impressoras': return 'Frota de Impressoras';
       case 'insumos': return 'Insumos e Componentes';
       case 'configuracoes': return 'Configurações do Sistema';

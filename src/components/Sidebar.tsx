@@ -19,9 +19,10 @@ export function Sidebar({ currentView, setCurrentView, isOpen, setIsOpen }: Side
         { id: 'produtos', label: 'Produtos', icon: Package },
         { id: 'precificacao', label: 'Precificação', icon: Calculator },
         { id: 'filamentos', label: 'Filamentos', icon: Cable },
+        { id: 'fornecedores', label: 'Fornecedores', icon: Store },
         { id: 'insumos', label: 'Insumos', icon: Box },
         { id: 'impressoras', label: 'Impressoras', icon: Printer },
-        { id: 'marketplaces', label: 'Marketplace', icon: Store },
+        { id: 'marketplaces', label: 'Marketplace', icon: Wrench },
       ]
     },
     {
