@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, CheckCircle2, Clock3, Layers, Package, Plus, Trash2 } from 'lucide-react';
+import { CalendarDays, CheckCircle2, Clock3, Edit2, Layers, Package, Plus, Trash2 } from 'lucide-react';
 import { addDoc, collection, deleteDoc, doc, onSnapshot, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -26,6 +26,7 @@ interface ProductionOrder {
   id: string;
   productName: string;
   productId?: string;
+  modelUrl?: string;
   status: 'fila' | 'produzindo' | 'concluida';
   tables?: ProductionTable[];
   notes?: string;
@@ -51,6 +52,18 @@ interface ProductOption {
   name: string;
   category?: string;
   stock?: number;
+  baseSku?: string;
+  fixedCost?: number;
+  technicalSheet?: {
+    dimensions?: string;
+    infillPercentage?: number;
+    layerHeight?: number;
+    supports?: boolean;
+    postProcessing?: string;
+  };
+  variations?: any[];
+  files?: any[];
+  wastes?: any[];
 }
 
 const getLocalDateTimeString = () => {
@@ -172,11 +185,13 @@ export function AgendaProducao() {
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [filaments, setFilaments] = useState<FilamentOption[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [calendarDate, setCalendarDate] = useState(new Date());
 
   const [formData, setFormData] = useState({
     productName: '',
     productId: '',
+    modelUrl: '',
     tables: [createTableEntry(1)] as ProductionTable[],
     notes: '',
   });
@@ -253,12 +268,95 @@ export function AgendaProducao() {
   const totalQueuedHours = queueOrders.reduce((acc, order) => acc + getOrderTotalHours(order), 0);
 
   const resetForm = () => {
+    setEditingId(null);
     setFormData({
       productName: '',
       productId: '',
+      modelUrl: '',
       tables: [createTableEntry(1)],
       notes: '',
     });
+  };
+
+  const buildOrderVariation = (order: ProductionOrder) => {
+    const orderTables = getOrderTables(order);
+    const variationMaterials = orderTables.flatMap((table, tableIndex) =>
+      table.filaments
+        .filter(item => item.filamentId && Number(item.quantityKg) > 0)
+        .map((item, filamentIndex) => ({
+          id: `${table.id || tableIndex}-${item.id || filamentIndex}`,
+          filamentId: item.filamentId,
+          weightGrams: Number((Number(item.quantityKg || 0) * 1000).toFixed(2)),
+          purgeGrams: 0,
+          objectName: table.tableName || `Mesa ${tableIndex + 1}`,
+          pieces: Number(item.productsCount) || 0,
+          printTimeHours: Number(table.hours) || 0,
+          startTime: table.scheduledAt || '',
+        })),
+    );
+
+    const firstFilament = filaments.find(item => item.id === variationMaterials[0]?.filamentId);
+    const uniqueColors = Array.from(
+      new Set(
+        variationMaterials
+          .map(item => filaments.find(filament => filament.id === item.filamentId)?.color)
+          .filter(Boolean),
+      ),
+    ) as string[];
+    const totalWeightGrams = variationMaterials.reduce((sum, item) => sum + (Number(item.weightGrams) || 0), 0);
+    const totalHours = orderTables.reduce((sum, table) => sum + (Number(table.hours) || 0), 0);
+    const totalPieces = getOrderProducedUnits(order);
+
+    return {
+      id: `agenda-${order.id}`,
+      skuSuffix: '-AGD',
+      color: uniqueColors.length === 1 ? uniqueColors[0] : uniqueColors.length > 1 ? 'Misto' : 'Padrão',
+      material: firstFilament?.material || 'PLA',
+      materials: variationMaterials,
+      weightGrams: Number(totalWeightGrams.toFixed(2)),
+      printTimeHours: Number(totalHours.toFixed(2)),
+      quantityPerPrint: totalPieces > 0 ? totalPieces : 1,
+      filamentId: variationMaterials[0]?.filamentId || '',
+      printerId: '',
+      materialCostPerGram: 0,
+      printerCostPerHour: 0,
+      channelPrices: [],
+    };
+  };
+
+  const buildOrderFiles = (order: ProductionOrder) => {
+    if (!order.modelUrl) return [];
+    return [
+      {
+        id: `agenda-link-${order.id}`,
+        name: 'Referencia do Modelo',
+        type: 'PDF',
+        url: order.modelUrl,
+        version: '1.0',
+      }
+    ];
+  };
+
+  const openEditForm = (order: ProductionOrder) => {
+    const normalizedOrder = normalizeOrder(order);
+    setEditingId(order.id);
+    setFormData({
+      productName: normalizedOrder.productName || '',
+      productId: normalizedOrder.productId || '',
+      modelUrl: normalizedOrder.modelUrl || '',
+      notes: normalizedOrder.notes || '',
+      tables: normalizedOrder.tables?.map((table, tableIndex) => ({
+        ...table,
+        id: table.id || `${Date.now()}-${tableIndex}`,
+        filaments: table.filaments.length > 0
+          ? table.filaments.map((entry, entryIndex) => ({
+              ...entry,
+              id: entry.id || `${Date.now()}-${tableIndex}-${entryIndex}`,
+            }))
+          : [createFilamentEntry()],
+      })) || [createTableEntry(1)],
+    });
+    setShowForm(true);
   };
 
   const handleSelectProduct = (value: string) => {
@@ -345,6 +443,7 @@ export function AgendaProducao() {
     if (!tenantId) return;
 
     try {
+      const currentOrder = editingId ? orders.find(item => item.id === editingId) : null;
       const normalizedTables = formData.tables.map((table, index) => ({
         id: table.id,
         tableName: table.tableName || `Mesa ${index + 1}`,
@@ -361,17 +460,26 @@ export function AgendaProducao() {
           .filter(entry => entry.filamentId && (entry.quantityKg > 0 || entry.productsCount > 0)),
       }));
 
-      await addDoc(collection(db, `tenants/${tenantId}/productionOrders`), {
+      const payload = {
         productName: formData.productName || 'Produto sem nome',
         productId: formData.productId || '',
+        modelUrl: formData.modelUrl.trim(),
         tables: normalizedTables,
-        status: 'fila',
+        status: currentOrder?.status || 'fila',
         notes: formData.notes || '',
         totalHours: normalizedTables.reduce((acc, table) => acc + (Number(table.hours) || 0), 0),
-        createdAt: new Date().toISOString(),
-      });
+      };
 
-      toast.success('Produto adicionado na agenda de producao!');
+      if (editingId) {
+        await updateDoc(doc(db, `tenants/${tenantId}/productionOrders`, editingId), payload);
+      } else {
+        await addDoc(collection(db, `tenants/${tenantId}/productionOrders`), {
+          ...payload,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      toast.success(editingId ? 'Agendamento atualizado com sucesso!' : 'Produto adicionado na agenda de producao!');
       setShowForm(false);
       resetForm();
     } catch (error) {
@@ -408,13 +516,22 @@ export function AgendaProducao() {
 
     try {
       const batch = writeBatch(db);
-      const existingProduct = products.find(product => product.name.trim().toLowerCase() === order.productName.trim().toLowerCase());
+      const existingProduct = products.find(product => product.id === order.productId)
+        || products.find(product => product.name.trim().toLowerCase() === order.productName.trim().toLowerCase());
       const quantityToAdd = getOrderProducedUnits(order);
+      const scheduledVariation = buildOrderVariation(order);
+      const scheduledFiles = buildOrderFiles(order);
 
       if (existingProduct) {
+        const existingVariations = Array.isArray(existingProduct.variations) ? existingProduct.variations : [];
+        const hasAgendaVariation = existingVariations.some((variation: any) => variation?.id === scheduledVariation.id);
+        const existingFiles = Array.isArray(existingProduct.files) ? existingProduct.files : [];
+        const hasModelFile = scheduledFiles.length > 0 && existingFiles.some((file: any) => file?.url === scheduledFiles[0].url);
         batch.update(doc(db, `tenants/${tenantId}/products`, existingProduct.id), {
           stock: (Number(existingProduct.stock) || 0) + quantityToAdd,
           status: 'ativo',
+          ...(hasAgendaVariation ? {} : { variations: [...existingVariations, scheduledVariation] }),
+          ...(scheduledFiles.length > 0 && !hasModelFile ? { files: [...existingFiles, ...scheduledFiles] } : {}),
         });
       } else {
         const newProductRef = doc(collection(db, `tenants/${tenantId}/products`));
@@ -432,8 +549,8 @@ export function AgendaProducao() {
             supports: false,
             postProcessing: '',
           },
-          variations: [],
-          files: [],
+          variations: [scheduledVariation],
+          files: scheduledFiles,
           wastes: [],
           createdAt: new Date().toISOString(),
         });
@@ -488,7 +605,7 @@ export function AgendaProducao() {
 
       {showForm && (
         <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm">
-          <h3 className="font-headline font-bold text-lg mb-6">Novo Produto na Agenda</h3>
+          <h3 className="font-headline font-bold text-lg mb-6">{editingId ? 'Editar Produto na Agenda' : 'Novo Produto na Agenda'}</h3>
           <form className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4" onSubmit={handleSave}>
             <div className="space-y-1.5 xl:col-span-2">
               <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Produto</label>
@@ -509,6 +626,17 @@ export function AgendaProducao() {
                 value={formData.productId}
                 onChange={handleSelectProduct}
                 placeholder="Selecionar produto já existente"
+              />
+            </div>
+
+            <div className="space-y-1.5 xl:col-span-4">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Link do Modelo / Referência</label>
+              <input
+                type="url"
+                value={formData.modelUrl}
+                onChange={e => setFormData(prev => ({ ...prev, modelUrl: e.target.value }))}
+                className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                placeholder="https://makerworld.com/..."
               />
             </div>
 
@@ -634,11 +762,11 @@ export function AgendaProducao() {
             </div>
 
             <div className="xl:col-span-4 flex justify-end gap-3 pt-4 border-t border-outline-variant/20">
-              <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded transition-colors">
+              <button type="button" onClick={() => { setShowForm(false); resetForm(); }} className="px-6 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded transition-colors">
                 Cancelar
               </button>
               <button type="submit" className="px-8 py-2.5 bg-primary text-on-primary rounded font-bold text-sm hover:opacity-90 transition-all">
-                Salvar na Agenda
+                {editingId ? 'Salvar Alterações' : 'Salvar na Agenda'}
               </button>
             </div>
           </form>
@@ -675,6 +803,10 @@ export function AgendaProducao() {
                             Iniciar
                           </button>
                         )}
+                        <button type="button" onClick={() => openEditForm(order)} className="px-3 py-1.5 rounded text-xs font-bold bg-surface-container text-on-surface flex items-center gap-1.5">
+                          <Edit2 className="w-3.5 h-3.5" />
+                          Editar
+                        </button>
                         <button type="button" onClick={() => handleComplete(order)} className="px-3 py-1.5 rounded text-xs font-bold bg-tertiary-fixed text-on-tertiary-fixed-variant">
                           Concluir e Enviar para Produtos
                         </button>
@@ -728,6 +860,17 @@ export function AgendaProducao() {
                       <div className="text-sm text-on-surface-variant bg-surface-container-low rounded-lg p-3">
                         {order.notes}
                       </div>
+                    )}
+
+                    {order.modelUrl && (
+                      <a
+                        href={order.modelUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sm font-medium text-primary hover:underline"
+                      >
+                        Abrir referência do modelo
+                      </a>
                     )}
                   </div>
                 );
