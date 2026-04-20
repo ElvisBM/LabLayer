@@ -182,13 +182,12 @@ service cloud.firestore {
     }
 
     function isValidProductionOrder() {
-      let allowedFields = ['productName', 'productId', 'tablesCount', 'quantity', 'scheduledAt', 'hoursPerTable', 'totalHours', 'status', 'filaments', 'notes', 'createdAt', 'completedAt'];
+      let allowedFields = ['productName', 'productId', 'tablesCount', 'scheduledAt', 'hoursPerTable', 'totalHours', 'status', 'filaments', 'notes', 'createdAt', 'completedAt'];
       return hasOnlyAllowedFields(allowedFields) &&
-             hasRequiredFields(['productName', 'tablesCount', 'quantity', 'scheduledAt', 'hoursPerTable', 'totalHours', 'status', 'filaments', 'createdAt']) &&
+             hasRequiredFields(['productName', 'tablesCount', 'scheduledAt', 'hoursPerTable', 'totalHours', 'status', 'filaments', 'createdAt']) &&
              isValidString('productName', 1, 100) &&
              (!('productId' in request.resource.data) || isValidString('productId', 0, 100)) &&
              isPositiveNumber('tablesCount') &&
-             isPositiveNumber('quantity') &&
              request.resource.data.scheduledAt is string &&
              isPositiveNumber('hoursPerTable') &&
              isPositiveNumber('totalHours') &&

@@ -18,7 +18,6 @@ interface ProductionOrder {
   productName: string;
   productId?: string;
   tablesCount: number;
-  quantity: number;
   scheduledAt: string;
   hoursPerTable: number;
   totalHours: number;
@@ -95,7 +94,6 @@ export function AgendaProducao() {
     productName: '',
     productId: '',
     tablesCount: 1,
-    quantity: 1,
     scheduledAt: getLocalDateTimeString(),
     hoursPerTable: 1,
     filaments: [{ id: Date.now().toString(), filamentId: '', filamentName: '', quantityKg: 0 }] as ProductionFilament[],
@@ -164,7 +162,6 @@ export function AgendaProducao() {
       productName: '',
       productId: '',
       tablesCount: 1,
-      quantity: 1,
       scheduledAt: getLocalDateTimeString(),
       hoursPerTable: 1,
       filaments: [{ id: Date.now().toString(), filamentId: '', filamentName: '', quantityKg: 0 }],
@@ -232,14 +229,12 @@ export function AgendaProducao() {
         .filter(entry => entry.filamentId && entry.quantityKg > 0);
 
       const tablesCount = Number(formData.tablesCount) || 1;
-      const quantity = Number(formData.quantity) || tablesCount;
       const hoursPerTable = Number(formData.hoursPerTable) || 0;
 
       await addDoc(collection(db, `tenants/${tenantId}/productionOrders`), {
         productName: formData.productName || 'Produto sem nome',
         productId: formData.productId || '',
         tablesCount,
-        quantity,
         scheduledAt: formData.scheduledAt || getLocalDateTimeString(),
         hoursPerTable,
         totalHours: tablesCount * hoursPerTable,
@@ -287,7 +282,7 @@ export function AgendaProducao() {
     try {
       const batch = writeBatch(db);
       const existingProduct = products.find(product => product.name.trim().toLowerCase() === order.productName.trim().toLowerCase());
-      const quantityToAdd = Number(order.quantity) || Number(order.tablesCount) || 1;
+      const quantityToAdd = Number(order.tablesCount) || 1;
 
       if (existingProduct) {
         batch.update(doc(db, `tenants/${tenantId}/products`, existingProduct.id), {
@@ -335,7 +330,7 @@ export function AgendaProducao() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
           <h2 className="font-headline text-3xl font-bold text-primary tracking-tighter">Agenda de Produção</h2>
-          <p className="text-on-surface-variant font-sans text-sm mt-1">Monte a fila de produção com calendário, horas, filamentos e conclusão simples.</p>
+          <p className="text-on-surface-variant font-sans text-sm mt-1">Adicione as mesas, filamentos, horas por mesa e o horário de início em uma fila simples com calendário.</p>
         </div>
         <button
           onClick={() => {
@@ -380,34 +375,13 @@ export function AgendaProducao() {
               />
             </div>
 
-            <div className="space-y-1.5 xl:col-span-2">
-              <SearchableSelect
-                label="Vincular com Produto Existente (Opcional)"
-                options={products.map(product => ({ value: product.id, label: product.name, group: product.category || 'Produtos' }))}
-                value={formData.productId}
-                onChange={handleSelectProduct}
-                placeholder="Selecionar produto já existente"
-              />
-            </div>
-
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Qtd de Mesas / Lotes</label>
+              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Qtd de Mesas</label>
               <input
                 type="number"
                 min="1"
                 value={formData.tablesCount}
                 onChange={e => setFormData(prev => ({ ...prev, tablesCount: Number(e.target.value) || 1 }))}
-                className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Qtd Produzida</label>
-              <input
-                type="number"
-                min="1"
-                value={formData.quantity}
-                onChange={e => setFormData(prev => ({ ...prev, quantity: Number(e.target.value) || 1 }))}
                 className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
               />
             </div>
@@ -424,13 +398,23 @@ export function AgendaProducao() {
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Data e Hora</label>
+            <div className="space-y-1.5 xl:col-span-2">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Data e Hora de Início da Mesa</label>
               <input
                 type="datetime-local"
                 value={formData.scheduledAt}
                 onChange={e => setFormData(prev => ({ ...prev, scheduledAt: e.target.value }))}
                 className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+              />
+            </div>
+
+            <div className="space-y-1.5 xl:col-span-2">
+              <SearchableSelect
+                label="Vincular com Produto Existente (Opcional)"
+                options={products.map(product => ({ value: product.id, label: product.name, group: product.category || 'Produtos' }))}
+                value={formData.productId}
+                onChange={handleSelectProduct}
+                placeholder="Selecionar produto já existente"
               />
             </div>
 
@@ -540,12 +524,8 @@ export function AgendaProducao() {
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div className="bg-surface-container p-3 rounded-lg">
-                      <div className="text-[10px] uppercase tracking-widest text-on-surface-variant">Mesas / Lotes</div>
+                      <div className="text-[10px] uppercase tracking-widest text-on-surface-variant">Mesas</div>
                       <div className="text-lg font-bold text-on-surface tabular-nums">{order.tablesCount}</div>
-                    </div>
-                    <div className="bg-surface-container p-3 rounded-lg">
-                      <div className="text-[10px] uppercase tracking-widest text-on-surface-variant">Qtd Produzida</div>
-                      <div className="text-lg font-bold text-on-surface tabular-nums">{order.quantity}</div>
                     </div>
                     <div className="bg-surface-container p-3 rounded-lg">
                       <div className="text-[10px] uppercase tracking-widest text-on-surface-variant">Horas por Mesa</div>
