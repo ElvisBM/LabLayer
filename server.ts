@@ -6,6 +6,7 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
+  app.disable("x-powered-by");
   app.use(express.json());
 
   // API routes FIRST
