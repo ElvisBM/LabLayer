@@ -182,18 +182,20 @@ service cloud.firestore {
     }
 
     function isValidProductionOrder() {
-      let allowedFields = ['number', 'productName', 'productId', 'quantity', 'completed', 'printerName', 'printerId', 'priority', 'status', 'createdAt'];
+      let allowedFields = ['productName', 'productId', 'tablesCount', 'quantity', 'scheduledAt', 'hoursPerTable', 'totalHours', 'status', 'filaments', 'notes', 'createdAt', 'completedAt'];
       return hasOnlyAllowedFields(allowedFields) &&
-             hasRequiredFields(allowedFields) &&
-             isValidString('number', 1, 50) &&
+             hasRequiredFields(['productName', 'tablesCount', 'quantity', 'scheduledAt', 'hoursPerTable', 'totalHours', 'status', 'filaments', 'createdAt']) &&
              isValidString('productName', 1, 100) &&
-             isValidString('productId', 1, 100) &&
+             (!('productId' in request.resource.data) || isValidString('productId', 0, 100)) &&
+             isPositiveNumber('tablesCount') &&
              isPositiveNumber('quantity') &&
-             isPositiveNumber('completed') &&
-             isValidString('printerName', 1, 100) &&
-             isValidString('printerId', 1, 100) &&
-             request.resource.data.priority in ['alta', 'normal', 'baixa'] &&
-             request.resource.data.status in ['pendente', 'produzindo', 'pausada', 'concluida'] &&
+             request.resource.data.scheduledAt is string &&
+             isPositiveNumber('hoursPerTable') &&
+             isPositiveNumber('totalHours') &&
+             request.resource.data.status in ['fila', 'produzindo', 'concluida'] &&
+             request.resource.data.filaments is list &&
+             (!('notes' in request.resource.data) || isValidString('notes', 0, 500)) &&
+             (!('completedAt' in request.resource.data) || request.resource.data.completedAt is string) &&
              request.resource.data.createdAt is string;
     }
 
