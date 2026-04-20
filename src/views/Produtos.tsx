@@ -165,6 +165,16 @@ interface ProductProductionTable {
   filaments: ProductProductionFilament[];
 }
 
+interface ProductionOrderFallback {
+  id: string;
+  productName: string;
+  status: 'fila' | 'produzindo' | 'concluida';
+  tables?: ProductProductionTable[];
+  scheduledAt?: string;
+  hoursPerTable?: number;
+  filaments?: ProductProductionFilament[];
+}
+
 const getLocalDateTimeString = () => {
   const d = new Date();
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -186,6 +196,50 @@ const createProductTableEntry = (index = 1): ProductProductionTable => ({
   hours: 1,
   filaments: [createProductFilamentEntry()],
 });
+
+const normalizeProductionOrderTable = (table: any, index: number): ProductProductionTable => ({
+  id: table?.id || `legacy-table-${index}`,
+  tableName: table?.tableName || `Mesa ${index + 1}`,
+  scheduledAt: table?.scheduledAt || getLocalDateTimeString(),
+  hours: Number(table?.hours) || Number(table?.hoursPerTable) || 0,
+  filaments: Array.isArray(table?.filaments) && table.filaments.length > 0
+    ? table.filaments.map((item: any, itemIndex: number) => ({
+        id: item?.id || `legacy-filament-${index}-${itemIndex}`,
+        filamentId: item?.filamentId || '',
+        filamentName: item?.filamentName || '',
+        quantityKg: Number(item?.quantityKg) || 0,
+        productsCount: Number(item?.productsCount) || 0,
+      }))
+    : [],
+});
+
+const normalizeProductionOrderFallback = (order: ProductionOrderFallback): ProductionOrderFallback => {
+  if (Array.isArray(order.tables) && order.tables.length > 0) {
+    return {
+      ...order,
+      tables: order.tables.map((table, index) => normalizeProductionOrderTable(table, index)),
+    };
+  }
+
+  return {
+    ...order,
+    tables: order.filaments && order.filaments.length > 0
+      ? [{
+          id: 'legacy-table-0',
+          tableName: 'Mesa 1',
+          scheduledAt: order.scheduledAt || getLocalDateTimeString(),
+          hours: Number(order.hoursPerTable) || 0,
+          filaments: order.filaments.map((item, index) => ({
+            id: item.id || `legacy-filament-${index}`,
+            filamentId: item.filamentId || '',
+            filamentName: item.filamentName || '',
+            quantityKg: Number(item.quantityKg) || 0,
+            productsCount: Number(item.productsCount) || 0,
+          })),
+        }]
+      : [],
+  };
+};
 
 interface Product {
   id: string;
@@ -263,6 +317,7 @@ const mockProducts: Product[] = [
 export function Produtos() {
   const { tenantId } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
+  const [productionOrders, setProductionOrders] = useState<ProductionOrderFallback[]>([]);
   const [filaments, setFilaments] = useState<Filament[]>([]);
   const [printers, setPrinters] = useState<Printer[]>([]);
   const [energyPrice, setEnergyPrice] = useState<number>(0.95);
@@ -366,6 +421,13 @@ export function Produtos() {
       console.error("Error fetching products:", error);
     });
 
+    const unsubscribeProductionOrders = onSnapshot(collection(db, `tenants/${tenantId}/productionOrders`), (snapshot) => {
+      const data = snapshot.docs.map(doc => normalizeProductionOrderFallback({ id: doc.id, ...doc.data() } as ProductionOrderFallback));
+      setProductionOrders(data);
+    }, (error) => {
+      console.error("Error fetching production orders:", error);
+    });
+
     const unsubscribeFilaments = onSnapshot(collection(db, `tenants/${tenantId}/filaments`), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Filament));
       setFilaments(data);
@@ -388,6 +450,7 @@ export function Produtos() {
 
     return () => {
       unsubscribeProducts();
+      unsubscribeProductionOrders();
       unsubscribeFilaments();
       unsubscribePrinters();
       unsubscribeSettings();
@@ -1047,34 +1110,17 @@ export function Produtos() {
 
   const getProductScheduleTableNames = (product: Product | Partial<Product>) => {
     const names = new Set<string>();
-    if (product.productionTables && product.productionTables.length > 0) {
-      product.productionTables.forEach(table => {
-        if (table.tableName) names.add(table.tableName);
-      });
-      return Array.from(names);
-    }
-    (product.variations || []).forEach(variation => {
-      (variation.materials || []).forEach(material => {
-        if (material.objectName) names.add(material.objectName);
-      });
+    getProductProductionTables(product).forEach(table => {
+      if (table.tableName) names.add(table.tableName);
     });
     return Array.from(names);
   };
 
   const getProductFilamentSummary = (product: Product | Partial<Product>) => {
     const names = new Set<string>();
-    if (product.productionTables && product.productionTables.length > 0) {
-      product.productionTables.forEach(table => {
-        table.filaments.forEach(filament => {
-          if (filament.filamentName) names.add(filament.filamentName);
-        });
-      });
-      return Array.from(names);
-    }
-    (product.variations || []).forEach(variation => {
-      (variation.materials || []).forEach(material => {
-        const filament = filaments.find(item => item.id === material.filamentId);
-        if (filament) names.add(`${filament.material} ${filament.color}`);
+    getProductProductionTables(product).forEach(table => {
+      table.filaments.forEach(filament => {
+        if (filament.filamentName) names.add(filament.filamentName);
       });
     });
     return Array.from(names);
@@ -1096,6 +1142,13 @@ export function Produtos() {
   const getProductProductionTables = (product: Product | Partial<Product>) => {
     if (product.productionTables && product.productionTables.length > 0) {
       return product.productionTables;
+    }
+
+    const fallbackOrder = productionOrders
+      .filter(order => order.status === 'concluida')
+      .find(order => order.productName?.trim().toLowerCase() === product.name?.trim().toLowerCase());
+    if (fallbackOrder?.tables && fallbackOrder.tables.length > 0) {
+      return fallbackOrder.tables;
     }
 
     const grouped = new Map<string, ProductProductionTable>();
