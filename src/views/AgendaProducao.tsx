@@ -522,17 +522,36 @@ export function AgendaProducao() {
       const quantityToAdd = getOrderProducedUnits(order);
       const scheduledVariation = buildOrderVariation(order);
       const scheduledFiles = buildOrderFiles(order);
+      const scheduledTables = getOrderTables(order).map(table => ({
+        id: table.id,
+        tableName: table.tableName,
+        scheduledAt: table.scheduledAt,
+        hours: Number(table.hours) || 0,
+        filaments: table.filaments.map(filament => ({
+          id: filament.id,
+          filamentId: filament.filamentId,
+          filamentName: filament.filamentName,
+          quantityKg: Number(filament.quantityKg) || 0,
+          productsCount: Number(filament.productsCount) || 0,
+        })),
+      }));
 
       if (existingProduct) {
         const existingVariations = Array.isArray(existingProduct.variations) ? existingProduct.variations : [];
         const hasAgendaVariation = existingVariations.some((variation: any) => variation?.id === scheduledVariation.id);
         const existingFiles = Array.isArray(existingProduct.files) ? existingProduct.files : [];
         const hasModelFile = scheduledFiles.length > 0 && existingFiles.some((file: any) => file?.url === scheduledFiles[0].url);
+        const existingTables = Array.isArray((existingProduct as any).productionTables) ? (existingProduct as any).productionTables : [];
+        const nextTables = [
+          ...existingTables.filter((table: any) => !scheduledTables.some(scheduled => scheduled.id === table?.id)),
+          ...scheduledTables,
+        ];
         batch.update(doc(db, `tenants/${tenantId}/products`, existingProduct.id), {
           stock: (Number(existingProduct.stock) || 0) + quantityToAdd,
           status: 'ativo',
           ...(hasAgendaVariation ? {} : { variations: [...existingVariations, scheduledVariation] }),
           ...(scheduledFiles.length > 0 && !hasModelFile ? { files: [...existingFiles, ...scheduledFiles] } : {}),
+          productionTables: nextTables,
         });
       } else {
         const newProductRef = doc(collection(db, `tenants/${tenantId}/products`));
@@ -553,6 +572,7 @@ export function AgendaProducao() {
           variations: [scheduledVariation],
           files: scheduledFiles,
           wastes: [],
+          productionTables: scheduledTables,
           createdAt: new Date().toISOString(),
         });
       }

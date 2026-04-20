@@ -149,6 +149,22 @@ interface ProductWaste {
   notes: string;
 }
 
+interface ProductProductionFilament {
+  id: string;
+  filamentId: string;
+  filamentName: string;
+  quantityKg: number;
+  productsCount: number;
+}
+
+interface ProductProductionTable {
+  id: string;
+  tableName: string;
+  scheduledAt: string;
+  hours: number;
+  filaments: ProductProductionFilament[];
+}
+
 interface Product {
   id: string;
   name: string;
@@ -162,6 +178,7 @@ interface Product {
   variations: Variation[];
   files: ProductFile[];
   wastes?: ProductWaste[];
+  productionTables?: ProductProductionTable[];
   latestSuggestedPrice?: {
     savedAt?: string;
     channelName?: string;
@@ -270,7 +287,8 @@ export function Produtos() {
     technicalSheet: { dimensions: '', infillPercentage: 15, layerHeight: 0.2, supports: false, postProcessing: '' },
     variations: [defaultVariation],
     files: [],
-    wastes: []
+    wastes: [],
+    productionTables: [],
   });
 
   const parseLocaleNumber = (value: string) => {
@@ -471,6 +489,7 @@ export function Produtos() {
         variations: sanitizedVariations,
         files: formData.files || [],
         wastes: sanitizedWastes,
+        productionTables: formData.productionTables || [],
       });
 
       // Stock diff calculation
@@ -549,7 +568,8 @@ export function Produtos() {
         technicalSheet: { dimensions: '', infillPercentage: 15, layerHeight: 0.2, supports: false, postProcessing: '' },
         variations: [{...defaultVariation, id: Date.now().toString()}],
         files: [],
-        wastes: []
+        wastes: [],
+        productionTables: [],
       });
       toast.success(editingId ? "Produto salvo com sucesso!" : "Novo produto adicionado e materiais deduzidos!");
     } catch (error: any) {
@@ -861,6 +881,12 @@ export function Produtos() {
 
   const getProductScheduleTableNames = (product: Product | Partial<Product>) => {
     const names = new Set<string>();
+    if (product.productionTables && product.productionTables.length > 0) {
+      product.productionTables.forEach(table => {
+        if (table.tableName) names.add(table.tableName);
+      });
+      return Array.from(names);
+    }
     (product.variations || []).forEach(variation => {
       (variation.materials || []).forEach(material => {
         if (material.objectName) names.add(material.objectName);
@@ -871,6 +897,14 @@ export function Produtos() {
 
   const getProductFilamentSummary = (product: Product | Partial<Product>) => {
     const names = new Set<string>();
+    if (product.productionTables && product.productionTables.length > 0) {
+      product.productionTables.forEach(table => {
+        table.filaments.forEach(filament => {
+          if (filament.filamentName) names.add(filament.filamentName);
+        });
+      });
+      return Array.from(names);
+    }
     (product.variations || []).forEach(variation => {
       (variation.materials || []).forEach(material => {
         const filament = filaments.find(item => item.id === material.filamentId);
@@ -891,6 +925,44 @@ export function Produtos() {
       ...product,
       variations,
     };
+  };
+
+  const getProductProductionTables = (product: Product | Partial<Product>) => {
+    if (product.productionTables && product.productionTables.length > 0) {
+      return product.productionTables;
+    }
+
+    const grouped = new Map<string, ProductProductionTable>();
+    (product.variations || []).forEach((variation) => {
+      (variation.materials || []).forEach((material) => {
+        const key = material.objectName || material.id;
+        const filament = filaments.find(item => item.id === material.filamentId);
+        if (!grouped.has(key)) {
+          grouped.set(key, {
+            id: key,
+            tableName: material.objectName || 'Mesa',
+            scheduledAt: material.startTime || '',
+            hours: Number(material.printTimeHours) || 0,
+            filaments: [],
+          });
+        }
+
+        const table = grouped.get(key)!;
+        table.hours = Number((table.hours || 0) + (Number(material.printTimeHours) || 0));
+        if (!table.scheduledAt && material.startTime) {
+          table.scheduledAt = material.startTime;
+        }
+        table.filaments.push({
+          id: material.id,
+          filamentId: material.filamentId,
+          filamentName: filament ? `${filament.material} ${filament.color}` : '',
+          quantityKg: Number(((Number(material.weightGrams) || 0) / 1000).toFixed(3)),
+          productsCount: Number(material.pieces) || 0,
+        });
+      });
+    });
+
+    return Array.from(grouped.values());
   };
 
   const isLightColor = (hex?: string) => {
@@ -1048,7 +1120,8 @@ export function Produtos() {
               fixedCost: 0,
               technicalSheet: { dimensions: '', infillPercentage: 15, layerHeight: 0.2, supports: false, postProcessing: '' },
               variations: [{...defaultVariation, id: Date.now().toString()}],
-              files: []
+              files: [],
+              productionTables: [],
             });
             setEditingId(null);
             setShowForm(true);
@@ -1175,6 +1248,37 @@ export function Produtos() {
                               </span>
                             ))}
                           </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {getProductProductionTables(formData).length > 0 && (
+                      <div className="mb-6 bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-3">Lógica de Mesas do Produto</div>
+                        <div className="space-y-3">
+                          {getProductProductionTables(formData).map(table => (
+                            <div key={table.id} className="rounded-lg bg-surface-container-lowest border border-outline-variant/10 p-3">
+                              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-2">
+                                <div>
+                                  <div className="text-sm font-bold text-on-surface">{table.tableName}</div>
+                                  {table.scheduledAt && (
+                                    <div className="text-[10px] uppercase tracking-widest text-on-surface-variant mt-1">
+                                      {new Date(table.scheduledAt).toLocaleString('pt-BR')}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="text-xs font-bold text-primary">{Number(table.hours || 0).toFixed(1)} h</div>
+                              </div>
+
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {table.filaments.map(filament => (
+                                  <span key={filament.id} className="px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold">
+                                    {filament.filamentName || 'Filamento'} • {Number(filament.quantityKg || 0).toFixed(2)} kg • {Number(filament.productsCount || 0)} un
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
