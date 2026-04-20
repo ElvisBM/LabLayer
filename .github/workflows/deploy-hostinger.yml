@@ -31,13 +31,14 @@ jobs:
       - name: Configure SSH
         env:
           HOSTINGER_SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
-          HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST }}
+          HOSTINGER_KNOWN_HOSTS: ${{ secrets.HOSTINGER_KNOWN_HOSTS }}
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           printf '%s\n' "$HOSTINGER_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "$HOSTINGER_HOST" >> ~/.ssh/known_hosts
+          printf '%s\n' "$HOSTINGER_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
 
       - name: Sync Project Files
         env:
