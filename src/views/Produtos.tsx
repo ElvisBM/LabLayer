@@ -165,6 +165,28 @@ interface ProductProductionTable {
   filaments: ProductProductionFilament[];
 }
 
+const getLocalDateTimeString = () => {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+};
+
+const createProductFilamentEntry = (): ProductProductionFilament => ({
+  id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  filamentId: '',
+  filamentName: '',
+  quantityKg: 0,
+  productsCount: 0,
+});
+
+const createProductTableEntry = (index = 1): ProductProductionTable => ({
+  id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  tableName: `Mesa ${index}`,
+  scheduledAt: getLocalDateTimeString(),
+  hours: 1,
+  filaments: [createProductFilamentEntry()],
+});
+
 interface Product {
   id: string;
   name: string;
@@ -288,13 +310,50 @@ export function Produtos() {
     variations: [defaultVariation],
     files: [],
     wastes: [],
-    productionTables: [],
+    productionTables: [createProductTableEntry(1)],
   });
 
   const parseLocaleNumber = (value: string) => {
     const normalized = value.replace(',', '.').trim();
     const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const buildVariationFromProductionTables = (tables: ProductProductionTable[], baseVariation?: Variation): Variation => {
+    const materials = tables.flatMap((table, tableIndex) =>
+      (table.filaments || [])
+        .filter(item => item.filamentId)
+        .map((item, filamentIndex) => ({
+          id: item.id || `${table.id}-${filamentIndex}`,
+          filamentId: item.filamentId,
+          weightGrams: Number((Number(item.quantityKg || 0) * 1000).toFixed(2)),
+          purgeGrams: 0,
+          objectName: table.tableName || `Mesa ${tableIndex + 1}`,
+          pieces: Number(item.productsCount) || 0,
+          printTimeHours: Number(table.hours) || 0,
+          startTime: table.scheduledAt || '',
+        })),
+    );
+
+    const firstFilament = filaments.find(item => item.id === materials[0]?.filamentId);
+    const totalWeightGrams = materials.reduce((sum, item) => sum + (Number(item.weightGrams) || 0), 0);
+    const totalHours = tables.reduce((sum, table) => sum + (Number(table.hours) || 0), 0);
+    const totalPieces = tables.reduce(
+      (sum, table) => sum + table.filaments.reduce((tableSum, filament) => tableSum + (Number(filament.productsCount) || 0), 0),
+      0,
+    );
+
+    return {
+      ...(baseVariation || defaultVariation),
+      id: baseVariation?.id || Date.now().toString(),
+      color: baseVariation?.color || firstFilament?.color || 'Padrão',
+      material: baseVariation?.material || firstFilament?.material || 'PLA',
+      materials,
+      weightGrams: Number(totalWeightGrams.toFixed(2)),
+      printTimeHours: Number(totalHours.toFixed(2)),
+      quantityPerPrint: totalPieces > 0 ? totalPieces : 1,
+      filamentId: materials[0]?.filamentId || '',
+    };
   };
 
   useEffect(() => {
@@ -447,7 +506,36 @@ export function Produtos() {
     if (!tenantId) return;
 
     try {
-      const sanitizedVariations = (formData.variations || []).map(v => ({
+      const sanitizedProductionTables = (formData.productionTables || []).map((table, index) => ({
+        id: table.id,
+        tableName: table.tableName || `Mesa ${index + 1}`,
+        scheduledAt: table.scheduledAt || getLocalDateTimeString(),
+        hours: Number(table.hours) || 0,
+        filaments: (table.filaments || [])
+          .map(item => {
+            const filament = filaments.find(f => f.id === item.filamentId);
+            return {
+              ...item,
+              filamentId: item.filamentId || '',
+              filamentName: item.filamentName || (filament ? `${filament.material} ${filament.color}` : ''),
+              quantityKg: Number(item.quantityKg) || 0,
+              productsCount: Number(item.productsCount) || 0,
+            };
+          })
+          .filter(item => item.filamentId),
+      }));
+
+      const sourceVariations = sanitizedProductionTables.length > 0
+        ? [
+            buildVariationFromProductionTables(
+              sanitizedProductionTables,
+              (formData.variations || [])[0],
+            ),
+            ...(formData.variations || []).slice(1),
+          ]
+        : (formData.variations || []);
+
+      const sanitizedVariations = sourceVariations.map(v => ({
         ...v,
         filamentId: v.filamentId || '',
         printerId: v.printerId || '',
@@ -489,7 +577,7 @@ export function Produtos() {
         variations: sanitizedVariations,
         files: formData.files || [],
         wastes: sanitizedWastes,
-        productionTables: formData.productionTables || [],
+        productionTables: sanitizedProductionTables,
       });
 
       // Stock diff calculation
@@ -569,7 +657,7 @@ export function Produtos() {
         variations: [{...defaultVariation, id: Date.now().toString()}],
         files: [],
         wastes: [],
-        productionTables: [],
+        productionTables: [createProductTableEntry(1)],
       });
       toast.success(editingId ? "Produto salvo com sucesso!" : "Novo produto adicionado e materiais deduzidos!");
     } catch (error: any) {
@@ -579,7 +667,13 @@ export function Produtos() {
   };
 
   const handleEdit = (p: Product) => {
-    setFormData(prioritizeScheduledVariations(p));
+    const prioritizedProduct = prioritizeScheduledVariations(p);
+    setFormData({
+      ...prioritizedProduct,
+      productionTables: prioritizedProduct.productionTables && prioritizedProduct.productionTables.length > 0
+        ? prioritizedProduct.productionTables
+        : getProductProductionTables(prioritizedProduct),
+    });
     setEditingId(p.id);
     setShowForm(true);
     setActiveTab('basic');
@@ -798,6 +892,78 @@ export function Produtos() {
             : [...currentPrices, { channel: channelName, price, feePercentage: 0 }]
         };
       })
+    }));
+  };
+
+  const updateProductionTable = (tableId: string, field: keyof ProductProductionTable, value: string | number) => {
+    setFormData(prev => ({
+      ...prev,
+      productionTables: (prev.productionTables || []).map(table => table.id === tableId ? { ...table, [field]: value } : table),
+    }));
+  };
+
+  const addProductionTable = () => {
+    setFormData(prev => ({
+      ...prev,
+      productionTables: [...(prev.productionTables || []), createProductTableEntry((prev.productionTables || []).length + 1)],
+    }));
+  };
+
+  const removeProductionTable = (tableId: string) => {
+    setFormData(prev => {
+      const currentTables = prev.productionTables || [];
+      return {
+        ...prev,
+        productionTables: currentTables.length > 1
+          ? currentTables.filter(table => table.id !== tableId)
+          : [createProductTableEntry(1)],
+      };
+    });
+  };
+
+  const updateProductionFilament = (tableId: string, entryId: string, field: keyof ProductProductionFilament, value: string | number) => {
+    setFormData(prev => ({
+      ...prev,
+      productionTables: (prev.productionTables || []).map(table => {
+        if (table.id !== tableId) return table;
+        return {
+          ...table,
+          filaments: table.filaments.map(entry => {
+            if (entry.id !== entryId) return entry;
+            if (field === 'filamentId') {
+              const filament = filaments.find(item => item.id === value);
+              return {
+                ...entry,
+                filamentId: String(value),
+                filamentName: filament ? `${filament.material} ${filament.color}` : '',
+              };
+            }
+            return { ...entry, [field]: value };
+          }),
+        };
+      }),
+    }));
+  };
+
+  const addProductionFilament = (tableId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      productionTables: (prev.productionTables || []).map(table => table.id === tableId
+        ? { ...table, filaments: [...table.filaments, createProductFilamentEntry()] }
+        : table),
+    }));
+  };
+
+  const removeProductionFilament = (tableId: string, entryId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      productionTables: (prev.productionTables || []).map(table => {
+        if (table.id !== tableId) return table;
+        const nextFilaments = table.filaments.length > 1
+          ? table.filaments.filter(entry => entry.id !== entryId)
+          : [createProductFilamentEntry()];
+        return { ...table, filaments: nextFilaments };
+      }),
     }));
   };
 
@@ -1121,7 +1287,7 @@ export function Produtos() {
               technicalSheet: { dimensions: '', infillPercentage: 15, layerHeight: 0.2, supports: false, postProcessing: '' },
               variations: [{...defaultVariation, id: Date.now().toString()}],
               files: [],
-              productionTables: [],
+              productionTables: [createProductTableEntry(1)],
             });
             setEditingId(null);
             setShowForm(true);
@@ -1295,27 +1461,20 @@ export function Produtos() {
                       </div>
 
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant flex gap-1 items-center">
-                          Tempo Total (horas)
-                          {formData.variations[0].materials?.some(m => m.printTimeHours !== undefined) && <span className="text-[8px] bg-primary/10 text-primary px-1 rounded">Auto</span>}
-                        </label>
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Tempo Total (horas)</label>
                         <input type="number" 
                           step="0.1"
-                          value={formData.variations[0].printTimeHours || ''} 
-                          onChange={e => !formData.variations[0].materials?.some(m => m.printTimeHours !== undefined) && updateVariation(formData.variations![0].id, 'printTimeHours', Number(e.target.value))} 
-                          readOnly={formData.variations[0].materials?.some(m => m.printTimeHours !== undefined) || false}
-                          className={`w-full border-none rounded p-2.5 text-sm tabular-nums ${formData.variations[0].materials?.some(m => m.printTimeHours !== undefined) ? 'bg-surface-container/50 text-on-surface-variant cursor-not-allowed' : 'bg-surface-container focus:ring-2 focus:ring-primary outline-none'}`} 
-                          placeholder="Ex: 2.5" 
+                          value={Number((formData.productionTables || []).reduce((sum, table) => sum + (Number(table.hours) || 0), 0).toFixed(2)) || ''} 
+                          readOnly
+                          className="w-full border-none rounded p-2.5 text-sm tabular-nums bg-surface-container/50 text-on-surface-variant cursor-not-allowed" 
+                          placeholder="Ex: 2.5"
                         />
                       </div>
 
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant flex gap-1 items-center">
-                          Rendimento (Produto Final)
-                          <span className="text-[8px] bg-primary/10 text-primary px-1 rounded">Auto</span>
-                        </label>
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Rendimento (Produto Final)</label>
                         <input type="number" 
-                          value={formData.variations[0].quantityPerPrint || '1'} 
+                          value={(formData.productionTables || []).reduce((sum, table) => sum + table.filaments.reduce((tableSum, filament) => tableSum + (Number(filament.productsCount) || 0), 0), 0) || '1'} 
                           readOnly 
                           className="w-full bg-surface-container/50 text-on-surface-variant border-none rounded p-2.5 text-sm cursor-not-allowed font-bold tabular-nums" 
                         />
@@ -1323,81 +1482,113 @@ export function Produtos() {
                       
                       <div className="space-y-1.5 md:col-span-3">
                         <div className="flex justify-between items-center">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Filamentos</label>
-                          <button onClick={() => addMaterialToVariation(formData.variations![0].id)} className="text-[10px] text-primary font-bold hover:underline">
-                            + Adicionar
+                          <div>
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Mesas do Produto</label>
+                            <p className="text-xs text-on-surface-variant mt-1">Cadastre por mesa: horário, horas e filamentos. O tempo não fica mais no filamento.</p>
+                          </div>
+                          <button type="button" onClick={addProductionTable} className="text-[10px] text-primary font-bold hover:underline">
+                            + Adicionar Mesa
                           </button>
                         </div>
-                        <div className="space-y-2">
-                          {(formData.variations[0].materials || []).map(mat => {
-                            const selectedFilament = filaments.find(f => f.id === mat.filamentId);
-                            return (
-                            <div key={mat.id} className="flex gap-2 items-center bg-surface-container-low p-2 rounded border border-outline-variant/10">
-                              {selectedFilament && (
-                                <div className="w-4 h-4 rounded-full border border-outline-variant/30 flex-shrink-0" style={{ backgroundColor: selectedFilament.colorHex || '#ccc' }} title={selectedFilament.color} />
-                              )}
-                              <div className="flex-1 min-w-[150px]">
-                                <SearchableSelectFilament 
-                                  value={mat.filamentId || ''} 
-                                  onChange={v => updateMaterial(formData.variations![0].id, mat.id, 'filamentId', v)} 
-                                  filaments={filaments} 
-                                  placeholder="Localizar filamento..." 
-                                />
-                              </div>
-                              <div className="flex-1 relative group min-w-[100px]">
-                                <input type="text" value={mat.objectName || ''} onChange={e => updateMaterial(formData.variations![0].id, mat.id, 'objectName', e.target.value)} className="w-full bg-surface-container border-none rounded p-1.5 text-xs" placeholder="Nome (ex: Capa)" />
-                                <div className="absolute left-0 -bottom-8 hidden group-hover:block bg-surface-container-highest text-on-surface text-[10px] p-1 rounded z-10 w-48 shadow-lg">Partes com o mesmo nome agem como alternativas para o estoque.</div>
-                              </div>
-                              <div className="w-16">
-                                <input type="number" value={mat.weightGrams || ''} onChange={e => updateMaterial(formData.variations![0].id, mat.id, 'weightGrams', parseLocaleNumber(e.target.value))} className="w-full bg-surface-container border-none rounded p-1.5 text-xs" placeholder="Peso(g)" />
-                              </div>
-                              <div className="w-16">
-                                <input type="number" value={mat.purgeGrams || ''} onChange={e => updateMaterial(formData.variations![0].id, mat.id, 'purgeGrams', parseLocaleNumber(e.target.value))} className="w-full bg-surface-container border-none rounded p-1.5 text-xs" placeholder="Purga" />
-                              </div>
-                              <div className="w-14">
-                                <input type="number" value={mat.pieces === undefined ? '' : mat.pieces} onChange={e => updateMaterial(formData.variations![0].id, mat.id, 'pieces', Math.max(0, Number(e.target.value)))} className="w-full bg-surface-container border-none rounded p-1.5 text-xs" placeholder="Qtd" title="Qtd de Peças Feitas" />
-                              </div>
-                              <div className="flex gap-1 items-center bg-surface-container rounded p-1">
-                                <input 
-                                  type="time" 
-                                  value={mat.startTime || ''} 
-                                  onChange={e => {
-                                    updateMaterial(formData.variations![0].id, mat.id, 'startTime', e.target.value);
-                                    handleTimeCalculate(e.target.value, mat.endTime || '', (hrs) => updateMaterial(formData.variations![0].id, mat.id, 'printTimeHours', hrs));
-                                  }}
-                                  className="w-16 bg-transparent border-none text-[10px] p-0 focus:ring-0 text-on-surface-variant text-center"
-                                  title="Hora Início"
-                                />
-                                <span className="text-[10px] text-on-surface-variant font-bold leading-none">-</span>
-                                <input 
-                                  type="time" 
-                                  value={mat.endTime || ''} 
-                                  onChange={e => {
-                                    updateMaterial(formData.variations![0].id, mat.id, 'endTime', e.target.value);
-                                    handleTimeCalculate(mat.startTime || '', e.target.value, (hrs) => updateMaterial(formData.variations![0].id, mat.id, 'printTimeHours', hrs));
-                                  }}
-                                  className="w-16 bg-transparent border-none text-[10px] p-0 focus:ring-0 text-on-surface-variant text-center"
-                                  title="Hora Fim"
-                                />
-                              </div>
-                              <div className="w-16">
-                                <input type="number" 
-                                  step="0.1"
-                                  value={mat.printTimeHours === undefined ? '' : mat.printTimeHours} 
-                                  onChange={e => updateMaterial(formData.variations![0].id, mat.id, 'printTimeHours', Math.max(0, Number(e.target.value)))} 
-                                  className="w-full bg-surface-container border-none rounded p-1.5 text-xs font-bold text-primary tabular-nums" 
-                                  placeholder="Total(h)" 
-                                  title="Tempo de Impressão (horas)" 
-                                />
-                              </div>
-                              <button onClick={() => removeMaterial(formData.variations![0].id, mat.id)} className="p-1 text-on-surface-variant hover:text-error">
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            </div>
-                          )})}
-                          {(!formData.variations[0].materials || formData.variations[0].materials.length === 0) && (
-                            <div className="text-[10px] text-on-surface-variant italic">Nenhum filamento adicionado.</div>
+                        <div className="space-y-4">
+                          {(formData.productionTables || []).length === 0 && (
+                            <div className="text-[10px] text-on-surface-variant italic">Nenhuma mesa cadastrada.</div>
                           )}
+                          {(formData.productionTables || []).map((table, tableIndex) => (
+                            <div key={table.id} className="space-y-4 rounded-xl border border-outline-variant/20 bg-surface-container p-4">
+                              <div className="flex items-center justify-between gap-3">
+                                <h5 className="text-sm font-bold text-on-surface">{table.tableName || `Mesa ${tableIndex + 1}`}</h5>
+                                <button type="button" onClick={() => removeProductionTable(table.id)} className="p-2 text-error hover:bg-surface-container-lowest rounded">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="space-y-1.5">
+                                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Mesa</label>
+                                  <input
+                                    type="text"
+                                    value={table.tableName}
+                                    onChange={e => updateProductionTable(table.id, 'tableName', e.target.value)}
+                                    className="w-full bg-surface-container-lowest border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                                    placeholder={`Mesa ${tableIndex + 1}`}
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Horas da Mesa</label>
+                                  <input
+                                    type="number"
+                                    step="0.1"
+                                    min="0"
+                                    value={table.hours}
+                                    onChange={e => updateProductionTable(table.id, 'hours', Number(e.target.value) || 0)}
+                                    className="w-full bg-surface-container-lowest border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Data e Hora da Mesa</label>
+                                  <input
+                                    type="datetime-local"
+                                    value={table.scheduledAt}
+                                    onChange={e => updateProductionTable(table.id, 'scheduledAt', e.target.value)}
+                                    className="w-full bg-surface-container-lowest border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div>
+                                    <h6 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Filamentos da Mesa</h6>
+                                    <p className="text-xs text-on-surface-variant">Informe o filamento, a quantidade e quantos produtos saem dele.</p>
+                                  </div>
+                                  <button type="button" onClick={() => addProductionFilament(table.id)} className="px-3 py-1.5 bg-secondary-container text-on-secondary-container rounded text-xs font-bold">
+                                    Adicionar Filamento
+                                  </button>
+                                </div>
+
+                                <div className="space-y-3">
+                                  {table.filaments.map(entry => (
+                                    <div key={entry.id} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end bg-surface-container-lowest rounded-lg p-3">
+                                      <SearchableSelectFilament
+                                        value={entry.filamentId}
+                                        onChange={(value) => updateProductionFilament(table.id, entry.id, 'filamentId', value)}
+                                        filaments={filaments}
+                                        placeholder="Selecionar filamento"
+                                      />
+                                      <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Qtd Filamento (Kg)</label>
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          value={entry.quantityKg || ''}
+                                          onChange={e => updateProductionFilament(table.id, entry.id, 'quantityKg', Number(e.target.value))}
+                                          className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
+                                        />
+                                      </div>
+                                      <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Qtd Produtos por Filamento</label>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          value={entry.productsCount || ''}
+                                          onChange={e => updateProductionFilament(table.id, entry.id, 'productsCount', Number(e.target.value))}
+                                          className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
+                                        />
+                                      </div>
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="text-xs text-on-surface-variant">{entry.filamentName || 'Sem filamento selecionado'}</div>
+                                        <button type="button" onClick={() => removeProductionFilament(table.id, entry.id)} className="p-2 text-error hover:bg-surface-container rounded">
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>
