@@ -323,6 +323,7 @@ export function Produtos() {
   const [energyPrice, setEnergyPrice] = useState<number>(0.95);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'basic' | 'advanced'>('basic');
   const [advancedTab, setAdvancedTab] = useState<'tech' | 'variations' | 'wastes' | 'intelligence' | 'files'>('tech');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
@@ -744,7 +745,7 @@ export function Produtos() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!tenantId || !window.confirm("Tem certeza que quer excluir o produto permanentemente e voltar o saldo dos materiais?")) return;
+    if (!tenantId) return;
     try {
       const productToDelete = products.find(p => p.id === id);
       
@@ -793,11 +794,16 @@ export function Produtos() {
       } else {
         await deleteDoc(doc(db, `tenants/${tenantId}/products`, id));
       }
+      setDeleteTargetId(null);
       toast.success("Produto excluído com sucesso!");
     } catch (error) {
       console.error("Error deleting product:", error);
       toast.error("Erro ao excluir produto.");
     }
+  };
+
+  const requestDelete = (id: string) => {
+    setDeleteTargetId(id);
   };
 
   const addVariation = () => {
@@ -2399,10 +2405,10 @@ export function Produtos() {
                     </td>
                     <td className="p-4 text-right">
                       <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={(e) => { e.stopPropagation(); handleEdit(p); }} className="p-1.5 text-slate-400 hover:text-primary hover:bg-surface-container transition-colors rounded">
+                        <button type="button" onClick={(e) => { e.stopPropagation(); handleEdit(p); }} className="p-1.5 text-slate-400 hover:text-primary hover:bg-surface-container transition-colors rounded">
                           <Edit2 className="w-4 h-4" />
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }} className="p-1.5 text-slate-400 hover:text-error hover:bg-error/10 transition-colors rounded">
+                        <button type="button" onClick={(e) => { e.stopPropagation(); requestDelete(p.id); }} className="p-1.5 text-slate-400 hover:text-error hover:bg-error/10 transition-colors rounded">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
@@ -2427,10 +2433,10 @@ export function Produtos() {
                     )}
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => handleEdit(p)} className="p-1.5 text-slate-400 hover:text-primary transition-colors rounded opacity-0 group-hover:opacity-100">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); handleEdit(p); }} className="p-1.5 text-slate-400 hover:text-primary transition-colors rounded opacity-0 group-hover:opacity-100">
                       <Edit2 className="w-4 h-4" />
                     </button>
-                    <button onClick={() => handleDelete(p.id)} className="p-1.5 text-slate-400 hover:text-error transition-colors rounded opacity-0 group-hover:opacity-100">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); requestDelete(p.id); }} className="p-1.5 text-slate-400 hover:text-error transition-colors rounded opacity-0 group-hover:opacity-100">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -2519,6 +2525,42 @@ export function Produtos() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {deleteTargetId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-surface-container-lowest border border-outline-variant/20 shadow-2xl">
+            <div className="p-6 space-y-4">
+              <div>
+                <h3 className="text-lg font-bold text-on-surface">Excluir Produto</h3>
+                <p className="text-sm text-on-surface-variant mt-1">
+                  Tem certeza que quer excluir este produto permanentemente e devolver o saldo dos materiais?
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-error-container/40 border border-error/10 p-3 text-sm text-on-surface">
+                {products.find(p => p.id === deleteTargetId)?.name || 'Produto selecionado'}
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteTargetId(null)}
+                  className="px-4 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded-lg transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(deleteTargetId)}
+                  className="px-4 py-2 bg-error text-on-error rounded-lg text-sm font-bold hover:opacity-90 transition-all"
+                >
+                  Excluir
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
