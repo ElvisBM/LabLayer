@@ -559,7 +559,7 @@ export function Produtos() {
   };
 
   const handleEdit = (p: Product) => {
-    setFormData(p);
+    setFormData(prioritizeScheduledVariations(p));
     setEditingId(p.id);
     setShowForm(true);
     setActiveTab('basic');
@@ -859,6 +859,40 @@ export function Produtos() {
     return Array.from(unique.values()).map((u, i) => ({ ...u, id: String(i) }));
   };
 
+  const getProductScheduleTableNames = (product: Product | Partial<Product>) => {
+    const names = new Set<string>();
+    (product.variations || []).forEach(variation => {
+      (variation.materials || []).forEach(material => {
+        if (material.objectName) names.add(material.objectName);
+      });
+    });
+    return Array.from(names);
+  };
+
+  const getProductFilamentSummary = (product: Product | Partial<Product>) => {
+    const names = new Set<string>();
+    (product.variations || []).forEach(variation => {
+      (variation.materials || []).forEach(material => {
+        const filament = filaments.find(item => item.id === material.filamentId);
+        if (filament) names.add(`${filament.material} ${filament.color}`);
+      });
+    });
+    return Array.from(names);
+  };
+
+  const prioritizeScheduledVariations = (product: Product): Product => {
+    const variations = [...(product.variations || [])].sort((a, b) => {
+      const aScore = ((a.id || '').startsWith('agenda-') ? 2 : 0) + ((a.materials || []).length > 0 ? 1 : 0);
+      const bScore = ((b.id || '').startsWith('agenda-') ? 2 : 0) + ((b.materials || []).length > 0 ? 1 : 0);
+      return bScore - aScore;
+    });
+
+    return {
+      ...product,
+      variations,
+    };
+  };
+
   const isLightColor = (hex?: string) => {
     if (!hex) return false;
     const normalized = hex.trim().toLowerCase();
@@ -1118,6 +1152,32 @@ export function Produtos() {
                 {formData.variations && formData.variations.length > 0 && (
                   <div className="pt-6 border-t border-outline-variant/20">
                     <h3 className="text-sm font-bold text-on-surface mb-4 flex items-center gap-2"><Layers className="w-4 h-4 text-primary" /> Informações de Produção (Padrão)</h3>
+
+                    {(getProductFilamentSummary(formData).length > 0 || getProductScheduleTableNames(formData).length > 0) && (
+                      <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
+                          <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Filamentos do Produto</div>
+                          <div className="flex flex-wrap gap-2">
+                            {getProductFilamentSummary(formData).map(name => (
+                              <span key={name} className="px-2 py-1 rounded-full bg-surface-container text-xs font-medium text-on-surface">
+                                {name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
+                          <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Mesas do Agendamento</div>
+                          <div className="flex flex-wrap gap-2">
+                            {getProductScheduleTableNames(formData).map(name => (
+                              <span key={name} className="px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold">
+                                {name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       <div className="space-y-1.5">
@@ -1937,6 +1997,22 @@ export function Produtos() {
                           ))}
                           {getProductUniqueColors(p).length > 5 && <span className="text-[10px] font-bold text-on-surface-variant ml-1">+{getProductUniqueColors(p).length - 5}</span>}
                         </div>
+                        {(getProductFilamentSummary(p).length > 0 || getProductScheduleTableNames(p).length > 0) && (
+                          <div className="flex flex-col gap-1 ml-3">
+                            {getProductFilamentSummary(p).length > 0 && (
+                              <span className="text-[10px] text-on-surface-variant">
+                                {getProductFilamentSummary(p).slice(0, 2).join(' • ')}
+                                {getProductFilamentSummary(p).length > 2 ? ' ...' : ''}
+                              </span>
+                            )}
+                            {getProductScheduleTableNames(p).length > 0 && (
+                              <span className="text-[10px] text-primary font-bold">
+                                {getProductScheduleTableNames(p).slice(0, 2).join(' • ')}
+                                {getProductScheduleTableNames(p).length > 2 ? ' ...' : ''}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td className="p-4">
