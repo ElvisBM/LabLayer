@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, CheckCircle2, Clock3, Plus, Trash2, Layers, Package } from 'lucide-react';
+import { CalendarDays, CheckCircle2, Clock3, Layers, Package, Plus, Trash2 } from 'lucide-react';
 import { addDoc, collection, deleteDoc, doc, onSnapshot, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -11,21 +11,32 @@ interface ProductionFilament {
   filamentId: string;
   filamentName: string;
   quantityKg: number;
+  productsCount: number;
+}
+
+interface ProductionTable {
+  id: string;
+  tableName: string;
+  scheduledAt: string;
+  hours: number;
+  filaments: ProductionFilament[];
 }
 
 interface ProductionOrder {
   id: string;
   productName: string;
   productId?: string;
-  tablesCount: number;
-  scheduledAt: string;
-  hoursPerTable: number;
-  totalHours: number;
   status: 'fila' | 'produzindo' | 'concluida';
-  filaments: ProductionFilament[];
+  tables?: ProductionTable[];
   notes?: string;
   createdAt?: string;
   completedAt?: string;
+  // Legacy fields kept for backward compatibility
+  tablesCount?: number;
+  scheduledAt?: string;
+  hoursPerTable?: number;
+  totalHours?: number;
+  filaments?: ProductionFilament[];
 }
 
 interface FilamentOption {
@@ -38,8 +49,7 @@ interface FilamentOption {
 interface ProductOption {
   id: string;
   name: string;
-  baseSku?: string;
-  status?: string;
+  category?: string;
   stock?: number;
 }
 
@@ -49,10 +59,24 @@ const getLocalDateTimeString = () => {
   return d.toISOString().slice(0, 16);
 };
 
+const createFilamentEntry = (): ProductionFilament => ({
+  id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  filamentId: '',
+  filamentName: '',
+  quantityKg: 0,
+  productsCount: 0,
+});
+
+const createTableEntry = (index = 1): ProductionTable => ({
+  id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  tableName: `Mesa ${index}`,
+  scheduledAt: getLocalDateTimeString(),
+  hours: 1,
+  filaments: [createFilamentEntry()],
+});
+
 const getMonthKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-
 const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
-
 const endOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0);
 
 const buildCalendarDays = (viewDate: Date) => {
@@ -82,6 +106,66 @@ const buildCalendarDays = (viewDate: Date) => {
   return cells;
 };
 
+const normalizeTable = (table: any, index: number): ProductionTable => ({
+  id: table?.id || `legacy-table-${index}`,
+  tableName: table?.tableName || `Mesa ${index + 1}`,
+  scheduledAt: table?.scheduledAt || getLocalDateTimeString(),
+  hours: Number(table?.hours) || Number(table?.hoursPerTable) || 0,
+  filaments: Array.isArray(table?.filaments) && table.filaments.length > 0
+    ? table.filaments.map((item: any, itemIndex: number) => ({
+        id: item?.id || `legacy-filament-${index}-${itemIndex}`,
+        filamentId: item?.filamentId || '',
+        filamentName: item?.filamentName || '',
+        quantityKg: Number(item?.quantityKg) || 0,
+        productsCount: Number(item?.productsCount) || 0,
+      }))
+    : [createFilamentEntry()],
+});
+
+const normalizeOrder = (order: ProductionOrder): ProductionOrder => {
+  if (Array.isArray(order.tables) && order.tables.length > 0) {
+    return {
+      ...order,
+      tables: order.tables.map((table, index) => normalizeTable(table, index)),
+    };
+  }
+
+  return {
+    ...order,
+    tables: [
+      {
+        id: 'legacy-table-0',
+        tableName: 'Mesa 1',
+        scheduledAt: order.scheduledAt || getLocalDateTimeString(),
+        hours: Number(order.hoursPerTable) || 0,
+        filaments: Array.isArray(order.filaments) && order.filaments.length > 0
+          ? order.filaments.map((item, index) => ({
+              id: item.id || `legacy-filament-${index}`,
+              filamentId: item.filamentId || '',
+              filamentName: item.filamentName || '',
+              quantityKg: Number(item.quantityKg) || 0,
+              productsCount: Number(item.productsCount) || 0,
+            }))
+          : [createFilamentEntry()],
+      },
+    ],
+  };
+};
+
+const getOrderTables = (order: ProductionOrder) => normalizeOrder(order).tables || [];
+const getOrderTotalHours = (order: ProductionOrder) => getOrderTables(order).reduce((acc, table) => acc + (Number(table.hours) || 0), 0);
+const getOrderProducedUnits = (order: ProductionOrder) => {
+  const total = getOrderTables(order).reduce((acc, table) => {
+    return acc + table.filaments.reduce((sum, filament) => sum + (Number(filament.productsCount) || 0), 0);
+  }, 0);
+  return total > 0 ? total : getOrderTables(order).length;
+};
+const getOrderFirstSchedule = (order: ProductionOrder) => {
+  const tables = getOrderTables(order);
+  const sorted = [...tables].sort((a, b) => (a.scheduledAt || '').localeCompare(b.scheduledAt || ''));
+  return sorted[0]?.scheduledAt || '';
+};
+
 export function AgendaProducao() {
   const { tenantId } = useAuth();
   const [orders, setOrders] = useState<ProductionOrder[]>([]);
@@ -93,10 +177,7 @@ export function AgendaProducao() {
   const [formData, setFormData] = useState({
     productName: '',
     productId: '',
-    tablesCount: 1,
-    scheduledAt: getLocalDateTimeString(),
-    hoursPerTable: 1,
-    filaments: [{ id: Date.now().toString(), filamentId: '', filamentName: '', quantityKg: 0 }] as ProductionFilament[],
+    tables: [createTableEntry(1)] as ProductionTable[],
     notes: '',
   });
 
@@ -104,7 +185,7 @@ export function AgendaProducao() {
     if (!tenantId) return;
 
     const unsubOrders = onSnapshot(collection(db, `tenants/${tenantId}/productionOrders`), (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProductionOrder));
+      const data = snapshot.docs.map(doc => normalizeOrder({ id: doc.id, ...doc.data() } as ProductionOrder));
       setOrders(data);
     }, (error) => {
       console.error('Error fetching production orders:', error);
@@ -112,13 +193,11 @@ export function AgendaProducao() {
     });
 
     const unsubProducts = onSnapshot(collection(db, `tenants/${tenantId}/products`), (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProductOption));
-      setProducts(data);
+      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProductOption)));
     });
 
     const unsubFilaments = onSnapshot(collection(db, `tenants/${tenantId}/filaments`), (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FilamentOption));
-      setFilaments(data);
+      setFilaments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FilamentOption)));
     });
 
     return () => {
@@ -137,72 +216,49 @@ export function AgendaProducao() {
   }, [filaments]);
 
   const sortedOrders = useMemo(() => {
-    return [...orders].sort((a, b) => (a.scheduledAt || '').localeCompare(b.scheduledAt || ''));
+    return [...orders].sort((a, b) => getOrderFirstSchedule(a).localeCompare(getOrderFirstSchedule(b)));
   }, [orders]);
 
   const queueOrders = sortedOrders.filter(order => order.status !== 'concluida');
   const completedOrders = sortedOrders.filter(order => order.status === 'concluida');
 
   const calendarItemsByDay = useMemo(() => {
-    const grouped: Record<string, ProductionOrder[]> = {};
+    const grouped: Record<string, Array<{ orderId: string; productName: string; status: ProductionOrder['status']; scheduledAt: string; tableName: string }>> = {};
+
     sortedOrders.forEach(order => {
-      if (!order.scheduledAt) return;
-      const key = order.scheduledAt.slice(0, 10);
-      grouped[key] = [...(grouped[key] || []), order];
+      getOrderTables(order).forEach(table => {
+        const key = (table.scheduledAt || '').slice(0, 10);
+        if (!key) return;
+        grouped[key] = [
+          ...(grouped[key] || []),
+          {
+            orderId: order.id,
+            productName: order.productName,
+            status: order.status,
+            scheduledAt: table.scheduledAt,
+            tableName: table.tableName,
+          }
+        ];
+      });
     });
+
+    Object.keys(grouped).forEach(key => {
+      grouped[key].sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
+    });
+
     return grouped;
   }, [sortedOrders]);
 
   const calendarCells = useMemo(() => buildCalendarDays(calendarDate), [calendarDate]);
-
-  const totalQueuedHours = queueOrders.reduce((acc, order) => acc + (Number(order.totalHours) || 0), 0);
+  const totalQueuedHours = queueOrders.reduce((acc, order) => acc + getOrderTotalHours(order), 0);
 
   const resetForm = () => {
     setFormData({
       productName: '',
       productId: '',
-      tablesCount: 1,
-      scheduledAt: getLocalDateTimeString(),
-      hoursPerTable: 1,
-      filaments: [{ id: Date.now().toString(), filamentId: '', filamentName: '', quantityKg: 0 }],
+      tables: [createTableEntry(1)],
       notes: '',
     });
-  };
-
-  const updateFilamentEntry = (entryId: string, field: keyof ProductionFilament, value: string | number) => {
-    setFormData(prev => ({
-      ...prev,
-      filaments: prev.filaments.map(entry => {
-        if (entry.id !== entryId) return entry;
-
-        if (field === 'filamentId') {
-          const filament = filaments.find(item => item.id === value);
-          return {
-            ...entry,
-            filamentId: String(value),
-            filamentName: filament ? `${filament.material} ${filament.color}` : '',
-          };
-        }
-
-        return { ...entry, [field]: value };
-      })
-    }));
-  };
-
-  const addFilamentEntry = () => {
-    setFormData(prev => ({
-      ...prev,
-      filaments: [...prev.filaments, { id: Date.now().toString(), filamentId: '', filamentName: '', quantityKg: 0 }]
-    }));
-  };
-
-  const removeFilamentEntry = (entryId: string) => {
-    setFormData(prev => ({
-      ...prev,
-      filaments: prev.filaments.length > 1
-        ? prev.filaments.filter(entry => entry.id !== entryId)
-        : [{ id: Date.now().toString(), filamentId: '', filamentName: '', quantityKg: 0 }]
-    }));
   };
 
   const handleSelectProduct = (value: string) => {
@@ -214,37 +270,108 @@ export function AgendaProducao() {
     }));
   };
 
+  const updateTable = (tableId: string, field: keyof ProductionTable, value: string | number) => {
+    setFormData(prev => ({
+      ...prev,
+      tables: prev.tables.map(table => table.id === tableId ? { ...table, [field]: value } : table),
+    }));
+  };
+
+  const addTable = () => {
+    setFormData(prev => ({
+      ...prev,
+      tables: [...prev.tables, createTableEntry(prev.tables.length + 1)],
+    }));
+  };
+
+  const removeTable = (tableId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      tables: prev.tables.length > 1
+        ? prev.tables.filter(table => table.id !== tableId)
+        : [createTableEntry(1)],
+    }));
+  };
+
+  const updateFilamentEntry = (tableId: string, entryId: string, field: keyof ProductionFilament, value: string | number) => {
+    setFormData(prev => ({
+      ...prev,
+      tables: prev.tables.map(table => {
+        if (table.id !== tableId) return table;
+
+        return {
+          ...table,
+          filaments: table.filaments.map(entry => {
+            if (entry.id !== entryId) return entry;
+            if (field === 'filamentId') {
+              const filament = filaments.find(item => item.id === value);
+              return {
+                ...entry,
+                filamentId: String(value),
+                filamentName: filament ? `${filament.material} ${filament.color}` : '',
+              };
+            }
+            return { ...entry, [field]: value };
+          })
+        };
+      })
+    }));
+  };
+
+  const addFilamentEntry = (tableId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      tables: prev.tables.map(table => table.id === tableId
+        ? { ...table, filaments: [...table.filaments, createFilamentEntry()] }
+        : table),
+    }));
+  };
+
+  const removeFilamentEntry = (tableId: string, entryId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      tables: prev.tables.map(table => {
+        if (table.id !== tableId) return table;
+        const nextFilaments = table.filaments.length > 1
+          ? table.filaments.filter(entry => entry.id !== entryId)
+          : [createFilamentEntry()];
+        return { ...table, filaments: nextFilaments };
+      })
+    }));
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tenantId) return;
 
     try {
-      const normalizedFilaments = formData.filaments
-        .map(entry => ({
-          ...entry,
-          filamentId: entry.filamentId || '',
-          filamentName: entry.filamentName || '',
-          quantityKg: Number(entry.quantityKg) || 0,
-        }))
-        .filter(entry => entry.filamentId && entry.quantityKg > 0);
-
-      const tablesCount = Number(formData.tablesCount) || 1;
-      const hoursPerTable = Number(formData.hoursPerTable) || 0;
+      const normalizedTables = formData.tables.map((table, index) => ({
+        id: table.id,
+        tableName: table.tableName || `Mesa ${index + 1}`,
+        scheduledAt: table.scheduledAt || getLocalDateTimeString(),
+        hours: Number(table.hours) || 0,
+        filaments: table.filaments
+          .map(entry => ({
+            ...entry,
+            filamentId: entry.filamentId || '',
+            filamentName: entry.filamentName || '',
+            quantityKg: Number(entry.quantityKg) || 0,
+            productsCount: Number(entry.productsCount) || 0,
+          }))
+          .filter(entry => entry.filamentId && (entry.quantityKg > 0 || entry.productsCount > 0)),
+      }));
 
       await addDoc(collection(db, `tenants/${tenantId}/productionOrders`), {
         productName: formData.productName || 'Produto sem nome',
         productId: formData.productId || '',
-        tablesCount,
-        scheduledAt: formData.scheduledAt || getLocalDateTimeString(),
-        hoursPerTable,
-        totalHours: tablesCount * hoursPerTable,
-        filaments: normalizedFilaments,
-        notes: formData.notes || '',
+        tables: normalizedTables,
         status: 'fila',
+        notes: formData.notes || '',
+        totalHours: normalizedTables.reduce((acc, table) => acc + (Number(table.hours) || 0), 0),
         createdAt: new Date().toISOString(),
       });
 
-      toast.success('Item adicionado na agenda de producao!');
+      toast.success('Produto adicionado na agenda de producao!');
       setShowForm(false);
       resetForm();
     } catch (error) {
@@ -282,7 +409,7 @@ export function AgendaProducao() {
     try {
       const batch = writeBatch(db);
       const existingProduct = products.find(product => product.name.trim().toLowerCase() === order.productName.trim().toLowerCase());
-      const quantityToAdd = Number(order.tablesCount) || 1;
+      const quantityToAdd = getOrderProducedUnits(order);
 
       if (existingProduct) {
         batch.update(doc(db, `tenants/${tenantId}/products`, existingProduct.id), {
@@ -330,7 +457,7 @@ export function AgendaProducao() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
           <h2 className="font-headline text-3xl font-bold text-primary tracking-tighter">Agenda de Produção</h2>
-          <p className="text-on-surface-variant font-sans text-sm mt-1">Adicione as mesas, filamentos, horas por mesa e o horário de início em uma fila simples com calendário.</p>
+          <p className="text-on-surface-variant font-sans text-sm mt-1">Cada produto agendado pode ter várias mesas, cada uma com horário, filamentos, quantidade de produtos e horas próprias.</p>
         </div>
         <button
           onClick={() => {
@@ -340,7 +467,7 @@ export function AgendaProducao() {
           className="w-full sm:w-auto px-4 py-2 bg-primary text-on-primary text-sm font-bold rounded-md hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2"
         >
           <Plus className="w-4 h-4" />
-          Novo Agendamento
+          Novo Produto Agendado
         </button>
       </div>
 
@@ -361,7 +488,7 @@ export function AgendaProducao() {
 
       {showForm && (
         <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm">
-          <h3 className="font-headline font-bold text-lg mb-6">Novo Item da Agenda</h3>
+          <h3 className="font-headline font-bold text-lg mb-6">Novo Produto na Agenda</h3>
           <form className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4" onSubmit={handleSave}>
             <div className="space-y-1.5 xl:col-span-2">
               <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Produto</label>
@@ -371,40 +498,7 @@ export function AgendaProducao() {
                 value={formData.productName}
                 onChange={e => setFormData(prev => ({ ...prev, productName: e.target.value }))}
                 className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
-                placeholder="Nome do produto que vai entrar na fila"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Qtd de Mesas</label>
-              <input
-                type="number"
-                min="1"
-                value={formData.tablesCount}
-                onChange={e => setFormData(prev => ({ ...prev, tablesCount: Number(e.target.value) || 1 }))}
-                className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Horas por Mesa</label>
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                value={formData.hoursPerTable}
-                onChange={e => setFormData(prev => ({ ...prev, hoursPerTable: Number(e.target.value) || 0 }))}
-                className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
-              />
-            </div>
-
-            <div className="space-y-1.5 xl:col-span-2">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Data e Hora de Início da Mesa</label>
-              <input
-                type="datetime-local"
-                value={formData.scheduledAt}
-                onChange={e => setFormData(prev => ({ ...prev, scheduledAt: e.target.value }))}
-                className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                placeholder="Nome do produto"
               />
             </div>
 
@@ -418,43 +512,111 @@ export function AgendaProducao() {
               />
             </div>
 
-            <div className="xl:col-span-4 space-y-3 border border-outline-variant/20 rounded-xl p-4 bg-surface-container-low">
+            <div className="xl:col-span-4 space-y-4 border border-outline-variant/20 rounded-xl p-4 bg-surface-container-low">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h4 className="text-sm font-bold text-on-surface">Filamentos Planejados</h4>
-                  <p className="text-xs text-on-surface-variant">Informe os filamentos e quanto será consumido neste item da agenda.</p>
+                  <h4 className="text-sm font-bold text-on-surface">Mesas do Produto</h4>
+                  <p className="text-xs text-on-surface-variant">Cada mesa tem seu próprio horário, horas e filamentos.</p>
                 </div>
-                <button type="button" onClick={addFilamentEntry} className="px-3 py-1.5 bg-primary text-on-primary rounded text-xs font-bold">
-                  Adicionar Filamento
+                <button type="button" onClick={addTable} className="px-3 py-1.5 bg-primary text-on-primary rounded text-xs font-bold">
+                  Adicionar Mesa
                 </button>
               </div>
 
-              <div className="space-y-3">
-                {formData.filaments.map(entry => (
-                  <div key={entry.id} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end bg-surface-container rounded-lg p-3">
-                    <SearchableSelect
-                      label="Filamento"
-                      options={filamentOptions}
-                      value={entry.filamentId}
-                      onChange={(value) => updateFilamentEntry(entry.id, 'filamentId', value)}
-                      placeholder="Selecionar filamento"
-                    />
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Qtd de Filamento (Kg)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={entry.quantityKg || ''}
-                        onChange={e => updateFilamentEntry(entry.id, 'quantityKg', Number(e.target.value))}
-                        className="w-full bg-surface-container-lowest border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-xs text-on-surface-variant">{entry.filamentName || 'Sem filamento selecionado'}</div>
-                      <button type="button" onClick={() => removeFilamentEntry(entry.id)} className="p-2 text-error hover:bg-surface-container-lowest rounded">
+              <div className="space-y-4">
+                {formData.tables.map((table, tableIndex) => (
+                  <div key={table.id} className="space-y-4 rounded-xl border border-outline-variant/20 bg-surface-container p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <h5 className="text-sm font-bold text-on-surface">{table.tableName || `Mesa ${tableIndex + 1}`}</h5>
+                      <button type="button" onClick={() => removeTable(table.id)} className="p-2 text-error hover:bg-surface-container-lowest rounded">
                         <Trash2 className="w-4 h-4" />
                       </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Mesa</label>
+                        <input
+                          type="text"
+                          value={table.tableName}
+                          onChange={e => updateTable(table.id, 'tableName', e.target.value)}
+                          className="w-full bg-surface-container-lowest border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                          placeholder={`Mesa ${tableIndex + 1}`}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Horas da Mesa</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          value={table.hours}
+                          onChange={e => updateTable(table.id, 'hours', Number(e.target.value) || 0)}
+                          className="w-full bg-surface-container-lowest border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Data e Hora da Mesa</label>
+                        <input
+                          type="datetime-local"
+                          value={table.scheduledAt}
+                          onChange={e => updateTable(table.id, 'scheduledAt', e.target.value)}
+                          className="w-full bg-surface-container-lowest border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h6 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Filamentos da Mesa</h6>
+                          <p className="text-xs text-on-surface-variant">Informe o filamento, a quantidade consumida e quantos produtos saem dele.</p>
+                        </div>
+                        <button type="button" onClick={() => addFilamentEntry(table.id)} className="px-3 py-1.5 bg-secondary-container text-on-secondary-container rounded text-xs font-bold">
+                          Adicionar Filamento
+                        </button>
+                      </div>
+
+                      <div className="space-y-3">
+                        {table.filaments.map(entry => (
+                          <div key={entry.id} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end bg-surface-container-lowest rounded-lg p-3">
+                            <SearchableSelect
+                              label="Filamento"
+                              options={filamentOptions}
+                              value={entry.filamentId}
+                              onChange={(value) => updateFilamentEntry(table.id, entry.id, 'filamentId', value)}
+                              placeholder="Selecionar filamento"
+                            />
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Qtd Filamento (Kg)</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={entry.quantityKg || ''}
+                                onChange={e => updateFilamentEntry(table.id, entry.id, 'quantityKg', Number(e.target.value))}
+                                className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Qtd Produtos por Filamento</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={entry.productsCount || ''}
+                                onChange={e => updateFilamentEntry(table.id, entry.id, 'productsCount', Number(e.target.value))}
+                                className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
+                              />
+                            </div>
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-xs text-on-surface-variant">{entry.filamentName || 'Sem filamento selecionado'}</div>
+                              <button type="button" onClick={() => removeFilamentEntry(table.id, entry.id)} className="p-2 text-error hover:bg-surface-container rounded">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -467,7 +629,7 @@ export function AgendaProducao() {
                 value={formData.notes}
                 onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))}
                 className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none min-h-[88px] resize-y"
-                placeholder="Anotações rápidas sobre prioridade, acabamento ou máquina..."
+                placeholder="Observações rápidas sobre o produto agendado..."
               />
             </div>
 
@@ -485,78 +647,91 @@ export function AgendaProducao() {
 
       <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_1fr] gap-6">
         <section className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 overflow-hidden">
-          <div className="p-4 border-b border-outline-variant/20 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="font-headline font-bold text-lg flex items-center gap-2">
-                <Layers className="w-5 h-5 text-primary" />
-                Fila de Produção
-              </h3>
-              <p className="text-xs text-on-surface-variant mt-1">Itens ordenados por data e hora de produção.</p>
-            </div>
+          <div className="p-4 border-b border-outline-variant/20">
+            <h3 className="font-headline font-bold text-lg flex items-center gap-2">
+              <Layers className="w-5 h-5 text-primary" />
+              Fila de Produção
+            </h3>
+            <p className="text-xs text-on-surface-variant mt-1">Cada produto mostra suas mesas planejadas e o consumo previsto.</p>
           </div>
           <div className="divide-y divide-outline-variant/10">
             {queueOrders.length === 0 ? (
               <div className="p-8 text-center text-sm text-on-surface-variant">Nenhum item na fila de produção.</div>
             ) : (
-              queueOrders.map(order => (
-                <div key={order.id} className="p-4 flex flex-col gap-3">
-                  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-bold text-on-surface">{order.productName}</div>
-                      <div className="text-[10px] uppercase tracking-widest text-on-surface-variant mt-1">
-                        {order.status === 'fila' ? 'Na fila' : 'Produzindo'} • {new Date(order.scheduledAt).toLocaleString('pt-BR')}
+              queueOrders.map(order => {
+                const tables = getOrderTables(order);
+                return (
+                  <div key={order.id} className="p-4 flex flex-col gap-4">
+                    <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-bold text-on-surface">{order.productName}</div>
+                        <div className="text-[10px] uppercase tracking-widest text-on-surface-variant mt-1">
+                          {order.status === 'fila' ? 'Na fila' : 'Produzindo'} • {tables.length} mesa(s) • {getOrderProducedUnits(order)} produto(s)
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {order.status === 'fila' && (
+                          <button type="button" onClick={() => handleStart(order)} className="px-3 py-1.5 rounded text-xs font-bold bg-secondary-container text-on-secondary-container">
+                            Iniciar
+                          </button>
+                        )}
+                        <button type="button" onClick={() => handleComplete(order)} className="px-3 py-1.5 rounded text-xs font-bold bg-tertiary-fixed text-on-tertiary-fixed-variant">
+                          Concluir e Enviar para Produtos
+                        </button>
+                        <button type="button" onClick={() => handleDelete(order.id)} className="px-3 py-1.5 rounded text-xs font-bold bg-error-container text-on-error-container">
+                          Excluir
+                        </button>
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      {order.status === 'fila' && (
-                        <button type="button" onClick={() => handleStart(order)} className="px-3 py-1.5 rounded text-xs font-bold bg-secondary-container text-on-secondary-container">
-                          Iniciar
-                        </button>
-                      )}
-                      <button type="button" onClick={() => handleComplete(order)} className="px-3 py-1.5 rounded text-xs font-bold bg-tertiary-fixed text-on-tertiary-fixed-variant">
-                        Concluir e Enviar para Produtos
-                      </button>
-                      <button type="button" onClick={() => handleDelete(order.id)} className="px-3 py-1.5 rounded text-xs font-bold bg-error-container text-on-error-container">
-                        Excluir
-                      </button>
-                    </div>
-                  </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="bg-surface-container p-3 rounded-lg">
-                      <div className="text-[10px] uppercase tracking-widest text-on-surface-variant">Mesas</div>
-                      <div className="text-lg font-bold text-on-surface tabular-nums">{order.tablesCount}</div>
-                    </div>
-                    <div className="bg-surface-container p-3 rounded-lg">
-                      <div className="text-[10px] uppercase tracking-widest text-on-surface-variant">Horas por Mesa</div>
-                      <div className="text-lg font-bold text-on-surface tabular-nums">{Number(order.hoursPerTable || 0).toFixed(1)} h</div>
-                    </div>
-                    <div className="bg-surface-container p-3 rounded-lg">
-                      <div className="text-[10px] uppercase tracking-widest text-on-surface-variant">Horas Totais</div>
-                      <div className="text-lg font-bold text-primary tabular-nums">{Number(order.totalHours || 0).toFixed(1)} h</div>
-                    </div>
-                  </div>
+                    <div className="grid grid-cols-1 gap-3">
+                      {tables.map(table => (
+                        <div key={table.id} className="rounded-xl border border-outline-variant/20 bg-surface-container p-4">
+                          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-bold text-on-surface">{table.tableName}</div>
+                              <div className="text-[10px] uppercase tracking-widest text-on-surface-variant mt-1">
+                                {new Date(table.scheduledAt).toLocaleString('pt-BR')}
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3 min-w-[220px]">
+                              <div className="bg-surface-container-lowest rounded-lg p-3">
+                                <div className="text-[10px] uppercase tracking-widest text-on-surface-variant">Horas</div>
+                                <div className="text-lg font-bold text-on-surface tabular-nums">{Number(table.hours || 0).toFixed(1)} h</div>
+                              </div>
+                              <div className="bg-surface-container-lowest rounded-lg p-3">
+                                <div className="text-[10px] uppercase tracking-widest text-on-surface-variant">Produtos</div>
+                                <div className="text-lg font-bold text-primary tabular-nums">
+                                  {table.filaments.reduce((acc, filament) => acc + (Number(filament.productsCount) || 0), 0)}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    {order.filaments.length === 0 ? (
-                      <span className="text-xs text-on-surface-variant italic">Nenhum filamento informado.</span>
-                    ) : (
-                      order.filaments.map(item => (
-                        <span key={item.id} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-container text-xs font-medium text-on-surface">
-                          <Package className="w-3.5 h-3.5 text-primary" />
-                          {item.filamentName} • {Number(item.quantityKg || 0).toFixed(2)} kg
-                        </span>
-                      ))
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {table.filaments.length === 0 ? (
+                              <span className="text-xs text-on-surface-variant italic">Nenhum filamento informado.</span>
+                            ) : (
+                              table.filaments.map(item => (
+                                <span key={item.id} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-container-lowest text-xs font-medium text-on-surface">
+                                  <Package className="w-3.5 h-3.5 text-primary" />
+                                  {item.filamentName} • {Number(item.quantityKg || 0).toFixed(2)} kg • {Number(item.productsCount || 0)} produto(s)
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {order.notes && (
+                      <div className="text-sm text-on-surface-variant bg-surface-container-low rounded-lg p-3">
+                        {order.notes}
+                      </div>
                     )}
                   </div>
-
-                  {order.notes && (
-                    <div className="text-sm text-on-surface-variant bg-surface-container-low rounded-lg p-3">
-                      {order.notes}
-                    </div>
-                  )}
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </section>
@@ -568,7 +743,7 @@ export function AgendaProducao() {
                 <CalendarDays className="w-5 h-5 text-primary" />
                 Calendário
               </h3>
-              <p className="text-xs text-on-surface-variant mt-1">Visualização simples da fila por data.</p>
+              <p className="text-xs text-on-surface-variant mt-1">Cada mesa aparece como um evento separado no calendário.</p>
             </div>
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => setCalendarDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))} className="px-2 py-1 bg-surface-container rounded text-sm font-bold">‹</button>
@@ -585,7 +760,7 @@ export function AgendaProducao() {
             ))}
           </div>
           <div className="grid grid-cols-7">
-            {calendarCells.map(({ date, inMonth }) => {
+            {calendarCells.map(({ date }) => {
               const key = date.toISOString().slice(0, 10);
               const dayOrders = calendarItemsByDay[key] || [];
               const isCurrentMonth = getMonthKey(date) === getMonthKey(calendarDate);
@@ -594,14 +769,15 @@ export function AgendaProducao() {
                 <div key={key} className={`min-h-[120px] border-b border-r border-outline-variant/10 p-2 ${isCurrentMonth ? 'bg-transparent' : 'bg-surface-container/40 text-on-surface-variant/40'}`}>
                   <div className="text-xs font-bold mb-2">{date.getDate()}</div>
                   <div className="space-y-1">
-                    {dayOrders.slice(0, 3).map(order => (
-                      <div key={order.id} className={`rounded px-2 py-1 text-[10px] ${order.status === 'concluida' ? 'bg-tertiary-fixed text-on-tertiary-fixed-variant' : order.status === 'produzindo' ? 'bg-secondary-container text-on-secondary-container' : 'bg-primary/10 text-primary'}`}>
-                        <div className="font-bold truncate">{order.productName}</div>
-                        <div className="tabular-nums">{new Date(order.scheduledAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
+                    {dayOrders.slice(0, 3).map(item => (
+                      <div key={`${item.orderId}-${item.tableName}-${item.scheduledAt}`} className={`rounded px-2 py-1 text-[10px] ${item.status === 'concluida' ? 'bg-tertiary-fixed text-on-tertiary-fixed-variant' : item.status === 'produzindo' ? 'bg-secondary-container text-on-secondary-container' : 'bg-primary/10 text-primary'}`}>
+                        <div className="font-bold truncate">{item.productName}</div>
+                        <div className="truncate">{item.tableName}</div>
+                        <div className="tabular-nums">{new Date(item.scheduledAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
                       </div>
                     ))}
                     {dayOrders.length > 3 && (
-                      <div className="text-[10px] text-on-surface-variant font-bold">+{dayOrders.length - 3} itens</div>
+                      <div className="text-[10px] text-on-surface-variant font-bold">+{dayOrders.length - 3} mesas</div>
                     )}
                   </div>
                 </div>

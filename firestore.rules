@@ -182,17 +182,18 @@ service cloud.firestore {
     }
 
     function isValidProductionOrder() {
-      let allowedFields = ['productName', 'productId', 'tablesCount', 'scheduledAt', 'hoursPerTable', 'totalHours', 'status', 'filaments', 'notes', 'createdAt', 'completedAt'];
+      let allowedFields = ['productName', 'productId', 'tables', 'tablesCount', 'scheduledAt', 'hoursPerTable', 'totalHours', 'status', 'filaments', 'notes', 'createdAt', 'completedAt'];
       return hasOnlyAllowedFields(allowedFields) &&
-             hasRequiredFields(['productName', 'tablesCount', 'scheduledAt', 'hoursPerTable', 'totalHours', 'status', 'filaments', 'createdAt']) &&
+             hasRequiredFields(['productName', 'status', 'createdAt']) &&
              isValidString('productName', 1, 100) &&
              (!('productId' in request.resource.data) || isValidString('productId', 0, 100)) &&
-             isPositiveNumber('tablesCount') &&
-             request.resource.data.scheduledAt is string &&
-             isPositiveNumber('hoursPerTable') &&
-             isPositiveNumber('totalHours') &&
+             (!('tablesCount' in request.resource.data) || isPositiveNumber('tablesCount')) &&
+             (!('scheduledAt' in request.resource.data) || request.resource.data.scheduledAt is string) &&
+             (!('hoursPerTable' in request.resource.data) || isPositiveNumber('hoursPerTable')) &&
+             (!('totalHours' in request.resource.data) || isPositiveNumber('totalHours')) &&
              request.resource.data.status in ['fila', 'produzindo', 'concluida'] &&
-             request.resource.data.filaments is list &&
+             (!('filaments' in request.resource.data) || request.resource.data.filaments is list) &&
+             (!('tables' in request.resource.data) || request.resource.data.tables is list) &&
              (!('notes' in request.resource.data) || isValidString('notes', 0, 500)) &&
              (!('completedAt' in request.resource.data) || request.resource.data.completedAt is string) &&
              request.resource.data.createdAt is string;
