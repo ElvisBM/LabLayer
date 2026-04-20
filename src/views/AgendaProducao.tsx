@@ -282,7 +282,7 @@ export function AgendaProducao() {
     const orderTables = getOrderTables(order);
     const variationMaterials = orderTables.flatMap((table, tableIndex) =>
       table.filaments
-        .filter(item => item.filamentId && Number(item.quantityKg) > 0)
+        .filter(item => item.filamentId)
         .map((item, filamentIndex) => ({
           id: `${table.id || tableIndex}-${item.id || filamentIndex}`,
           filamentId: item.filamentId,
@@ -357,6 +357,7 @@ export function AgendaProducao() {
       })) || [createTableEntry(1)],
     });
     setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSelectProduct = (value: string) => {
