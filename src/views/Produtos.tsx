@@ -1498,7 +1498,7 @@ export function Produtos() {
                               <div className="mt-3 flex flex-wrap gap-2">
                                 {table.filaments.map(filament => (
                                   <span key={filament.id} className="px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold">
-                                    {filament.filamentName || 'Filamento'} • {Number(filament.quantityKg || 0).toFixed(2)} kg • {Number(filament.productsCount || 0)} un
+                                    {filament.filamentName || 'Filamento'} • {Number((Number(filament.quantityKg || 0) * 1000).toFixed(2))} g • {Number(filament.productsCount || 0)} un
                                   </span>
                                 ))}
                               </div>
@@ -1616,13 +1616,13 @@ export function Produtos() {
                                         placeholder="Selecionar filamento"
                                       />
                                       <div className="space-y-1.5">
-                                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Qtd Filamento (Kg)</label>
+                                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Qtd Filamento (g)</label>
                                         <input
                                           type="number"
-                                          step="0.01"
+                                          step="1"
                                           min="0"
-                                          value={entry.quantityKg || ''}
-                                          onChange={e => updateProductionFilament(table.id, entry.id, 'quantityKg', Number(e.target.value))}
+                                          value={entry.quantityKg ? Number((Number(entry.quantityKg) * 1000).toFixed(2)) : ''}
+                                          onChange={e => updateProductionFilament(table.id, entry.id, 'quantityKg', Number(e.target.value) / 1000)}
                                           className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
                                         />
                                       </div>
