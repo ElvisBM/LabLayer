@@ -324,6 +324,7 @@ export function Produtos() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [openTableIds, setOpenTableIds] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'basic' | 'advanced'>('basic');
   const [advancedTab, setAdvancedTab] = useState<'tech' | 'variations' | 'wastes' | 'intelligence' | 'files'>('tech');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
@@ -411,6 +412,24 @@ export function Produtos() {
       filamentId: materials[0]?.filamentId || '',
     };
   };
+
+  const livePrimaryVariation = useMemo(() => {
+    const baseVariation = (formData.variations || [])[0];
+    if (formData.productionTables && formData.productionTables.length > 0) {
+      return buildVariationFromProductionTables(formData.productionTables, baseVariation);
+    }
+    return baseVariation || defaultVariation;
+  }, [formData.productionTables, formData.variations, filaments]);
+
+  const liveFormProduct = useMemo(() => {
+    const variations = formData.variations && formData.variations.length > 0
+      ? [livePrimaryVariation, ...(formData.variations || []).slice(1)]
+      : [livePrimaryVariation];
+    return {
+      ...formData,
+      variations,
+    } as Partial<Product>;
+  }, [formData, livePrimaryVariation]);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -713,6 +732,7 @@ export function Produtos() {
 
       setShowForm(false);
       setEditingId(null);
+      setOpenTableIds([]);
       setFormData({
         status: 'desenvolvimento',
         fixedCost: 0,
@@ -739,6 +759,10 @@ export function Produtos() {
         : getProductProductionTables(prioritizedProduct),
     });
     setEditingId(p.id);
+    setOpenTableIds((prioritizedProduct.productionTables && prioritizedProduct.productionTables.length > 0
+      ? prioritizedProduct.productionTables
+      : getProductProductionTables(prioritizedProduct)
+    ).map(table => table.id));
     setShowForm(true);
     setActiveTab('basic');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -972,10 +996,12 @@ export function Produtos() {
   };
 
   const addProductionTable = () => {
+    const newTable = createProductTableEntry((formData.productionTables || []).length + 1);
     setFormData(prev => ({
       ...prev,
-      productionTables: [...(prev.productionTables || []), createProductTableEntry((prev.productionTables || []).length + 1)],
+      productionTables: [...(prev.productionTables || []), newTable],
     }));
+    setOpenTableIds(prev => [...prev, newTable.id]);
   };
 
   const removeProductionTable = (tableId: string) => {
@@ -988,6 +1014,7 @@ export function Produtos() {
           : [createProductTableEntry(1)],
       };
     });
+    setOpenTableIds(prev => prev.filter(id => id !== tableId));
   };
 
   const updateProductionFilament = (tableId: string, entryId: string, field: keyof ProductProductionFilament, value: string | number) => {
@@ -1349,6 +1376,7 @@ export function Produtos() {
               productionTables: [createProductTableEntry(1)],
             });
             setEditingId(null);
+            setOpenTableIds([]);
             setShowForm(true);
             setActiveTab('basic');
           }}
@@ -1433,12 +1461,12 @@ export function Produtos() {
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant flex items-center justify-between">
                           <span>Estoque Atual / Completo</span>
-                          {getProductStockInfo(formData).isDerived && (
-                            <span className="text-primary tracking-normal truncate ml-2 text-right" title="Calculado das peças">{getProductStockInfo(formData).extra.join(', ')}</span>
+                          {getProductStockInfo(liveFormProduct).isDerived && (
+                            <span className="text-primary tracking-normal truncate ml-2 text-right" title="Calculado das peças">{getProductStockInfo(liveFormProduct).extra.join(', ')}</span>
                           )}
                         </label>
                         <div className="w-full bg-surface-container/50 border border-outline-variant/10 rounded p-2.5 text-sm text-on-surface-variant tabular-nums flex items-center justify-between">
-                          <span className="font-bold text-on-surface">{getProductStockInfo(formData).complete}</span>
+                          <span className="font-bold text-on-surface">{getProductStockInfo(liveFormProduct).complete}</span>
                           <span className="text-[10px] italic">Automático pelas peças</span>
                         </div>
                       </div>
@@ -1451,12 +1479,12 @@ export function Produtos() {
                   <div className="pt-6 border-t border-outline-variant/20">
                     <h3 className="text-sm font-bold text-on-surface mb-4 flex items-center gap-2"><Layers className="w-4 h-4 text-primary" /> Informações de Produção (Padrão)</h3>
 
-                    {(getProductFilamentSummary(formData).length > 0 || getProductScheduleTableNames(formData).length > 0) && (
+                    {(getProductFilamentSummary(liveFormProduct).length > 0 || getProductScheduleTableNames(liveFormProduct).length > 0) && (
                       <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
                           <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Filamentos do Produto</div>
                           <div className="flex flex-wrap gap-2">
-                            {getProductFilamentSummary(formData).map(name => (
+                            {getProductFilamentSummary(liveFormProduct).map(name => (
                               <span key={name} className="px-2 py-1 rounded-full bg-surface-container text-xs font-medium text-on-surface">
                                 {name}
                               </span>
@@ -1467,7 +1495,7 @@ export function Produtos() {
                         <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
                           <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Mesas do Agendamento</div>
                           <div className="flex flex-wrap gap-2">
-                            {getProductScheduleTableNames(formData).map(name => (
+                            {getProductScheduleTableNames(liveFormProduct).map(name => (
                               <span key={name} className="px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold">
                                 {name}
                               </span>
@@ -1477,37 +1505,6 @@ export function Produtos() {
                       </div>
                     )}
 
-                    {getProductProductionTables(formData).length > 0 && (
-                      <div className="mb-6 bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
-                        <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-3">Lógica de Mesas do Produto</div>
-                        <div className="space-y-3">
-                          {getProductProductionTables(formData).map(table => (
-                            <div key={table.id} className="rounded-lg bg-surface-container-lowest border border-outline-variant/10 p-3">
-                              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-2">
-                                <div>
-                                  <div className="text-sm font-bold text-on-surface">{table.tableName}</div>
-                                  {table.scheduledAt && (
-                                    <div className="text-[10px] uppercase tracking-widest text-on-surface-variant mt-1">
-                                      {new Date(table.scheduledAt).toLocaleString('pt-BR')}
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="text-xs font-bold text-primary">{Number(table.hours || 0).toFixed(1)} h</div>
-                              </div>
-
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                {table.filaments.map(filament => (
-                                  <span key={filament.id} className="px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold">
-                                    {filament.filamentName || 'Filamento'} • {Number((Number(filament.quantityKg || 0) * 1000).toFixed(2))} g • {Number(filament.productsCount || 0)} un
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Impressora</label>
@@ -1555,13 +1552,35 @@ export function Produtos() {
                           )}
                           {(formData.productionTables || []).map((table, tableIndex) => (
                             <div key={table.id} className="space-y-4 rounded-xl border border-outline-variant/20 bg-surface-container p-4">
-                              <div className="flex items-center justify-between gap-3">
-                                <h5 className="text-sm font-bold text-on-surface">{table.tableName || `Mesa ${tableIndex + 1}`}</h5>
+                              <div className="flex items-start justify-between gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setOpenTableIds(prev => prev.includes(table.id) ? prev.filter(id => id !== table.id) : [...prev, table.id])}
+                                  className="flex-1 text-left"
+                                >
+                                  <div className="flex flex-col gap-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-bold text-on-surface">{table.tableName || `Mesa ${tableIndex + 1}`}</span>
+                                      <span className="text-[10px] font-bold uppercase tracking-widest text-primary">
+                                        {openTableIds.includes(table.id) ? 'Fechar' : 'Abrir'}
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 text-xs text-on-surface-variant">
+                                      <span>{Number(table.hours || 0).toFixed(1)} h</span>
+                                      <span>•</span>
+                                      <span>{table.filaments.length} filamento(s)</span>
+                                      <span>•</span>
+                                      <span>{Number((table.filaments.reduce((sum, filament) => sum + (Number(filament.quantityKg) || 0), 0) * 1000).toFixed(2))} g</span>
+                                    </div>
+                                  </div>
+                                </button>
                                 <button type="button" onClick={() => removeProductionTable(table.id)} className="p-2 text-error hover:bg-surface-container-lowest rounded">
                                   <Trash2 className="w-4 h-4" />
                                 </button>
                               </div>
 
+                              {openTableIds.includes(table.id) && (
+                                <>
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="space-y-1.5">
                                   <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Mesa</label>
@@ -1646,6 +1665,8 @@ export function Produtos() {
                                   ))}
                                 </div>
                               </div>
+                                </>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -1663,14 +1684,14 @@ export function Produtos() {
                       <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
                         <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Custo Total da Impressão</p>
                         <p className="text-xl font-bold text-on-surface">
-                          R$ {(calculateUnitCost(formData.variations[0], formData.fixedCost || 0) * (formData.variations[0].quantityPerPrint || 1)).toFixed(2)}
+                          R$ {(calculateUnitCost(livePrimaryVariation, formData.fixedCost || 0) * (livePrimaryVariation.quantityPerPrint || 1)).toFixed(2)}
                         </p>
                       </div>
                       
                       <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
                         <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Custo por Unidade</p>
                         <p className="text-xl font-bold text-primary">
-                          R$ {calculateUnitCost(formData.variations[0], formData.fixedCost || 0).toFixed(2)}
+                          R$ {calculateUnitCost(livePrimaryVariation, formData.fixedCost || 0).toFixed(2)}
                         </p>
                       </div>
 
@@ -1680,8 +1701,8 @@ export function Produtos() {
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm font-bold">R$</span>
                           <input 
                             type="number" 
-                            value={formData.variations[0].channelPrices?.[0]?.price || ''} 
-                            onChange={e => updateChannelPrice(formData.variations![0].id, formData.variations![0].channelPrices?.[0]?.channel || 'Venda Direta', Number(e.target.value))} 
+                            value={livePrimaryVariation.channelPrices?.[0]?.price || ''} 
+                            onChange={e => updateChannelPrice(livePrimaryVariation.id, livePrimaryVariation.channelPrices?.[0]?.channel || 'Venda Direta', Number(e.target.value))} 
                             className="w-full bg-surface-container border-none rounded p-2.5 pl-9 text-sm focus:ring-2 focus:ring-primary outline-none font-bold text-secondary" 
                             placeholder="0.00" 
                           />
