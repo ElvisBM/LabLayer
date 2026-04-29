@@ -187,6 +187,8 @@ export function AgendaProducao() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [calendarDate, setCalendarDate] = useState(new Date());
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [openOrderIds, setOpenOrderIds] = useState<string[]>([]);
 
   const [formData, setFormData] = useState({
     productName: '',
@@ -266,6 +268,10 @@ export function AgendaProducao() {
 
   const calendarCells = useMemo(() => buildCalendarDays(calendarDate), [calendarDate]);
   const totalQueuedHours = queueOrders.reduce((acc, order) => acc + getOrderTotalHours(order), 0);
+
+  const toggleOrder = (orderId: string) => {
+    setOpenOrderIds(prev => prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]);
+  };
 
   const resetForm = () => {
     setEditingId(null);
@@ -794,14 +800,24 @@ export function AgendaProducao() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_1fr] gap-6">
+      <div className="space-y-6">
         <section className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 overflow-hidden">
-          <div className="p-4 border-b border-outline-variant/20">
-            <h3 className="font-headline font-bold text-lg flex items-center gap-2">
-              <Layers className="w-5 h-5 text-primary" />
-              Fila de Produção
-            </h3>
-            <p className="text-xs text-on-surface-variant mt-1">Cada produto mostra suas mesas planejadas e o consumo previsto.</p>
+          <div className="p-4 border-b border-outline-variant/20 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-headline font-bold text-lg flex items-center gap-2">
+                <Layers className="w-5 h-5 text-primary" />
+                Fila de Produção
+              </h3>
+              <p className="text-xs text-on-surface-variant mt-1">Visual mais enxuto, com detalhes das mesas só quando você abrir.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCalendar(prev => !prev)}
+              className="px-3 py-1.5 rounded-lg bg-surface-container text-on-surface text-xs font-bold flex items-center gap-2"
+            >
+              <CalendarDays className="w-4 h-4 text-primary" />
+              {showCalendar ? 'Ocultar Calendário' : 'Ver Calendário'}
+            </button>
           </div>
           <div className="divide-y divide-outline-variant/10">
             {queueOrders.length === 0 ? (
@@ -809,15 +825,22 @@ export function AgendaProducao() {
             ) : (
               queueOrders.map(order => {
                 const tables = getOrderTables(order);
+                const totalFilamentKg = tables.reduce((sum, table) => sum + table.filaments.reduce((tableSum, filament) => tableSum + (Number(filament.quantityKg) || 0), 0), 0);
+                const isOpen = openOrderIds.includes(order.id);
                 return (
                   <div key={order.id} className="p-4 flex flex-col gap-4">
                     <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
-                      <div>
+                      <button type="button" onClick={() => toggleOrder(order.id)} className="flex-1 text-left">
                         <div className="text-sm font-bold text-on-surface">{order.productName}</div>
-                        <div className="text-[10px] uppercase tracking-widest text-on-surface-variant mt-1">
-                          {order.status === 'fila' ? 'Na fila' : 'Produzindo'} • {tables.length} mesa(s) • {getOrderProducedUnits(order)} produto(s)
+                        <div className="mt-2 flex flex-wrap gap-2 text-[10px] uppercase tracking-widest text-on-surface-variant">
+                          <span>{order.status === 'fila' ? 'Na fila' : 'Produzindo'}</span>
+                          <span>{tables.length} mesa(s)</span>
+                          <span>{getOrderProducedUnits(order)} produto(s)</span>
+                          <span>{getOrderTotalHours(order).toFixed(1)} h</span>
+                          <span>{(totalFilamentKg * 1000).toFixed(0)} g</span>
+                          <span className="text-primary">{isOpen ? 'Fechar detalhes' : 'Abrir detalhes'}</span>
                         </div>
-                      </div>
+                      </button>
                       <div className="flex flex-wrap gap-2">
                         {order.status === 'fila' && (
                           <button type="button" onClick={() => handleStart(order)} className="px-3 py-1.5 rounded text-xs font-bold bg-secondary-container text-on-secondary-container">
@@ -837,45 +860,43 @@ export function AgendaProducao() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-3">
-                      {tables.map(table => (
-                        <div key={table.id} className="rounded-xl border border-outline-variant/20 bg-surface-container p-4">
-                          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-                            <div>
-                              <div className="text-sm font-bold text-on-surface">{table.tableName}</div>
-                              <div className="text-[10px] uppercase tracking-widest text-on-surface-variant mt-1">
-                                {new Date(table.scheduledAt).toLocaleString('pt-BR')}
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3 min-w-[220px]">
-                              <div className="bg-surface-container-lowest rounded-lg p-3">
-                                <div className="text-[10px] uppercase tracking-widest text-on-surface-variant">Horas</div>
-                                <div className="text-lg font-bold text-on-surface tabular-nums">{Number(table.hours || 0).toFixed(1)} h</div>
-                              </div>
-                              <div className="bg-surface-container-lowest rounded-lg p-3">
-                                <div className="text-[10px] uppercase tracking-widest text-on-surface-variant">Produtos</div>
-                                <div className="text-lg font-bold text-primary tabular-nums">
-                                  {table.filaments.reduce((acc, filament) => acc + (Number(filament.productsCount) || 0), 0)}
+                    {isOpen && (
+                      <div className="grid grid-cols-1 gap-3">
+                        {tables.map(table => (
+                          <div key={table.id} className="rounded-xl border border-outline-variant/20 bg-surface-container p-4">
+                            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-bold text-on-surface">{table.tableName}</div>
+                                <div className="text-[10px] uppercase tracking-widest text-on-surface-variant mt-1">
+                                  {new Date(table.scheduledAt).toLocaleString('pt-BR')}
                                 </div>
                               </div>
+                              <div className="flex flex-wrap gap-2">
+                                <span className="rounded-full bg-surface-container-lowest px-3 py-1 text-xs font-bold text-on-surface">
+                                  {Number(table.hours || 0).toFixed(1)} h
+                                </span>
+                                <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
+                                  {table.filaments.reduce((acc, filament) => acc + (Number(filament.productsCount) || 0), 0)} un
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {table.filaments.length === 0 ? (
+                                <span className="text-xs text-on-surface-variant italic">Nenhum filamento informado.</span>
+                              ) : (
+                                table.filaments.map(item => (
+                                  <span key={item.id} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-container-lowest text-xs font-medium text-on-surface">
+                                    <Package className="w-3.5 h-3.5 text-primary" />
+                                    {item.filamentName} • {(Number(item.quantityKg || 0) * 1000).toFixed(0)} g • {Number(item.productsCount || 0)} un
+                                  </span>
+                                ))
+                              )}
                             </div>
                           </div>
-
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {table.filaments.length === 0 ? (
-                              <span className="text-xs text-on-surface-variant italic">Nenhum filamento informado.</span>
-                            ) : (
-                              table.filaments.map(item => (
-                                <span key={item.id} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-container-lowest text-xs font-medium text-on-surface">
-                                  <Package className="w-3.5 h-3.5 text-primary" />
-                                  {item.filamentName} • {Number(item.quantityKg || 0).toFixed(2)} kg • {Number(item.productsCount || 0)} produto(s)
-                                </span>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
 
                     {order.notes && (
                       <div className="text-sm text-on-surface-variant bg-surface-container-low rounded-lg p-3">
@@ -900,6 +921,7 @@ export function AgendaProducao() {
           </div>
         </section>
 
+        {showCalendar && (
         <section className="bg-surface-container-lowest rounded-xl border border-outline-variant/20 overflow-hidden">
           <div className="p-4 border-b border-outline-variant/20 flex items-center justify-between gap-3">
             <div>
@@ -949,6 +971,7 @@ export function AgendaProducao() {
             })}
           </div>
         </section>
+        )}
       </div>
     </div>
   );
