@@ -189,6 +189,7 @@ export function AgendaProducao() {
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [showCalendar, setShowCalendar] = useState(false);
   const [openOrderIds, setOpenOrderIds] = useState<string[]>([]);
+  const [openFormTableIds, setOpenFormTableIds] = useState<string[]>([]);
 
   const [formData, setFormData] = useState({
     productName: '',
@@ -275,11 +276,13 @@ export function AgendaProducao() {
 
   const resetForm = () => {
     setEditingId(null);
+    const initialTable = createTableEntry(1);
+    setOpenFormTableIds([initialTable.id]);
     setFormData({
       productName: '',
       productId: '',
       modelUrl: '',
-      tables: [createTableEntry(1)],
+      tables: [initialTable],
       notes: '',
     });
   };
@@ -345,22 +348,24 @@ export function AgendaProducao() {
 
   const openEditForm = (order: ProductionOrder) => {
     const normalizedOrder = normalizeOrder(order);
+    const nextTables = normalizedOrder.tables?.map((table, tableIndex) => ({
+      ...table,
+      id: table.id || `${Date.now()}-${tableIndex}`,
+      filaments: table.filaments.length > 0
+        ? table.filaments.map((entry, entryIndex) => ({
+            ...entry,
+            id: entry.id || `${Date.now()}-${tableIndex}-${entryIndex}`,
+          }))
+        : [createFilamentEntry()],
+    })) || [createTableEntry(1)];
     setEditingId(order.id);
+    setOpenFormTableIds(nextTables.map(table => table.id));
     setFormData({
       productName: normalizedOrder.productName || '',
       productId: normalizedOrder.productId || '',
       modelUrl: normalizedOrder.modelUrl || '',
       notes: normalizedOrder.notes || '',
-      tables: normalizedOrder.tables?.map((table, tableIndex) => ({
-        ...table,
-        id: table.id || `${Date.now()}-${tableIndex}`,
-        filaments: table.filaments.length > 0
-          ? table.filaments.map((entry, entryIndex) => ({
-              ...entry,
-              id: entry.id || `${Date.now()}-${tableIndex}-${entryIndex}`,
-            }))
-          : [createFilamentEntry()],
-      })) || [createTableEntry(1)],
+      tables: nextTables,
     });
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -383,10 +388,12 @@ export function AgendaProducao() {
   };
 
   const addTable = () => {
+    const newTable = createTableEntry(formData.tables.length + 1);
     setFormData(prev => ({
       ...prev,
-      tables: [...prev.tables, createTableEntry(prev.tables.length + 1)],
+      tables: [...prev.tables, newTable],
     }));
+    setOpenFormTableIds(prev => [...prev, newTable.id]);
   };
 
   const removeTable = (tableId: string) => {
@@ -396,6 +403,7 @@ export function AgendaProducao() {
         ? prev.tables.filter(table => table.id !== tableId)
         : [createTableEntry(1)],
     }));
+    setOpenFormTableIds(prev => prev.filter(id => id !== tableId));
   };
 
   const updateFilamentEntry = (tableId: string, entryId: string, field: keyof ProductionFilament, value: string | number) => {
@@ -681,13 +689,28 @@ export function AgendaProducao() {
               <div className="space-y-4">
                 {formData.tables.map((table, tableIndex) => (
                   <div key={table.id} className="space-y-4 rounded-xl border border-outline-variant/20 bg-surface-container p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <h5 className="text-sm font-bold text-on-surface">{table.tableName || `Mesa ${tableIndex + 1}`}</h5>
+                    <div className="flex items-start justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setOpenFormTableIds(prev => prev.includes(table.id) ? prev.filter(id => id !== table.id) : [...prev, table.id])}
+                        className="flex-1 text-left"
+                      >
+                        <div className="text-sm font-bold text-on-surface">{table.tableName || `Mesa ${tableIndex + 1}`}</div>
+                        <div className="mt-2 flex flex-wrap gap-2 text-[10px] uppercase tracking-widest text-on-surface-variant">
+                          <span>{Number(table.hours || 0).toFixed(1)} h</span>
+                          <span>{table.filaments.length} filamento(s)</span>
+                          <span>{(table.filaments.reduce((sum, filament) => sum + (Number(filament.quantityKg) || 0), 0) * 1000).toFixed(0)} g</span>
+                          <span>{table.filaments.reduce((sum, filament) => sum + (Number(filament.productsCount) || 0), 0)} un</span>
+                          <span className="text-primary">{openFormTableIds.includes(table.id) ? 'Fechar' : 'Abrir'}</span>
+                        </div>
+                      </button>
                       <button type="button" onClick={() => removeTable(table.id)} className="p-2 text-error hover:bg-surface-container-lowest rounded">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
 
+                    {openFormTableIds.includes(table.id) && (
+                      <>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Mesa</label>
@@ -773,6 +796,8 @@ export function AgendaProducao() {
                         ))}
                       </div>
                     </div>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
