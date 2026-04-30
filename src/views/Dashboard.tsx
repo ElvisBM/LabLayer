@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, TrendingUp, AlertTriangle, Activity, Store, ArrowUpRight, ArrowDownRight, Target, Package, Cable, Printer, Box } from 'lucide-react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -39,6 +39,15 @@ interface DashboardFilament {
   stockKg?: number;
   initialStockKg?: number;
   purchaseHistory?: DashboardFilamentPurchase[];
+}
+
+interface DashboardOrder {
+  productName?: string;
+  channelName?: string;
+  quantity?: number;
+  soldPrice?: number;
+  fees?: number;
+  realProfit?: number;
 }
 
 export function Dashboard() {
@@ -139,29 +148,15 @@ export function Dashboard() {
       }));
     });
 
-    // Fetch Transactions for Revenue/Profit (Simplified for now, assuming transactions have amount and type)
-    const unsubTransactions = onSnapshot(collection(db, `tenants/${tenantId}/transactions`), (snapshot) => {
-      let revenue = 0;
-      let expenses = 0;
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.type === 'income') revenue += Number(data.amount) || 0;
-        if (data.type === 'expense') expenses += Number(data.amount) || 0;
-      });
-      setMetrics(prev => ({ 
-        ...prev, 
-        revenue,
-        profit: revenue - expenses
-      }));
-    });
-
-    // Fetch Orders for Top Products and Channels
+    // Fetch Orders for Revenue, Profit, Top Products and Channels
     const unsubOrders = onSnapshot(collection(db, `tenants/${tenantId}/orders`), (snapshot) => {
       const productStats: Record<string, { name: string; sales: number; totalProfit: number }> = {};
       const channelStats: Record<string, { name: string; orders: number; netRevenue: number; totalRevenue: number; totalProfit: number }> = {};
+      let revenue = 0;
+      let profit = 0;
 
       snapshot.forEach(doc => {
-        const data = doc.data();
+        const data = doc.data() as DashboardOrder;
         const productName = data.productName || 'Desconhecido';
         const channelName = data.channelName || 'Desconhecido';
         const quantity = Number(data.quantity) || 0;
@@ -169,6 +164,8 @@ export function Dashboard() {
         const soldPrice = Number(data.soldPrice) || 0;
         const fees = Number(data.fees) || 0;
         const netRevenue = soldPrice - fees;
+        revenue += soldPrice;
+        profit += realProfit;
 
         // Product Stats
         if (!productStats[productName]) {
@@ -197,6 +194,8 @@ export function Dashboard() {
 
       setMetrics(prev => ({
         ...prev,
+        revenue,
+        profit,
         topProducts,
         topChannels
       }));
@@ -207,7 +206,6 @@ export function Dashboard() {
       unsubFilaments();
       unsubSupplies();
       unsubPrinters();
-      unsubTransactions();
       unsubOrders();
     };
   }, [tenantId]);
