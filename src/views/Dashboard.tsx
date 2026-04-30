@@ -243,10 +243,11 @@ export function Dashboard() {
               <DollarSign className="w-5 h-5 text-on-primary-container" />
             </div>
           </div>
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Receita Total</h3>
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Receita de Vendas</h3>
           <p className="text-3xl font-headline font-bold text-on-surface tabular-nums">
             R$ {metrics.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>
+          <p className="text-xs text-on-surface-variant mt-2">Soma do valor vendido em pedidos</p>
         </div>
 
         <div className="bg-tertiary-container text-on-tertiary-container p-6 rounded-xl shadow-sm relative overflow-hidden">
@@ -255,10 +256,11 @@ export function Dashboard() {
               <Target className="w-5 h-5 text-on-tertiary-container" />
             </div>
           </div>
-          <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-80 mb-1">Lucro Líquido</h3>
+          <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-80 mb-1">Lucro Real de Vendas</h3>
           <p className="text-3xl font-headline font-bold tabular-nums">
             R$ {metrics.profit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>
+          <p className="text-xs opacity-80 mt-2">Baseado no lucro real dos pedidos</p>
         </div>
 
         <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm relative overflow-hidden">
@@ -267,8 +269,9 @@ export function Dashboard() {
               <Cable className="w-5 h-5 text-on-secondary-container" />
             </div>
           </div>
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Estoque de Filamentos</h3>
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Filamento Disponível</h3>
           <p className="text-3xl font-headline font-bold text-on-surface tabular-nums">{metrics.totalFilamentKg.toFixed(2)} Kg</p>
+          <p className="text-xs text-on-surface-variant mt-2">Comprado menos consumo dos produtos</p>
         </div>
 
         <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm relative overflow-hidden">
@@ -277,8 +280,9 @@ export function Dashboard() {
               <Package className="w-5 h-5 text-on-surface" />
             </div>
           </div>
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Estoque de Produtos</h3>
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Produtos Ativos em Estoque</h3>
           <p className="text-3xl font-headline font-bold text-on-surface tabular-nums">{metrics.totalProducts} un</p>
+          <p className="text-xs text-on-surface-variant mt-2">Somente produtos com status ativo</p>
         </div>
       </div>
 
@@ -289,8 +293,9 @@ export function Dashboard() {
               <Box className="w-5 h-5 text-on-surface" />
             </div>
           </div>
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Insumos Cadastrados</h3>
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Tipos de Insumos</h3>
           <p className="text-3xl font-headline font-bold text-on-surface tabular-nums">{metrics.totalSupplies} itens</p>
+          <p className="text-xs text-on-surface-variant mt-2">Quantidade de cadastros de insumos</p>
         </div>
 
         <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm relative overflow-hidden">
@@ -299,9 +304,9 @@ export function Dashboard() {
               <Printer className="w-5 h-5 text-on-surface" />
             </div>
           </div>
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Uso das Impressoras</h3>
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Impressoras Ativas</h3>
           <p className="text-3xl font-headline font-bold text-on-surface tabular-nums">{metrics.activePrinters} / {metrics.totalPrinters}</p>
-          <p className="text-xs text-on-surface-variant mt-2">Impressoras ativas</p>
+          <p className="text-xs text-on-surface-variant mt-2">Online ou imprimindo agora</p>
         </div>
       </div>
 
