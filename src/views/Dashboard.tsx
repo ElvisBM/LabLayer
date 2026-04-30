@@ -4,8 +4,47 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 
+interface DashboardVariationMaterial {
+  filamentId?: string;
+  weightGrams?: number;
+  purgeGrams?: number;
+  pieces?: number;
+}
+
+interface DashboardVariation {
+  filamentId?: string;
+  weightGrams?: number;
+  quantityPerPrint?: number;
+  materials?: DashboardVariationMaterial[];
+}
+
+interface DashboardWaste {
+  filamentId?: string;
+  weightGrams?: number;
+}
+
+interface DashboardProduct {
+  status?: string;
+  stock?: number;
+  variations?: DashboardVariation[];
+  wastes?: DashboardWaste[];
+}
+
+interface DashboardFilamentPurchase {
+  quantityKg?: number;
+}
+
+interface DashboardFilament {
+  id: string;
+  stockKg?: number;
+  initialStockKg?: number;
+  purchaseHistory?: DashboardFilamentPurchase[];
+}
+
 export function Dashboard() {
   const { tenantId } = useAuth();
+  const [products, setProducts] = useState<DashboardProduct[]>([]);
+  const [filaments, setFilaments] = useState<DashboardFilament[]>([]);
   const [metrics, setMetrics] = useState({
     revenue: 0,
     profit: 0,
@@ -18,14 +57,57 @@ export function Dashboard() {
     topChannels: [] as any[],
   });
 
+  const getPurchasedKg = (filament: DashboardFilament) => {
+    const purchaseHistory = (filament.purchaseHistory || []).filter(purchase => (Number(purchase.quantityKg) || 0) > 0);
+    if (purchaseHistory.length > 0) {
+      return purchaseHistory.reduce((sum, purchase) => sum + (Number(purchase.quantityKg) || 0), 0);
+    }
+    return Number(filament.initialStockKg ?? filament.stockKg) || 0;
+  };
+
+  const calculateFilamentUsageMap = (items: DashboardProduct[]) => {
+    const usage: Record<string, number> = {};
+
+    items.forEach(product => {
+      (product.variations || []).forEach(variation => {
+        const yieldPerBatch = Math.max(1, Number(variation.quantityPerPrint) || 1);
+
+        if ((variation.materials || []).length > 0) {
+          (variation.materials || []).forEach(material => {
+            if (!material.filamentId) return;
+
+            const stockPieces = Number(material.pieces) || 0;
+            const batches = stockPieces > 0 ? Math.ceil(stockPieces / yieldPerBatch) : 1;
+            const weightKg = (((Number(material.weightGrams) || 0) + (Number(material.purgeGrams) || 0)) * batches) / 1000;
+            usage[material.filamentId] = (usage[material.filamentId] || 0) + weightKg;
+          });
+          return;
+        }
+
+        if (variation.filamentId) {
+          const weightKg = (Number(variation.weightGrams) || 0) / 1000;
+          usage[variation.filamentId] = (usage[variation.filamentId] || 0) + weightKg;
+        }
+      });
+
+      (product.wastes || []).forEach(waste => {
+        if (!waste.filamentId) return;
+        usage[waste.filamentId] = (usage[waste.filamentId] || 0) + ((Number(waste.weightGrams) || 0) / 1000);
+      });
+    });
+
+    return usage;
+  };
+
   useEffect(() => {
     if (!tenantId) return;
 
     // Fetch Products
     const unsubProducts = onSnapshot(collection(db, `tenants/${tenantId}/products`), (snapshot) => {
+      const data = snapshot.docs.map(doc => doc.data() as DashboardProduct);
+      setProducts(data);
       let totalStock = 0;
-      snapshot.forEach(doc => {
-        const data = doc.data();
+      data.forEach(data => {
         if (data.status === 'ativo') {
           totalStock += Number(data.stock) || 0;
         }
@@ -35,11 +117,8 @@ export function Dashboard() {
 
     // Fetch Filaments
     const unsubFilaments = onSnapshot(collection(db, `tenants/${tenantId}/filaments`), (snapshot) => {
-      let totalKg = 0;
-      snapshot.forEach(doc => {
-        totalKg += Number(doc.data().stockKg) || 0;
-      });
-      setMetrics(prev => ({ ...prev, totalFilamentKg: totalKg }));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DashboardFilament));
+      setFilaments(data);
     });
 
     // Fetch Supplies
@@ -132,6 +211,17 @@ export function Dashboard() {
       unsubOrders();
     };
   }, [tenantId]);
+
+  useEffect(() => {
+    const usageByFilament = calculateFilamentUsageMap(products);
+    const totalFilamentKg = filaments.reduce((sum, filament) => {
+      const purchasedKg = getPurchasedKg(filament);
+      const consumedKg = usageByFilament[filament.id] || 0;
+      return sum + Math.max(0, purchasedKg - consumedKg);
+    }, 0);
+
+    setMetrics(prev => ({ ...prev, totalFilamentKg }));
+  }, [filaments, products]);
 
   return (
     <div className="space-y-8 pb-12">
