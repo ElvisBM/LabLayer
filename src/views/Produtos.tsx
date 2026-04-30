@@ -3,6 +3,7 @@ import { Plus, MoreVertical, Box, Calculator, FileText, Layers, FileUp, Settings
 import { collection, onSnapshot, updateDoc, deleteDoc, doc, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { SearchableSelect, SelectOption } from '../components/SearchableSelect';
 import toast from 'react-hot-toast';
 
 function SearchableSelectFilament({ value, onChange, filaments, placeholder = "Buscar..." }: { value: string, onChange: (v: string) => void, filaments: Filament[], placeholder?: string }) {
@@ -149,6 +150,24 @@ interface ProductWaste {
   notes: string;
 }
 
+interface Supply {
+  id: string;
+  name: string;
+  category: string;
+  quantity: number;
+  unit: string;
+  costPerUnit: number;
+  minStock: number;
+}
+
+interface ProductSupplyUsage {
+  id: string;
+  supplyId: string;
+  supplyName: string;
+  quantityPerProduct: number;
+  unit: string;
+}
+
 interface ProductProductionFilament {
   id: string;
   filamentId: string;
@@ -254,6 +273,7 @@ interface Product {
   variations: Variation[];
   files: ProductFile[];
   wastes?: ProductWaste[];
+  supplyUsages?: ProductSupplyUsage[];
   productionTables?: ProductProductionTable[];
   latestSuggestedPrice?: {
     savedAt?: string;
@@ -319,6 +339,7 @@ export function Produtos() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productionOrders, setProductionOrders] = useState<ProductionOrderFallback[]>([]);
   const [filaments, setFilaments] = useState<Filament[]>([]);
+  const [supplies, setSupplies] = useState<Supply[]>([]);
   const [printers, setPrinters] = useState<Printer[]>([]);
   const [energyPrice, setEnergyPrice] = useState<number>(0.95);
   const [showForm, setShowForm] = useState(false);
@@ -367,6 +388,7 @@ export function Produtos() {
     variations: [defaultVariation],
     files: [],
     wastes: [],
+    supplyUsages: [],
     productionTables: [createProductTableEntry(1)],
   });
 
@@ -375,6 +397,14 @@ export function Produtos() {
     const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : 0;
   };
+
+  const supplyOptions: SelectOption[] = useMemo(() => {
+    return supplies.map(supply => ({
+      value: supply.id,
+      label: supply.name,
+      group: supply.category || 'Insumos',
+    }));
+  }, [supplies]);
 
   const buildVariationFromProductionTables = (tables: ProductProductionTable[], baseVariation?: Variation): Variation => {
     const materials = tables.flatMap((table, tableIndex) =>
@@ -455,6 +485,13 @@ export function Produtos() {
       console.error("Error fetching filaments:", error);
     });
 
+    const unsubscribeSupplies = onSnapshot(collection(db, `tenants/${tenantId}/supplies`), (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supply));
+      setSupplies(data);
+    }, (error) => {
+      console.error("Error fetching supplies:", error);
+    });
+
     const unsubscribePrinters = onSnapshot(collection(db, `tenants/${tenantId}/printers`), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Printer));
       setPrinters(data);
@@ -472,6 +509,7 @@ export function Produtos() {
       unsubscribeProducts();
       unsubscribeProductionOrders();
       unsubscribeFilaments();
+      unsubscribeSupplies();
       unsubscribePrinters();
       unsubscribeSettings();
     };
@@ -585,6 +623,16 @@ export function Produtos() {
     return usage;
   };
 
+  const calculateSupplyUsageMap = (formState: Partial<Product>) => {
+    const usage: Record<string, number> = {};
+    const totalProducts = getProductStockInfo(formState).complete || 0;
+    (formState.supplyUsages || []).forEach(supplyUsage => {
+      if (!supplyUsage.supplyId) return;
+      usage[supplyUsage.supplyId] = (usage[supplyUsage.supplyId] || 0) + ((Number(supplyUsage.quantityPerProduct) || 0) * totalProducts);
+    });
+    return usage;
+  };
+
   const handleSave = async () => {
     if (!tenantId) return;
 
@@ -636,6 +684,17 @@ export function Produtos() {
         notes: w.notes || ''
       }));
 
+      const sanitizedSupplyUsages = (formData.supplyUsages || []).map(supplyUsage => {
+        const currentSupply = supplies.find(item => item.id === supplyUsage.supplyId);
+        return {
+          id: supplyUsage.id || Date.now().toString(),
+          supplyId: supplyUsage.supplyId || '',
+          supplyName: supplyUsage.supplyName || currentSupply?.name || '',
+          quantityPerProduct: Number(supplyUsage.quantityPerProduct) || 0,
+          unit: supplyUsage.unit || currentSupply?.unit || 'un',
+        };
+      }).filter(supplyUsage => supplyUsage.supplyId && supplyUsage.quantityPerProduct > 0);
+
       const cleanUndefined = (obj: any): any => {
         if (Array.isArray(obj)) return obj.map(cleanUndefined).filter(x => x !== undefined);
         if (obj !== null && typeof obj === 'object') {
@@ -660,6 +719,7 @@ export function Produtos() {
         variations: sanitizedVariations,
         files: formData.files || [],
         wastes: sanitizedWastes,
+        supplyUsages: sanitizedSupplyUsages,
         productionTables: sanitizedProductionTables,
       });
 
@@ -667,12 +727,21 @@ export function Produtos() {
       const oldProduct = editingId ? products.find(p => p.id === editingId) : null;
       const oldUsage = oldProduct ? calculateFilamentUsageMap(oldProduct) : {};
       const newUsage = calculateFilamentUsageMap(dataToSave);
+      const oldSupplyUsage = oldProduct ? calculateSupplyUsageMap(oldProduct) : {};
+      const newSupplyUsage = calculateSupplyUsageMap(dataToSave);
       
       const deltaUsage: Record<string, number> = {};
       const allFilaments = new Set([...Object.keys(oldUsage), ...Object.keys(newUsage)]);
       allFilaments.forEach(id => {
         const delta = (newUsage[id] || 0) - (oldUsage[id] || 0);
         if (delta !== 0) deltaUsage[id] = delta;
+      });
+
+      const deltaSupplyUsage: Record<string, number> = {};
+      const allSupplies = new Set([...Object.keys(oldSupplyUsage), ...Object.keys(newSupplyUsage)]);
+      allSupplies.forEach(id => {
+        const delta = (newSupplyUsage[id] || 0) - (oldSupplyUsage[id] || 0);
+        if (delta !== 0) deltaSupplyUsage[id] = delta;
       });
 
       const batch = writeBatch(db);
@@ -728,6 +797,15 @@ export function Produtos() {
         }
       }
 
+      for (const [supplyId, delta] of Object.entries(deltaSupplyUsage)) {
+        const supply = supplies.find(item => item.id === supplyId);
+        if (supply) {
+          batch.update(doc(db, `tenants/${tenantId}/supplies`, supply.id), {
+            quantity: Math.max(0, (Number(supply.quantity) || 0) - delta),
+          });
+        }
+      }
+
       await batch.commit();
 
       setShowForm(false);
@@ -741,6 +819,7 @@ export function Produtos() {
         variations: [{...defaultVariation, id: Date.now().toString()}],
         files: [],
         wastes: [],
+        supplyUsages: [],
         productionTables: [createProductTableEntry(1)],
       });
       toast.success(editingId ? "Produto salvo com sucesso!" : "Novo produto adicionado e materiais deduzidos!");
@@ -778,6 +857,7 @@ export function Produtos() {
 
         // Restaurar estoque de filamentos
         const usageToReturn = calculateFilamentUsageMap(productToDelete);
+        const supplyUsageToReturn = calculateSupplyUsageMap(productToDelete);
         for (const [fId, amount] of Object.entries(usageToReturn)) {
             const filament = filaments.find(f => f.id === fId);
             if (filament) {
@@ -785,6 +865,15 @@ export function Produtos() {
                 stockKg: (filament.stockKg || 0) + amount
               });
             }
+        }
+
+        for (const [supplyId, amount] of Object.entries(supplyUsageToReturn)) {
+          const supply = supplies.find(item => item.id === supplyId);
+          if (supply) {
+            batch.update(doc(db, `tenants/${tenantId}/supplies`, supply.id), {
+              quantity: (Number(supply.quantity) || 0) + amount,
+            });
+          }
         }
 
         for (const variation of productToDelete.variations) {
@@ -985,6 +1074,47 @@ export function Produtos() {
             : [...currentPrices, { channel: channelName, price, feePercentage: 0 }]
         };
       })
+    }));
+  };
+
+  const addSupplyUsage = () => {
+    setFormData(prev => ({
+      ...prev,
+      supplyUsages: [
+        ...(prev.supplyUsages || []),
+        { id: Date.now().toString(), supplyId: '', supplyName: '', quantityPerProduct: 1, unit: 'un' },
+      ],
+    }));
+  };
+
+  const updateSupplyUsage = (usageId: string, field: keyof ProductSupplyUsage, value: string | number) => {
+    setFormData(prev => ({
+      ...prev,
+      supplyUsages: (prev.supplyUsages || []).map(usage => {
+        if (usage.id !== usageId) return usage;
+
+        if (field === 'supplyId') {
+          const selectedSupply = supplies.find(item => item.id === value);
+          return {
+            ...usage,
+            supplyId: String(value),
+            supplyName: selectedSupply?.name || '',
+            unit: selectedSupply?.unit || usage.unit || 'un',
+          };
+        }
+
+        return {
+          ...usage,
+          [field]: field === 'quantityPerProduct' ? Number(value) || 0 : value,
+        };
+      }),
+    }));
+  };
+
+  const removeSupplyUsage = (usageId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      supplyUsages: (prev.supplyUsages || []).filter(usage => usage.id !== usageId),
     }));
   };
 
@@ -1223,8 +1353,16 @@ export function Produtos() {
     return normalized === '#fff' || normalized === '#ffffff' || normalized === 'white';
   };
 
+  const calculateSupplyCostPerUnit = (productState: Partial<Product>) => {
+    return (productState.supplyUsages || []).reduce((sum, usage) => {
+      const supply = supplies.find(item => item.id === usage.supplyId);
+      const costPerUnit = Number(supply?.costPerUnit) || 0;
+      return sum + ((Number(usage.quantityPerProduct) || 0) * costPerUnit);
+    }, 0);
+  };
+
   // --- INTELLIGENCE CALCULATIONS ---
-  const calculateUnitCostBreakdown = (v: Variation, fixedCost: number) => {
+  const calculateUnitCostBreakdown = (v: Variation, fixedCost: number, productState: Partial<Product> = formData) => {
     let materialCost = 0;
     
     if (v.materials && v.materials.length > 0) {
@@ -1241,7 +1379,7 @@ export function Produtos() {
     const qty = v.quantityPerPrint || 1;
     
     // Add Wastes marked as "includeInCost" to the fixed cost
-    const totalWastesCost = (formData.wastes || [])
+    const totalWastesCost = (productState.wastes || [])
       .filter(w => w.includeInCost)
       .reduce((acc, w) => {
         const filament = filaments.find(f => f.id === w.filamentId);
@@ -1254,16 +1392,17 @@ export function Produtos() {
 
     const materialCostPerUnit = materialCost / qty;
     const timeCostPerUnit = timeCost / qty;
+    const supplyCostPerUnit = calculateSupplyCostPerUnit(productState);
     
     const combinedFixedCost = fixedCost + amortizedWasteCost;
     
-    const total = materialCostPerUnit + timeCostPerUnit + combinedFixedCost;
+    const total = materialCostPerUnit + timeCostPerUnit + supplyCostPerUnit + combinedFixedCost;
     
-    return { materialCostPerUnit, timeCostPerUnit, fixedCost: combinedFixedCost, total };
+    return { materialCostPerUnit, timeCostPerUnit, supplyCostPerUnit, fixedCost: combinedFixedCost, total };
   };
 
-  const calculateUnitCost = (v: Variation, fixedCost: number) => {
-    return calculateUnitCostBreakdown(v, fixedCost).total;
+  const calculateUnitCost = (v: Variation, fixedCost: number, productState: Partial<Product> = formData) => {
+    return calculateUnitCostBreakdown(v, fixedCost, productState).total;
   };
 
   const generateIntelligenceData = () => {
@@ -1276,7 +1415,7 @@ export function Produtos() {
     let count = 0;
 
     const variationsData = (formData.variations || []).map(v => {
-      const unitCost = calculateUnitCost(v, formData.fixedCost || 0);
+      const unitCost = calculateUnitCost(v, formData.fixedCost || 0, liveFormProduct);
       
       const channels = v.channelPrices.map(cp => {
         const fee = cp.price * (cp.feePercentage / 100);
@@ -1313,7 +1452,7 @@ export function Produtos() {
 
   const getProductCostRange = (product: Product) => {
     if (!product.variations || product.variations.length === 0) return 'R$ 0,00';
-    const costs = product.variations.map(v => calculateUnitCost(v, product.fixedCost || 0));
+    const costs = product.variations.map(v => calculateUnitCost(v, product.fixedCost || 0, product));
     const minCost = Math.min(...costs);
     const maxCost = Math.max(...costs);
     if (minCost === maxCost) return `R$ ${minCost.toFixed(2)}`;
@@ -1370,9 +1509,12 @@ export function Produtos() {
             setFormData({
               status: 'desenvolvimento',
               fixedCost: 0,
+              imageUrl: '',
               technicalSheet: { dimensions: '', infillPercentage: 15, layerHeight: 0.2, supports: false, postProcessing: '' },
               variations: [{...defaultVariation, id: Date.now().toString()}],
               files: [],
+              wastes: [],
+              supplyUsages: [],
               productionTables: [createProductTableEntry(1)],
             });
             setEditingId(null);
@@ -1404,71 +1546,36 @@ export function Produtos() {
                 {/* Informações Gerais */}
                 <div>
                   <h3 className="text-sm font-bold text-on-surface mb-4 flex items-center gap-2"><Box className="w-4 h-4 text-primary" /> Informações Gerais</h3>
-                  
-                  <div className="flex flex-col md:flex-row gap-6 mb-6">
-                    <div className="w-full md:w-32 flex-shrink-0">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant block mb-1.5">Foto do Produto</label>
-                      <div className="relative w-full aspect-square bg-surface-container-low border-2 border-dashed border-outline-variant/30 rounded-xl flex items-center justify-center overflow-hidden hover:bg-surface-container transition-colors cursor-pointer group">
-                        {formData.imageUrl ? (
-                          <img src={formData.imageUrl} alt="Produto" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="text-center p-2">
-                            <Upload className="w-6 h-6 text-on-surface-variant mx-auto mb-1 opacity-50 group-hover:opacity-100 transition-opacity" />
-                            <span className="text-[9px] text-on-surface-variant uppercase font-bold">Upload</span>
-                          </div>
-                        )}
-                        <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
-                      </div>
-                      {formData.imageUrl && (
-                        <button onClick={() => setFormData(prev => ({...prev, imageUrl: ''}))} className="text-[10px] text-error font-bold mt-1 hover:underline w-full text-center">
-                          Remover Foto
-                        </button>
-                      )}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="space-y-1.5 md:col-span-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Nome do Produto</label>
+                      <input type="text" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="Ex: Suporte de Fone" />
                     </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Nome do Produto</label>
-                        <input type="text" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="Ex: Suporte de Fone" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">SKU Base</label>
-                        <input type="text" value={formData.baseSku || ''} onChange={e => setFormData({...formData, baseSku: e.target.value})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="Ex: SUP-FONE" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Categoria</label>
-                        <input 
-                          list="categories-list" 
-                          value={formData.category || ''} 
-                          onChange={e => setFormData({...formData, category: e.target.value})} 
-                          className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" 
-                          placeholder="Selecionar ou digitar nova..." 
-                        />
-                        <datalist id="categories-list">
-                          {uniqueCategories.map(cat => (
-                            <option key={cat} value={cat} />
-                          ))}
-                        </datalist>
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Status</label>
-                        <select value={formData.status || 'desenvolvimento'} onChange={e => setFormData({...formData, status: e.target.value as any})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none">
-                          <option value="desenvolvimento">Em Desenvolvimento</option>
-                          <option value="ativo">Ativo (Em Produção)</option>
-                          <option value="inativo">Inativo</option>
-                        </select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant flex items-center justify-between">
-                          <span>Estoque Atual / Completo</span>
-                          {getProductStockInfo(liveFormProduct).isDerived && (
-                            <span className="text-primary tracking-normal truncate ml-2 text-right" title="Calculado das peças">{getProductStockInfo(liveFormProduct).extra.join(', ')}</span>
-                          )}
-                        </label>
-                        <div className="w-full bg-surface-container/50 border border-outline-variant/10 rounded p-2.5 text-sm text-on-surface-variant tabular-nums flex items-center justify-between">
-                          <span className="font-bold text-on-surface">{getProductStockInfo(liveFormProduct).complete}</span>
-                          <span className="text-[10px] italic">Automático pelas peças</span>
-                        </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Categoria</label>
+                      <input 
+                        list="categories-list" 
+                        value={formData.category || ''} 
+                        onChange={e => setFormData({...formData, category: e.target.value})} 
+                        className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" 
+                        placeholder="Selecionar ou digitar nova..." 
+                      />
+                      <datalist id="categories-list">
+                        {uniqueCategories.map(cat => (
+                          <option key={cat} value={cat} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <div className="space-y-1.5 md:col-span-3">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant flex items-center justify-between">
+                        <span>Estoque Atual / Completo</span>
+                        {getProductStockInfo(liveFormProduct).isDerived && (
+                          <span className="text-primary tracking-normal truncate ml-2 text-right" title="Calculado das peças">{getProductStockInfo(liveFormProduct).extra.join(', ')}</span>
+                        )}
+                      </label>
+                      <div className="w-full bg-surface-container/50 border border-outline-variant/10 rounded p-2.5 text-sm text-on-surface-variant tabular-nums flex items-center justify-between">
+                        <span className="font-bold text-on-surface">{getProductStockInfo(liveFormProduct).complete}</span>
+                        <span className="text-[10px] italic">Automático pelas peças</span>
                       </div>
                     </div>
                   </div>
@@ -1675,6 +1782,84 @@ export function Produtos() {
                   </div>
                 )}
 
+                <div className="pt-6 border-t border-outline-variant/20">
+                  <div className="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-on-surface flex items-center gap-2"><FileText className="w-4 h-4 text-primary" /> Insumos do Produto</h3>
+                      <p className="text-xs text-on-surface-variant mt-1">Vincule os itens comprados que cada unidade consome, como vela, fita ou caixa.</p>
+                    </div>
+                    <button type="button" onClick={addSupplyUsage} className="px-3 py-1.5 bg-secondary-container text-on-secondary-container rounded text-xs font-bold whitespace-nowrap">
+                      Adicionar Insumo
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
+                      <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Insumos Vinculados</p>
+                      <p className="text-xl font-bold text-on-surface">{(formData.supplyUsages || []).filter(item => item.supplyId).length}</p>
+                    </div>
+                    <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
+                      <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Custo por Produto</p>
+                      <p className="text-xl font-bold text-primary">R$ {calculateSupplyCostPerUnit(liveFormProduct).toFixed(2)}</p>
+                    </div>
+                    <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
+                      <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Consumo do Estoque Atual</p>
+                      <p className="text-xl font-bold text-on-surface">
+                        {(formData.supplyUsages || []).reduce((sum, usage) => sum + ((Number(usage.quantityPerProduct) || 0) * getProductStockInfo(liveFormProduct).complete), 0).toLocaleString('pt-BR')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {(formData.supplyUsages || []).length === 0 && (
+                      <div className="text-[10px] text-on-surface-variant italic">Nenhum insumo vinculado.</div>
+                    )}
+
+                    {(formData.supplyUsages || []).map(usage => {
+                      const selectedSupply = supplies.find(item => item.id === usage.supplyId);
+                      const totalUsage = (Number(usage.quantityPerProduct) || 0) * getProductStockInfo(liveFormProduct).complete;
+                      return (
+                        <div key={usage.id} className="grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_120px_120px_minmax(0,1fr)_auto] gap-3 items-end bg-surface-container rounded-xl p-4 border border-outline-variant/10">
+                          <SearchableSelect
+                            options={supplyOptions}
+                            value={usage.supplyId}
+                            onChange={(value) => updateSupplyUsage(usage.id, 'supplyId', value)}
+                            placeholder="Selecionar insumo"
+                            label="Insumo"
+                          />
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Qtd por Produto</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={usage.quantityPerProduct || ''}
+                              onChange={e => updateSupplyUsage(usage.id, 'quantityPerProduct', parseLocaleNumber(e.target.value))}
+                              className="w-full bg-surface-container-lowest border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Unidade</label>
+                            <div className="w-full bg-surface-container-lowest border border-outline-variant/10 rounded p-2.5 text-sm text-on-surface-variant">
+                              {usage.unit || selectedSupply?.unit || 'un'}
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Resumo</label>
+                            <div className="rounded p-2.5 bg-surface-container-lowest border border-outline-variant/10 text-xs text-on-surface-variant leading-relaxed">
+                              <div>Estoque atual: <span className="font-bold text-on-surface">{selectedSupply ? `${selectedSupply.quantity} ${selectedSupply.unit}` : '--'}</span></div>
+                              <div>Baixa ao salvar: <span className="font-bold text-primary">{usage.supplyId ? `${totalUsage.toLocaleString('pt-BR')} ${usage.unit || selectedSupply?.unit || ''}` : '--'}</span></div>
+                            </div>
+                          </div>
+                          <button type="button" onClick={() => removeSupplyUsage(usage.id)} className="p-2 text-error hover:bg-surface-container-lowest rounded justify-self-end">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {/* Custos e Preço */}
                 {formData.variations && formData.variations.length > 0 && (
                   <div className="pt-6 border-t border-outline-variant/20">
@@ -1684,14 +1869,14 @@ export function Produtos() {
                       <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
                         <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Custo Total da Impressão</p>
                         <p className="text-xl font-bold text-on-surface">
-                          R$ {(calculateUnitCost(livePrimaryVariation, formData.fixedCost || 0) * (livePrimaryVariation.quantityPerPrint || 1)).toFixed(2)}
+                          R$ {(calculateUnitCost(livePrimaryVariation, formData.fixedCost || 0, liveFormProduct) * (livePrimaryVariation.quantityPerPrint || 1)).toFixed(2)}
                         </p>
                       </div>
                       
                       <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
                         <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Custo por Unidade</p>
                         <p className="text-xl font-bold text-primary">
-                          R$ {calculateUnitCost(livePrimaryVariation, formData.fixedCost || 0).toFixed(2)}
+                          R$ {calculateUnitCost(livePrimaryVariation, formData.fixedCost || 0, liveFormProduct).toFixed(2)}
                         </p>
                       </div>
 
@@ -1725,26 +1910,68 @@ export function Produtos() {
                 </div>
 
                 {advancedTab === 'tech' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Dimensões (LxPxA)</label>
-                  <input type="text" value={formData.technicalSheet?.dimensions || ''} onChange={e => setFormData({...formData, technicalSheet: {...formData.technicalSheet, dimensions: e.target.value} as TechnicalSheet})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="Ex: 150x100x200mm" />
+              <div className="space-y-6">
+                <div className="rounded-xl border border-outline-variant/20 bg-surface-container-low p-5">
+                  <h4 className="text-sm font-bold text-on-surface mb-4">Cadastro Avançado</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-[140px_minmax(0,1fr)_220px] gap-6">
+                    <div className="w-full">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant block mb-1.5">Foto do Produto</label>
+                      <div className="relative w-full aspect-square bg-surface-container-lowest border-2 border-dashed border-outline-variant/30 rounded-xl flex items-center justify-center overflow-hidden hover:bg-surface-container transition-colors cursor-pointer group">
+                        {formData.imageUrl ? (
+                          <img src={formData.imageUrl} alt="Produto" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="text-center p-2">
+                            <Upload className="w-6 h-6 text-on-surface-variant mx-auto mb-1 opacity-50 group-hover:opacity-100 transition-opacity" />
+                            <span className="text-[9px] text-on-surface-variant uppercase font-bold">Upload</span>
+                          </div>
+                        )}
+                        <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
+                      </div>
+                      {formData.imageUrl && (
+                        <button type="button" onClick={() => setFormData(prev => ({...prev, imageUrl: ''}))} className="text-[10px] text-error font-bold mt-1 hover:underline w-full text-center">
+                          Remover Foto
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">SKU Base</label>
+                        <input type="text" value={formData.baseSku || ''} onChange={e => setFormData({...formData, baseSku: e.target.value})} className="w-full bg-surface-container-lowest border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="Ex: SUP-FONE" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Status</label>
+                        <select value={formData.status || 'desenvolvimento'} onChange={e => setFormData({...formData, status: e.target.value as any})} className="w-full bg-surface-container-lowest border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none">
+                          <option value="desenvolvimento">Em Desenvolvimento</option>
+                          <option value="ativo">Ativo (Em Produção)</option>
+                          <option value="inativo">Inativo</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Preenchimento (Infill %)</label>
-                  <input type="number" value={formData.technicalSheet?.infillPercentage || ''} onChange={e => setFormData({...formData, technicalSheet: {...formData.technicalSheet, infillPercentage: Number(e.target.value)} as TechnicalSheet})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="15" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Altura da Camada (mm)</label>
-                  <input type="number" step="0.04" value={formData.technicalSheet?.layerHeight || ''} onChange={e => setFormData({...formData, technicalSheet: {...formData.technicalSheet, layerHeight: Number(e.target.value)} as TechnicalSheet})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="0.2" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Pós-processamento</label>
-                  <input type="text" value={formData.technicalSheet?.postProcessing || ''} onChange={e => setFormData({...formData, technicalSheet: {...formData.technicalSheet, postProcessing: e.target.value} as TechnicalSheet})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="Ex: Lixar, Pintar, Inserir ímãs..." />
-                </div>
-                <div className="flex items-center gap-3 mt-4">
-                  <input type="checkbox" id="supports" checked={formData.technicalSheet?.supports || false} onChange={e => setFormData({...formData, technicalSheet: {...formData.technicalSheet, supports: e.target.checked} as TechnicalSheet})} className="w-4 h-4 text-primary rounded border-outline-variant/30 focus:ring-primary" />
-                  <label htmlFor="supports" className="text-sm font-bold text-on-surface">Requer Suportes?</label>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Dimensões (LxPxA)</label>
+                    <input type="text" value={formData.technicalSheet?.dimensions || ''} onChange={e => setFormData({...formData, technicalSheet: {...formData.technicalSheet, dimensions: e.target.value} as TechnicalSheet})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="Ex: 150x100x200mm" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Preenchimento (Infill %)</label>
+                    <input type="number" value={formData.technicalSheet?.infillPercentage || ''} onChange={e => setFormData({...formData, technicalSheet: {...formData.technicalSheet, infillPercentage: Number(e.target.value)} as TechnicalSheet})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="15" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Altura da Camada (mm)</label>
+                    <input type="number" step="0.04" value={formData.technicalSheet?.layerHeight || ''} onChange={e => setFormData({...formData, technicalSheet: {...formData.technicalSheet, layerHeight: Number(e.target.value)} as TechnicalSheet})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="0.2" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Pós-processamento</label>
+                    <input type="text" value={formData.technicalSheet?.postProcessing || ''} onChange={e => setFormData({...formData, technicalSheet: {...formData.technicalSheet, postProcessing: e.target.value} as TechnicalSheet})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="Ex: Lixar, Pintar, Inserir ímãs..." />
+                  </div>
+                  <div className="flex items-center gap-3 mt-4">
+                    <input type="checkbox" id="supports" checked={formData.technicalSheet?.supports || false} onChange={e => setFormData({...formData, technicalSheet: {...formData.technicalSheet, supports: e.target.checked} as TechnicalSheet})} className="w-4 h-4 text-primary rounded border-outline-variant/30 focus:ring-primary" />
+                    <label htmlFor="supports" className="text-sm font-bold text-on-surface">Requer Suportes?</label>
+                  </div>
                 </div>
               </div>
             )}
@@ -1765,7 +1992,7 @@ export function Produtos() {
                 ) : (
                   <div className="space-y-4">
                     {formData.variations?.map((v) => {
-                      const costBreakdown = calculateUnitCostBreakdown(v, formData.fixedCost || 0);
+                      const costBreakdown = calculateUnitCostBreakdown(v, formData.fixedCost || 0, liveFormProduct);
                       const unitCost = costBreakdown.total;
                       return (
                         <div key={v.id} className="flex flex-col gap-3 p-4 bg-surface-container-lowest border border-outline-variant/20 rounded-lg">
@@ -1915,7 +2142,7 @@ export function Produtos() {
                               <div className="w-full bg-surface-container border-none rounded p-2 text-xs tabular-nums font-bold text-primary flex flex-col justify-center min-h-[34px]">
                                 <span>R$ {unitCost.toFixed(2)}</span>
                                 <span className="text-[8px] text-on-surface-variant font-normal leading-tight mt-0.5">
-                                  Mat: R$ {costBreakdown.materialCostPerUnit.toFixed(2)} | Imp: R$ {costBreakdown.timeCostPerUnit.toFixed(2)}
+                                  Mat: R$ {costBreakdown.materialCostPerUnit.toFixed(2)} | Imp: R$ {costBreakdown.timeCostPerUnit.toFixed(2)} | Ins: R$ {costBreakdown.supplyCostPerUnit.toFixed(2)}
                                 </span>
                               </div>
                             </div>
