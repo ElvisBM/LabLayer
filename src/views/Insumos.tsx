@@ -3,6 +3,7 @@ import { Plus, Edit2, Trash2, Package } from 'lucide-react';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
+import toast from 'react-hot-toast';
 
 interface Supply {
   id: string;
@@ -74,7 +75,8 @@ export function Insumos() {
       setFormData({ name: '', category: '', quantity: 0, unit: 'un', costPerUnit: 0, minStock: 0, purchaseDate: new Date().toISOString().split('T')[0] });
     } catch (error) {
       console.error("Error saving supply:", error);
-      alert("Erro ao salvar insumo.");
+      const message = error instanceof Error ? error.message : 'Erro ao salvar insumo.';
+      toast.error(message);
     }
   };
 
@@ -90,7 +92,8 @@ export function Insumos() {
       await deleteDoc(doc(db, `tenants/${tenantId}/supplies`, id));
     } catch (error) {
       console.error("Error deleting supply:", error);
-      alert("Erro ao excluir insumo.");
+      const message = error instanceof Error ? error.message : 'Erro ao excluir insumo.';
+      toast.error(message);
     }
   };
 
@@ -103,7 +106,7 @@ export function Insumos() {
         </div>
         <button 
           onClick={() => {
-            setFormData({ name: '', category: '', quantity: 0, unit: 'un', costPerUnit: 0, minStock: 0 });
+            setFormData({ name: '', category: '', quantity: 0, unit: 'un', costPerUnit: 0, minStock: 0, purchaseDate: new Date().toISOString().split('T')[0] });
             setEditingId(null);
             setShowForm(!showForm);
           }}

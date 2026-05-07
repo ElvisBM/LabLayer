@@ -84,13 +84,14 @@ service cloud.firestore {
     }
 
     function isValidSupply() {
-      let allowedFields = ['name', 'category', 'quantity', 'unit', 'costPerUnit', 'minStock', 'createdAt'];
+      let allowedFields = ['name', 'category', 'quantity', 'unit', 'costPerUnit', 'minStock', 'purchaseDate', 'createdAt'];
       return hasOnlyAllowedFields(allowedFields) &&
              hasRequiredFields(['name', 'quantity', 'unit', 'costPerUnit', 'createdAt']) &&
              isValidString('name', 1, 100) &&
              isValidString('unit', 1, 20) &&
              isPositiveNumber('quantity') &&
              isPositiveNumber('costPerUnit') &&
+             (!('purchaseDate' in request.resource.data) || request.resource.data.purchaseDate is string) &&
              request.resource.data.createdAt is string;
     }
 
