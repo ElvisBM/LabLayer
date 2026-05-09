@@ -26,13 +26,21 @@ if (!getApps().length) {
 const db = getApps().length ? getFirestore() : null;
 
 // Inicializa API do WooCommerce
-const wooCommerce = new WooCommerceRestApi({
-  url: process.env.WOOCOMMERCE_URL || 'https://brincamentelab.com.br',
-  consumerKey: process.env.WOOCOMMERCE_CONSUMER_KEY || '',
-  consumerSecret: process.env.WOOCOMMERCE_CONSUMER_SECRET || '',
-  version: 'wc/v3',
-  queryStringAuth: true
-});
+const hasWooCommerceCredentials = Boolean(
+  process.env.WOOCOMMERCE_URL &&
+  process.env.WOOCOMMERCE_CONSUMER_KEY &&
+  process.env.WOOCOMMERCE_CONSUMER_SECRET,
+);
+
+const wooCommerce = hasWooCommerceCredentials
+  ? new WooCommerceRestApi({
+      url: process.env.WOOCOMMERCE_URL,
+      consumerKey: process.env.WOOCOMMERCE_CONSUMER_KEY,
+      consumerSecret: process.env.WOOCOMMERCE_CONSUMER_SECRET,
+      version: 'wc/v3',
+      queryStringAuth: true
+    })
+  : null;
 
 async function startServer() {
   const app = express();
@@ -128,6 +136,12 @@ async function startServer() {
   // API: LabLayer -> WooCommerce (Enviar Produtos)
   app.post("/api/integrations/woocommerce/sync-product", async (req, res) => {
     try {
+      if (!wooCommerce) {
+        return res.status(503).json({
+          error: "Integração WooCommerce não configurada.",
+        });
+      }
+
       const { name, regular_price, description, images } = req.body;
 
       // Validação básica
