@@ -180,6 +180,8 @@ interface ProductProductionTable {
   id: string;
   tableName: string;
   scheduledAt: string;
+  startAt?: string;
+  endAt?: string;
   hours: number;
   filaments: ProductProductionFilament[];
 }
@@ -194,10 +196,27 @@ interface ProductionOrderFallback {
   filaments?: ProductProductionFilament[];
 }
 
-const getLocalDateTimeString = () => {
-  const d = new Date();
+const getLocalDateTimeString = (date = new Date()) => {
+  const d = new Date(date);
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 16);
+};
+
+const addHoursToDateTime = (startAt: string, hours: number) => {
+  if (!startAt) return '';
+  const startDate = new Date(startAt);
+  if (Number.isNaN(startDate.getTime())) return '';
+  return getLocalDateTimeString(new Date(startDate.getTime() + Math.max(0, hours) * 60 * 60 * 1000));
+};
+
+const calculateDateTimeHours = (startAt?: string, endAt?: string) => {
+  if (!startAt || !endAt) return 0;
+  const startDate = new Date(startAt);
+  const endDate = new Date(endAt);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return 0;
+  const diffMs = endDate.getTime() - startDate.getTime();
+  if (diffMs <= 0) return 0;
+  return Number((diffMs / (1000 * 60 * 60)).toFixed(2));
 };
 
 const createProductFilamentEntry = (): ProductProductionFilament => ({
@@ -208,29 +227,44 @@ const createProductFilamentEntry = (): ProductProductionFilament => ({
   productsCount: 0,
 });
 
-const createProductTableEntry = (index = 1): ProductProductionTable => ({
-  id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-  tableName: `Mesa ${index}`,
-  scheduledAt: getLocalDateTimeString(),
-  hours: 1,
-  filaments: [createProductFilamentEntry()],
-});
+const createProductTableEntry = (index = 1): ProductProductionTable => {
+  const startAt = getLocalDateTimeString();
+  const endAt = addHoursToDateTime(startAt, 1);
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    tableName: `Mesa ${index}`,
+    scheduledAt: startAt,
+    startAt,
+    endAt,
+    hours: 1,
+    filaments: [createProductFilamentEntry()],
+  };
+};
 
-const normalizeProductionOrderTable = (table: any, index: number): ProductProductionTable => ({
-  id: table?.id || `legacy-table-${index}`,
-  tableName: table?.tableName || `Mesa ${index + 1}`,
-  scheduledAt: table?.scheduledAt || getLocalDateTimeString(),
-  hours: Number(table?.hours) || Number(table?.hoursPerTable) || 0,
-  filaments: Array.isArray(table?.filaments) && table.filaments.length > 0
-    ? table.filaments.map((item: any, itemIndex: number) => ({
-        id: item?.id || `legacy-filament-${index}-${itemIndex}`,
-        filamentId: item?.filamentId || '',
-        filamentName: item?.filamentName || '',
-        quantityKg: Number(item?.quantityKg) || 0,
-        productsCount: Number(item?.productsCount) || 0,
-      }))
-    : [],
-});
+const normalizeProductionOrderTable = (table: any, index: number): ProductProductionTable => {
+  const startAt = table?.startAt || table?.scheduledAt || getLocalDateTimeString();
+  const baseHours = Number(table?.hours) || Number(table?.hoursPerTable) || 0;
+  const endAt = table?.endAt || addHoursToDateTime(startAt, baseHours || 1);
+  const hours = calculateDateTimeHours(startAt, endAt) || baseHours;
+
+  return {
+    id: table?.id || `legacy-table-${index}`,
+    tableName: table?.tableName || `Mesa ${index + 1}`,
+    scheduledAt: startAt,
+    startAt,
+    endAt,
+    hours,
+    filaments: Array.isArray(table?.filaments) && table.filaments.length > 0
+      ? table.filaments.map((item: any, itemIndex: number) => ({
+          id: item?.id || `legacy-filament-${index}-${itemIndex}`,
+          filamentId: item?.filamentId || '',
+          filamentName: item?.filamentName || '',
+          quantityKg: Number(item?.quantityKg) || 0,
+          productsCount: Number(item?.productsCount) || 0,
+        }))
+      : [],
+  };
+};
 
 const normalizeProductionOrderFallback = (order: ProductionOrderFallback): ProductionOrderFallback => {
   if (Array.isArray(order.tables) && order.tables.length > 0) {
@@ -398,6 +432,33 @@ export function Produtos() {
     return Number.isFinite(parsed) ? parsed : 0;
   };
 
+  const resetProductForm = () => {
+    setFormData({
+      status: 'desenvolvimento',
+      fixedCost: 0,
+      imageUrl: '',
+      technicalSheet: { dimensions: '', infillPercentage: 15, layerHeight: 0.2, supports: false, postProcessing: '' },
+      variations: [{ ...defaultVariation, id: Date.now().toString() }],
+      files: [],
+      wastes: [],
+      supplyUsages: [],
+      productionTables: [createProductTableEntry(1)],
+    });
+    setEditingId(null);
+    setOpenTableIds([]);
+    setActiveTab('basic');
+  };
+
+  const closeProductForm = () => {
+    setShowForm(false);
+    resetProductForm();
+  };
+
+  const openNewProductForm = () => {
+    resetProductForm();
+    setShowForm(true);
+  };
+
   const supplyOptions: SelectOption[] = useMemo(() => {
     return supplies.map(supply => ({
       value: supply.id,
@@ -418,7 +479,8 @@ export function Produtos() {
           objectName: table.tableName || `Mesa ${tableIndex + 1}`,
           pieces: Number(item.productsCount) || 0,
           printTimeHours: Number(table.hours) || 0,
-          startTime: table.scheduledAt || '',
+          startTime: table.startAt || table.scheduledAt || '',
+          endTime: table.endAt || '',
         })),
     );
 
@@ -640,8 +702,13 @@ export function Produtos() {
       const sanitizedProductionTables = (formData.productionTables || []).map((table, index) => ({
         id: table.id,
         tableName: table.tableName || `Mesa ${index + 1}`,
-        scheduledAt: table.scheduledAt || getLocalDateTimeString(),
-        hours: Number(table.hours) || 0,
+        scheduledAt: table.startAt || table.scheduledAt || getLocalDateTimeString(),
+        startAt: table.startAt || table.scheduledAt || getLocalDateTimeString(),
+        endAt: table.endAt || addHoursToDateTime(table.startAt || table.scheduledAt || getLocalDateTimeString(), Number(table.hours) || 1),
+        hours: calculateDateTimeHours(
+          table.startAt || table.scheduledAt || getLocalDateTimeString(),
+          table.endAt || addHoursToDateTime(table.startAt || table.scheduledAt || getLocalDateTimeString(), Number(table.hours) || 1),
+        ) || Number(table.hours) || 0,
         filaments: (table.filaments || [])
           .map(item => {
             const filament = filaments.find(f => f.id === item.filamentId);
@@ -808,20 +875,7 @@ export function Produtos() {
 
       await batch.commit();
 
-      setShowForm(false);
-      setEditingId(null);
-      setOpenTableIds([]);
-      setFormData({
-        status: 'desenvolvimento',
-        fixedCost: 0,
-        imageUrl: '',
-        technicalSheet: { dimensions: '', infillPercentage: 15, layerHeight: 0.2, supports: false, postProcessing: '' },
-        variations: [{...defaultVariation, id: Date.now().toString()}],
-        files: [],
-        wastes: [],
-        supplyUsages: [],
-        productionTables: [createProductTableEntry(1)],
-      });
+      closeProductForm();
       toast.success(editingId ? "Produto salvo com sucesso!" : "Novo produto adicionado e materiais deduzidos!");
     } catch (error: any) {
       console.error("Error saving product:", error);
@@ -845,7 +899,6 @@ export function Produtos() {
     setOpenTableIds(editableTables.map(table => table.id));
     setShowForm(true);
     setActiveTab('basic');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDelete = async (id: string) => {
@@ -1122,7 +1175,34 @@ export function Produtos() {
   const updateProductionTable = (tableId: string, field: keyof ProductProductionTable, value: string | number) => {
     setFormData(prev => ({
       ...prev,
-      productionTables: (prev.productionTables || []).map(table => table.id === tableId ? { ...table, [field]: value } : table),
+      productionTables: (prev.productionTables || []).map(table => {
+        if (table.id !== tableId) return table;
+
+        const updatedTable = { ...table, [field]: value } as ProductProductionTable;
+        const startAt = updatedTable.startAt || updatedTable.scheduledAt || '';
+        const endAt = updatedTable.endAt || '';
+
+        if (field === 'startAt') {
+          updatedTable.scheduledAt = String(value);
+        }
+
+        if (field === 'hours') {
+          const numericHours = Number(value) || 0;
+          updatedTable.hours = numericHours;
+          updatedTable.endAt = startAt ? addHoursToDateTime(startAt, numericHours) : updatedTable.endAt;
+          return updatedTable;
+        }
+
+        if (field === 'startAt' || field === 'endAt' || field === 'scheduledAt') {
+          const normalizedStartAt = field === 'scheduledAt' ? String(value) : (updatedTable.startAt || updatedTable.scheduledAt || '');
+          const normalizedEndAt = updatedTable.endAt || '';
+          updatedTable.startAt = normalizedStartAt;
+          updatedTable.scheduledAt = normalizedStartAt;
+          updatedTable.hours = calculateDateTimeHours(normalizedStartAt, normalizedEndAt);
+        }
+
+        return updatedTable;
+      }),
     }));
   };
 
@@ -1305,7 +1385,7 @@ export function Produtos() {
 
   const getProductProductionTables = (product: Product | Partial<Product>) => {
     if (product.productionTables && product.productionTables.length > 0) {
-      return product.productionTables;
+      return product.productionTables.map((table, index) => normalizeProductionOrderTable(table, index));
     }
 
     const fallbackOrder = productionOrders
@@ -1321,19 +1401,29 @@ export function Produtos() {
         const key = material.objectName || material.id;
         const filament = filaments.find(item => item.id === material.filamentId);
         if (!grouped.has(key)) {
+          const startAt = material.startTime || '';
+          const endAt = material.endTime || addHoursToDateTime(startAt, Number(material.printTimeHours) || 0);
           grouped.set(key, {
             id: key,
             tableName: material.objectName || 'Mesa',
-            scheduledAt: material.startTime || '',
-            hours: Number(material.printTimeHours) || 0,
+            scheduledAt: startAt,
+            startAt,
+            endAt,
+            hours: calculateDateTimeHours(startAt, endAt) || Number(material.printTimeHours) || 0,
             filaments: [],
           });
         }
 
         const table = grouped.get(key)!;
-        table.hours = Number((table.hours || 0) + (Number(material.printTimeHours) || 0));
+        table.hours = Math.max(Number(table.hours) || 0, Number(material.printTimeHours) || 0);
         if (!table.scheduledAt && material.startTime) {
           table.scheduledAt = material.startTime;
+        }
+        if (!table.startAt && material.startTime) {
+          table.startAt = material.startTime;
+        }
+        if (!table.endAt && material.endTime) {
+          table.endAt = material.endTime;
         }
         table.filaments.push({
           id: material.id,
@@ -1353,15 +1443,16 @@ export function Produtos() {
       return [createProductTableEntry(1)];
     }
 
-    return tables.map((table, index) => ({
-      ...table,
-      tableName: table.tableName || `Mesa ${index + 1}`,
-      scheduledAt: table.scheduledAt || getLocalDateTimeString(),
-      hours: Number(table.hours) || 0,
-      filaments: table.filaments && table.filaments.length > 0
-        ? table.filaments
-        : [createProductFilamentEntry()],
-    }));
+    return tables.map((table, index) => {
+      const normalizedTable = normalizeProductionOrderTable(table, index);
+      return {
+        ...normalizedTable,
+        tableName: normalizedTable.tableName || `Mesa ${index + 1}`,
+        filaments: normalizedTable.filaments && normalizedTable.filaments.length > 0
+          ? normalizedTable.filaments
+          : [createProductFilamentEntry()],
+      };
+    });
   };
 
   const isLightColor = (hex?: string) => {
@@ -1518,32 +1609,32 @@ export function Produtos() {
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
-          <h2 className="font-headline text-3xl font-bold text-primary tracking-tighter">Catálogo de Produtos</h2>
-          <p className="text-on-surface-variant font-sans text-sm mt-1">Gestão industrial completa: variações, ficha técnica e inteligência de lucro.</p>
+          <h2 className="font-headline text-3xl font-bold text-primary tracking-tighter">
+            {showForm ? (editingId ? 'Editar Produto' : 'Novo Produto') : 'Catálogo de Produtos'}
+          </h2>
+          <p className="text-on-surface-variant font-sans text-sm mt-1">
+            {showForm
+              ? 'Edite o produto em uma área dedicada, com mesas, filamentos e cadastro avançado separados da listagem.'
+              : 'Gestão industrial completa: variações, ficha técnica e inteligência de lucro.'}
+          </p>
         </div>
-        <button 
-          onClick={() => {
-            setFormData({
-              status: 'desenvolvimento',
-              fixedCost: 0,
-              imageUrl: '',
-              technicalSheet: { dimensions: '', infillPercentage: 15, layerHeight: 0.2, supports: false, postProcessing: '' },
-              variations: [{...defaultVariation, id: Date.now().toString()}],
-              files: [],
-              wastes: [],
-              supplyUsages: [],
-              productionTables: [createProductTableEntry(1)],
-            });
-            setEditingId(null);
-            setOpenTableIds([]);
-            setShowForm(true);
-            setActiveTab('basic');
-          }}
-          className="w-full sm:w-auto px-4 py-2 bg-primary text-on-primary text-sm font-bold rounded-md hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Novo Produto
-        </button>
+        {showForm ? (
+          <button
+            type="button"
+            onClick={closeProductForm}
+            className="w-full sm:w-auto px-4 py-2 bg-surface-container text-on-surface text-sm font-bold rounded-md hover:bg-surface-container-high transition-all"
+          >
+            Voltar para Produtos
+          </button>
+        ) : (
+          <button
+            onClick={openNewProductForm}
+            className="w-full sm:w-auto px-4 py-2 bg-primary text-on-primary text-sm font-bold rounded-md hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Novo Produto
+          </button>
+        )}
       </div>
 
       {showForm && (
@@ -1664,7 +1755,7 @@ export function Produtos() {
                         <div className="flex justify-between items-center">
                           <div>
                             <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Mesas do Produto</label>
-                            <p className="text-xs text-on-surface-variant mt-1">Cadastre por mesa: horário, horas e filamentos. O tempo não fica mais no filamento.</p>
+                            <p className="text-xs text-on-surface-variant mt-1">Cadastre por mesa com início, fim e filamentos. As horas são calculadas automaticamente.</p>
                           </div>
                           <button type="button" onClick={addProductionTable} className="text-[10px] text-primary font-bold hover:underline">
                             + Adicionar Mesa
@@ -1690,6 +1781,8 @@ export function Produtos() {
                                       </span>
                                     </div>
                                     <div className="flex flex-wrap gap-2 text-xs text-on-surface-variant">
+                                      <span>{table.startAt ? new Date(table.startAt).toLocaleString('pt-BR') : 'Sem início'}</span>
+                                      <span>•</span>
                                       <span>{Number(table.hours || 0).toFixed(1)} h</span>
                                       <span>•</span>
                                       <span>{table.filaments.length} filamento(s)</span>
@@ -1705,7 +1798,7 @@ export function Produtos() {
 
                               {openTableIds.includes(table.id) && (
                                 <>
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                 <div className="space-y-1.5">
                                   <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Mesa</label>
                                   <input
@@ -1717,23 +1810,32 @@ export function Produtos() {
                                   />
                                 </div>
                                 <div className="space-y-1.5">
+                                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Início da Mesa</label>
+                                  <input
+                                    type="datetime-local"
+                                    value={table.startAt || table.scheduledAt || ''}
+                                    onChange={e => updateProductionTable(table.id, 'startAt', e.target.value)}
+                                    className="w-full bg-surface-container-lowest border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Fim da Mesa</label>
+                                  <input
+                                    type="datetime-local"
+                                    value={table.endAt || ''}
+                                    onChange={e => updateProductionTable(table.id, 'endAt', e.target.value)}
+                                    className="w-full bg-surface-container-lowest border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
                                   <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Horas da Mesa</label>
                                   <input
                                     type="number"
                                     step="0.1"
                                     min="0"
                                     value={table.hours}
-                                    onChange={e => updateProductionTable(table.id, 'hours', Number(e.target.value) || 0)}
-                                    className="w-full bg-surface-container-lowest border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
-                                  />
-                                </div>
-                                <div className="space-y-1.5">
-                                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Data e Hora da Mesa</label>
-                                  <input
-                                    type="datetime-local"
-                                    value={table.scheduledAt}
-                                    onChange={e => updateProductionTable(table.id, 'scheduledAt', e.target.value)}
-                                    className="w-full bg-surface-container-lowest border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                                    readOnly
+                                    className="w-full bg-surface-container/50 border-none rounded p-2.5 text-sm text-on-surface-variant cursor-not-allowed tabular-nums outline-none"
                                   />
                                 </div>
                               </div>
@@ -2429,7 +2531,7 @@ export function Produtos() {
           <div className="p-4 border-t border-outline-variant/20 bg-surface-container-lowest flex justify-end gap-3">
             <button 
               type="button" 
-              onClick={() => { setShowForm(false); setEditingId(null); }}
+              onClick={closeProductForm}
               className="px-6 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded transition-colors"
             >
               Cancelar
@@ -2445,6 +2547,8 @@ export function Produtos() {
         </div>
       )}
 
+      {!showForm && (
+        <>
       {/* Filtros */}
       <div className="flex flex-col gap-4 bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/10">
         <div className="flex flex-wrap gap-4 items-center justify-between">
@@ -2791,6 +2895,8 @@ export function Produtos() {
             </div>
           ))}
         </div>
+      )}
+        </>
       )}
 
       {deleteTargetId && (
