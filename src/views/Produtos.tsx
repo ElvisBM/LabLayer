@@ -831,17 +831,18 @@ export function Produtos() {
 
   const handleEdit = (p: Product) => {
     const prioritizedProduct = prioritizeScheduledVariations(p);
-    setFormData({
-      ...prioritizedProduct,
-      productionTables: prioritizedProduct.productionTables && prioritizedProduct.productionTables.length > 0
+    const editableTables = ensureEditableProductionTables(
+      prioritizedProduct.productionTables && prioritizedProduct.productionTables.length > 0
         ? prioritizedProduct.productionTables
         : getProductProductionTables(prioritizedProduct),
+    );
+
+    setFormData({
+      ...prioritizedProduct,
+      productionTables: editableTables,
     });
     setEditingId(p.id);
-    setOpenTableIds((prioritizedProduct.productionTables && prioritizedProduct.productionTables.length > 0
-      ? prioritizedProduct.productionTables
-      : getProductProductionTables(prioritizedProduct)
-    ).map(table => table.id));
+    setOpenTableIds(editableTables.map(table => table.id));
     setShowForm(true);
     setActiveTab('basic');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1345,6 +1346,22 @@ export function Produtos() {
     });
 
     return Array.from(grouped.values());
+  };
+
+  const ensureEditableProductionTables = (tables: ProductProductionTable[]) => {
+    if (tables.length === 0) {
+      return [createProductTableEntry(1)];
+    }
+
+    return tables.map((table, index) => ({
+      ...table,
+      tableName: table.tableName || `Mesa ${index + 1}`,
+      scheduledAt: table.scheduledAt || getLocalDateTimeString(),
+      hours: Number(table.hours) || 0,
+      filaments: table.filaments && table.filaments.length > 0
+        ? table.filaments
+        : [createProductFilamentEntry()],
+    }));
   };
 
   const isLightColor = (hex?: string) => {
