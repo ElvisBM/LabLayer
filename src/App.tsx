@@ -10,6 +10,7 @@ import { Insumos } from './views/Insumos';
 import { Produtos } from './views/Produtos';
 import { Marketplaces } from './views/Marketplaces';
 import { Precificacao } from './views/Precificacao';
+import { ValoresSugeridos } from './views/ValoresSugeridos';
 import { Vendas } from './views/Vendas';
 import { ControlePerdas } from './views/ControlePerdas';
 import { EstoqueInteligente } from './views/EstoqueInteligente';
@@ -46,6 +47,8 @@ function MainApp() {
         return <Produtos />;
       case 'precificacao':
         return <Precificacao />;
+      case 'valores-sugeridos':
+        return <ValoresSugeridos />;
       case 'marketplaces':
         return <Marketplaces />;
       case 'perdas':
@@ -78,6 +81,7 @@ function MainApp() {
       case 'financeiro': return 'Controle Financeiro';
       case 'produtos': return 'Catálogo de Produtos';
       case 'precificacao': return 'Simulador de Precificação';
+      case 'valores-sugeridos': return 'Valores Sugeridos';
       case 'marketplaces': return 'Canais de Venda';
       case 'perdas': return 'Controle de Perdas';
       case 'estoque': return 'Estoque Inteligente';

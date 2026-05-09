@@ -1,4 +1,4 @@
-import { LayoutDashboard, Package, Printer, Settings, Wrench, Box, Store, Calculator, ShoppingCart, Activity, ClipboardList, AlertOctagon, Layers, Wallet, ShieldAlert, Cable, CalendarDays, X } from 'lucide-react';
+import { LayoutDashboard, Package, Printer, Settings, Wrench, Box, Store, Calculator, ShoppingCart, Activity, ClipboardList, AlertOctagon, Layers, Wallet, ShieldAlert, Cable, CalendarDays, Tag, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
@@ -19,6 +19,7 @@ export function Sidebar({ currentView, setCurrentView, isOpen, setIsOpen }: Side
         { id: 'produtos', label: 'Produtos', icon: Package },
         { id: 'agenda', label: 'Agenda de Produção', icon: CalendarDays },
         { id: 'precificacao', label: 'Precificação', icon: Calculator },
+        { id: 'valores-sugeridos', label: 'Valores Sugeridos', icon: Tag },
         { id: 'filamentos', label: 'Filamentos', icon: Cable },
         { id: 'fornecedores', label: 'Fornecedores', icon: Store },
         { id: 'insumos', label: 'Insumos', icon: Box },
