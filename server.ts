@@ -2,15 +2,16 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import WooCommerceRestApi from "@woocommerce/woocommerce-rest-api";
-import * as admin from "firebase-admin";
+import { cert, getApps, initializeApp } from "firebase-admin/app";
+import { FieldValue, getFirestore } from "firebase-admin/firestore";
 
 // Inicializa Firebase Admin apenas uma vez
-if (!admin.apps.length) {
+if (!getApps().length) {
   try {
     if (process.env.FIREBASE_SERVICE_ACCOUNT) {
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
+      initializeApp({
+        credential: cert(serviceAccount)
       });
       console.log("Firebase Admin inicializado com sucesso.");
     } else {
@@ -20,7 +21,7 @@ if (!admin.apps.length) {
     console.error("Erro ao inicializar Firebase Admin:", err);
   }
 }
-const db = admin.apps.length ? admin.firestore() : null;
+const db = getApps().length ? getFirestore() : null;
 
 // Inicializa API do WooCommerce
 const wooCommerce = new WooCommerceRestApi({
@@ -112,7 +113,7 @@ async function startServer() {
       // Salva o pedido no Firestore na coleção "integrations_woo_orders"
       await db.collection("integrations_woo_orders").doc(String(orderId)).set({
         ...req.body,
-        lablayer_synced_at: admin.firestore.FieldValue.serverTimestamp()
+        lablayer_synced_at: FieldValue.serverTimestamp()
       }, { merge: true });
 
       res.status(200).send("OK");
