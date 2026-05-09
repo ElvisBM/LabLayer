@@ -1,6 +1,35 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import WooCommerceRestApi from "@woocommerce/woocommerce-rest-api";
+import * as admin from "firebase-admin";
+
+// Inicializa Firebase Admin apenas uma vez
+if (!admin.apps.length) {
+  try {
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+      console.log("Firebase Admin inicializado com sucesso.");
+    } else {
+      console.warn("Aviso: FIREBASE_SERVICE_ACCOUNT não encontrado no .env.");
+    }
+  } catch (err) {
+    console.error("Erro ao inicializar Firebase Admin:", err);
+  }
+}
+const db = admin.apps.length ? admin.firestore() : null;
+
+// Inicializa API do WooCommerce
+const wooCommerce = new WooCommerceRestApi({
+  url: process.env.WOOCOMMERCE_URL || 'https://brincamentelab.com.br',
+  consumerKey: process.env.WOOCOMMERCE_CONSUMER_KEY || '',
+  consumerSecret: process.env.WOOCOMMERCE_CONSUMER_SECRET || '',
+  version: 'wc/v3',
+  queryStringAuth: true
+});
 
 async function startServer() {
   const app = express();
@@ -65,9 +94,68 @@ async function startServer() {
     res.status(200).send("OK");
   });
 
-  app.post("/api/webhooks/woocommerce/orders/create", (req, res) => {
-    console.log("Novo pedido WooCommerce recebido:", req.body);
-    res.status(200).send("OK");
+  // Webhook: WooCommerce -> LabLayer (Receber Pedidos)
+  app.post("/api/webhooks/woocommerce/orders/create", async (req, res) => {
+    try {
+      const orderId = req.body.id;
+      if (!orderId) {
+        return res.status(400).send("ID do pedido não encontrado no payload.");
+      }
+      
+      console.log(`Novo pedido WooCommerce recebido: #${orderId}`);
+
+      if (!db) {
+        console.error("Banco de dados Firestore não inicializado (Admin).");
+        return res.status(500).send("Banco de dados não disponível.");
+      }
+
+      // Salva o pedido no Firestore na coleção "integrations_woo_orders"
+      await db.collection("integrations_woo_orders").doc(String(orderId)).set({
+        ...req.body,
+        lablayer_synced_at: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      res.status(200).send("OK");
+    } catch (error) {
+      console.error("Erro ao processar webhook WooCommerce:", error);
+      res.status(500).send("Erro interno ao salvar pedido.");
+    }
+  });
+
+  // API: LabLayer -> WooCommerce (Enviar Produtos)
+  app.post("/api/integrations/woocommerce/sync-product", async (req, res) => {
+    try {
+      const { name, regular_price, description, images } = req.body;
+
+      // Validação básica
+      if (!name || !regular_price) {
+        return res.status(400).json({ error: "Campos obrigatórios: name, regular_price." });
+      }
+
+      const productData = {
+        name,
+        type: "simple",
+        regular_price: String(regular_price),
+        description: description || "",
+        images: images || [], // Formato experado pelo woo: [{ src: "url_da_imagem" }]
+      };
+
+      // Realiza a requisição para criar/atualizar no WooCommerce
+      const response = await wooCommerce.post("products", productData);
+      
+      res.json({ 
+        success: true, 
+        woo_product_id: response.data.id,
+        message: "Produto sincronizado com sucesso no WooCommerce!" 
+      });
+
+    } catch (error: any) {
+      console.error("Erro ao sincronizar produto Woo:", error.response?.data || error.message);
+      res.status(500).json({ 
+        error: "Erro ao comunicar com a API do WooCommerce.",
+        details: error.response?.data || error.message
+      });
+    }
   });
 
   // Vite middleware for development
