@@ -138,8 +138,7 @@ export function ValoresSugeridos() {
         return {
           product,
           unitCost,
-          suggestedMarginPrice: suggestedPrice,
-          suggestedMarkupPrice: suggestedPrice,
+          suggestedPrice,
           currentValue,
         };
       })
@@ -154,7 +153,7 @@ export function ValoresSugeridos() {
     return productRows.reduce((acc, row) => {
       acc.count += 1;
       acc.totalCost += row.unitCost;
-      acc.totalSuggested += row.suggestedMarkupPrice;
+      acc.totalSuggested += row.suggestedPrice;
       return acc;
     }, { count: 0, totalCost: 0, totalSuggested: 0 });
   }, [productRows]);
@@ -268,11 +267,9 @@ export function ValoresSugeridos() {
             <thead>
               <tr className="bg-surface-container-low text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">
                 <th className="px-6 py-3">Produto</th>
-                <th className="px-6 py-3">Categoria</th>
                 <th className="px-6 py-3 text-right">Estoque</th>
                 <th className="px-6 py-3 text-right">Custo Unit.</th>
-                <th className="px-6 py-3 text-right">Margem 120%</th>
-                <th className="px-6 py-3 text-right">Markup 120%</th>
+                <th className="px-6 py-3 text-right">Sugestão 120%</th>
                 <th className="px-6 py-3 text-right">Valor de Venda</th>
                 <th className="px-6 py-3 text-right"></th>
               </tr>
@@ -280,13 +277,13 @@ export function ValoresSugeridos() {
             <tbody className="divide-y divide-outline-variant/10">
               {productRows.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-sm text-on-surface-variant">
+                  <td colSpan={6} className="px-6 py-8 text-center text-sm text-on-surface-variant">
                     Nenhum produto encontrado para esse filtro.
                   </td>
                 </tr>
               )}
 
-              {productRows.map(({ product, unitCost, suggestedMarginPrice, suggestedMarkupPrice, currentValue }) => (
+              {productRows.map(({ product, unitCost, suggestedPrice, currentValue }) => (
                 <tr key={product.id} className="hover:bg-surface-container-low transition-colors">
                   <td className="px-6 py-4">
                     <div>
@@ -294,11 +291,9 @@ export function ValoresSugeridos() {
                       <p className="text-[10px] text-on-surface-variant uppercase tracking-widest">{product.status || 'sem status'}</p>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-on-surface-variant">{product.category || '-'}</td>
                   <td className="px-6 py-4 text-right text-sm font-semibold tabular-nums">{Number(product.stock) || 0}</td>
                   <td className="px-6 py-4 text-right text-sm font-semibold tabular-nums">R$ {unitCost.toFixed(2)}</td>
-                  <td className="px-6 py-4 text-right text-sm font-bold tabular-nums text-secondary">R$ {suggestedMarginPrice.toFixed(2)}</td>
-                  <td className="px-6 py-4 text-right text-sm font-bold tabular-nums text-tertiary">R$ {suggestedMarkupPrice.toFixed(2)}</td>
+                  <td className="px-6 py-4 text-right text-sm font-bold tabular-nums text-secondary">R$ {suggestedPrice.toFixed(2)}</td>
                   <td className="px-6 py-4">
                     <div className="flex justify-end">
                       <input
