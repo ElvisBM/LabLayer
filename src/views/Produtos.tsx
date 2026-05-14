@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Plus, MoreVertical, Box, Calculator, FileText, Layers, FileUp, Settings, Trash2, Save, TrendingUp, AlertTriangle, DollarSign, Target, Edit2, Upload, X, LayoutGrid, List } from 'lucide-react';
+import { Plus, MoreVertical, Box, Calculator, FileText, Layers, FileUp, Settings, Trash2, Save, TrendingUp, AlertTriangle, DollarSign, Target, Edit2, Upload, X, LayoutGrid, List, Search } from 'lucide-react';
 import { collection, onSnapshot, updateDoc, deleteDoc, doc, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -403,7 +403,7 @@ export function Produtos({
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterDateStart, setFilterDateStart] = useState<string>('');
   const [filterDateEnd, setFilterDateEnd] = useState<string>('');
-  const [filterError, setFilterError] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState<string>('');
   const editorInitKeyRef = useRef<string>('');
 
   const handleTimeCalculate = (start: string, end: string, onChangeTotal: (hrs: number) => void) => {
@@ -645,6 +645,7 @@ export function Produtos({
 
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
+      const matchSearch = !searchTerm.trim() || (p.name || '').toLowerCase().includes(searchTerm.trim().toLowerCase());
       const matchCategory = filterCategories.length === 0 || filterCategories.includes(p.category);
       const matchStatus = filterStatus === 'all' || p.status === filterStatus;
       
@@ -655,16 +656,9 @@ export function Produtos({
         if (filterDateEnd && pDate > filterDateEnd) matchDate = false;
       }
 
-      let matchError = true;
-      if (filterError !== 'all') {
-        const hasError = p.variations.length === 0 || p.files.length === 0;
-        if (filterError === 'with_errors' && !hasError) matchError = false;
-        if (filterError === 'no_errors' && hasError) matchError = false;
-      }
-
-      return matchCategory && matchStatus && matchDate && matchError;
+      return matchSearch && matchCategory && matchStatus && matchDate;
     });
-  }, [products, filterCategories, filterStatus, filterDateStart, filterDateEnd, filterError]);
+  }, [products, searchTerm, filterCategories, filterStatus, filterDateStart, filterDateEnd]);
 
   const getProductSortValue = (product: Product, key: ProductSortKey) => {
     switch (key) {
@@ -2609,6 +2603,16 @@ export function Produtos({
       <div className="flex flex-col gap-4 bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/10">
         <div className="flex flex-wrap gap-4 items-center justify-between">
           <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
+            <div className="relative w-full md:w-72">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                placeholder="Buscar por nome do produto..."
+                className="w-full bg-surface-container border-none rounded-lg p-2.5 pl-10 text-sm focus:ring-2 focus:ring-primary outline-none"
+              />
+            </div>
             {/* Categorias (Pills) */}
             <div className="flex items-center gap-2 flex-wrap">
               <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Categorias:</label>
@@ -2671,19 +2675,6 @@ export function Produtos({
               <option value="ativo">Ativo</option>
               <option value="desenvolvimento">Em Desenvolvimento</option>
               <option value="inativo">Inativo</option>
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Alertas:</label>
-            <select 
-              value={filterError || 'all'} 
-              onChange={e => setFilterError(e.target.value)}
-              className="bg-surface-container border-none rounded p-2 text-sm focus:ring-2 focus:ring-primary outline-none"
-            >
-              <option value="all">Todos</option>
-              <option value="with_errors">Com Alertas (Falta variação/arquivo)</option>
-              <option value="no_errors">Sem Alertas</option>
             </select>
           </div>
 
