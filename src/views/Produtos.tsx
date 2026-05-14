@@ -2720,9 +2720,6 @@ export function Produtos({
                   <th className="p-4 whitespace-nowrap cursor-pointer select-none" onClick={() => handleSort('name')}>
                     Produto {getSortIndicator('name')}
                   </th>
-                  <th className="p-4 whitespace-nowrap cursor-pointer select-none" onClick={() => handleSort('category')}>
-                    Categoria {getSortIndicator('category')}
-                  </th>
                   <th className="p-4 whitespace-nowrap">Cores / Variações</th>
                   <th className="p-4 whitespace-nowrap cursor-pointer select-none" onClick={() => handleSort('stock')}>
                     Estoque {getSortIndicator('stock')}
@@ -2731,9 +2728,6 @@ export function Produtos({
                     Custo Unitário {getSortIndicator('cost')}
                   </th>
                   <th className="p-4 whitespace-nowrap">Preço de Venda</th>
-                  <th className="p-4 whitespace-nowrap cursor-pointer select-none" onClick={() => handleSort('status')}>
-                    Status {getSortIndicator('status')}
-                  </th>
                   <th className="p-4 text-right whitespace-nowrap">Ações</th>
                 </tr>
               </thead>
@@ -2754,11 +2748,6 @@ export function Produtos({
                           <div className="text-[10px] font-mono text-on-surface-variant uppercase">{p.baseSku}</div>
                         </div>
                       </div>
-                    </td>
-                    <td className="p-4">
-                      <span className="text-[10px] font-bold uppercase tracking-widest bg-surface-container px-2 py-1 rounded text-on-surface-variant">
-                        {p.category}
-                      </span>
                     </td>
                     <td className="p-4">
                       <div className="flex items-center gap-2">
@@ -2813,21 +2802,6 @@ export function Produtos({
                         )}
                       </div>
                     </td>
-                    <td className="p-4">
-                      {p.status === 'ativo' ? (
-                        <span className="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase bg-tertiary-fixed text-on-tertiary-fixed-variant">
-                          Ativo
-                        </span>
-                      ) : p.status === 'desenvolvimento' ? (
-                        <span className="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase bg-secondary-container text-on-secondary-container">
-                          Em Desenv.
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase bg-surface-container-highest text-on-surface-variant">
-                          Inativo
-                        </span>
-                      )}
-                    </td>
                     <td className="p-4 text-right">
                       <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button type="button" onClick={(e) => { e.stopPropagation(); handleEdit(p); }} className="p-1.5 text-slate-400 hover:text-primary hover:bg-surface-container transition-colors rounded">
@@ -2869,25 +2843,6 @@ export function Produtos({
                 
                 <h3 className="text-lg font-bold text-on-surface mb-1 leading-tight">{p.name}</h3>
                 <p className="text-xs font-mono text-on-surface-variant uppercase mb-4">{p.baseSku}</p>
-                
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <span className="text-[10px] font-bold uppercase tracking-widest bg-surface-container px-2 py-1 rounded text-on-surface-variant">
-                    {p.category}
-                  </span>
-                  {p.status === 'ativo' ? (
-                    <span className="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase bg-tertiary-fixed text-on-tertiary-fixed-variant">
-                      Ativo
-                    </span>
-                  ) : p.status === 'desenvolvimento' ? (
-                    <span className="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase bg-secondary-container text-on-secondary-container">
-                      Em Desenv.
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase bg-surface-container-highest text-on-surface-variant">
-                      Inativo
-                    </span>
-                  )}
-                </div>
 
                 <div className="mb-4 p-3 rounded-lg bg-surface-container border border-outline-variant/20">
                   <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Preço de Venda</div>
