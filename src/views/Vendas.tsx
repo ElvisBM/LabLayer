@@ -10,6 +10,9 @@ interface Order {
   date: string;
   productName: string;
   channelName: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerNotes?: string;
   status: 'pago' | 'produzindo' | 'enviado';
   quantity: number;
   soldPrice: number;
@@ -28,6 +31,7 @@ export function Vendas() {
   const [showManualForm, setShowManualForm] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showApiModal, setShowApiModal] = useState(false);
+  const [manualFormTab, setManualFormTab] = useState<'sale' | 'customer'>('sale');
   
   const [apiKeys, setApiKeys] = useState({
     mercadoLivre: '',
@@ -41,7 +45,10 @@ export function Vendas() {
     quantity: 1,
     soldPrice: 0,
     fees: 0,
-    status: 'pago' as 'pago' | 'produzindo' | 'enviado'
+    status: 'pago' as 'pago' | 'produzindo' | 'enviado',
+    customerName: '',
+    customerPhone: '',
+    customerNotes: '',
   });
 
   useEffect(() => {
@@ -95,6 +102,9 @@ export function Vendas() {
       date: new Date().toISOString(),
       productName: product.name,
       channelName: channel.name,
+      customerName: formData.customerName.trim(),
+      customerPhone: formData.customerPhone.trim(),
+      customerNotes: formData.customerNotes.trim(),
       status: formData.status,
       quantity: formData.quantity,
       soldPrice: formData.soldPrice,
@@ -107,13 +117,17 @@ export function Vendas() {
     try {
       await addDoc(collection(db, `tenants/${tenantId}/orders`), newOrder);
       setShowManualForm(false);
+      setManualFormTab('sale');
       setFormData({
         productId: products.length > 0 ? products[0].id : '',
         channelId: marketplaces.length > 0 ? marketplaces[0].id : '',
         quantity: 1,
         soldPrice: 0,
         fees: 0,
-        status: 'pago'
+        status: 'pago',
+        customerName: '',
+        customerPhone: '',
+        customerNotes: '',
       });
     } catch (error) {
       console.error("Error adding order: ", error);
@@ -206,8 +220,27 @@ export function Vendas() {
             <ShoppingCart className="w-5 h-5 text-primary" />
             <h3 className="font-headline font-bold text-lg">Lançamento Manual de Venda</h3>
           </div>
+
+          <div className="flex gap-2 mb-6 border-b border-outline-variant/20 pb-4">
+            <button
+              type="button"
+              onClick={() => setManualFormTab('sale')}
+              className={`px-4 py-2 rounded-full text-xs font-bold transition-colors ${manualFormTab === 'sale' ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}
+            >
+              Dados da Venda
+            </button>
+            <button
+              type="button"
+              onClick={() => setManualFormTab('customer')}
+              className={`px-4 py-2 rounded-full text-xs font-bold transition-colors ${manualFormTab === 'customer' ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}
+            >
+              Dados do Cliente
+            </button>
+          </div>
           
           <form className="grid grid-cols-1 md:grid-cols-4 gap-4" onSubmit={handleSaveOrder}>
+            {manualFormTab === 'sale' && (
+              <>
             <div className="space-y-1.5 md:col-span-2">
               <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Produto</label>
               <select 
@@ -281,11 +314,50 @@ export function Vendas() {
                 <option value="enviado">Enviado / Concluído</option>
               </select>
             </div>
+              </>
+            )}
+
+            {manualFormTab === 'customer' && (
+              <>
+                <div className="space-y-1.5 md:col-span-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Nome do Cliente</label>
+                  <input
+                    type="text"
+                    value={formData.customerName}
+                    onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+                    className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                    placeholder="Ex: Maria Oliveira"
+                  />
+                </div>
+                <div className="space-y-1.5 md:col-span-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Telefone / WhatsApp</label>
+                  <input
+                    type="text"
+                    value={formData.customerPhone}
+                    onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
+                    className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                    placeholder="Ex: (11) 99999-9999"
+                  />
+                </div>
+                <div className="space-y-1.5 md:col-span-4">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Observações do Cliente</label>
+                  <textarea
+                    value={formData.customerNotes}
+                    onChange={(e) => setFormData({ ...formData, customerNotes: e.target.value })}
+                    className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none min-h-[110px]"
+                    placeholder="Ex: retirada local, pedido urgente, preferência de contato..."
+                  />
+                </div>
+              </>
+            )}
             
             <div className="md:col-span-4 flex justify-end mt-4 gap-3 pt-4 border-t border-outline-variant/20">
               <button 
                 type="button" 
-                onClick={() => setShowManualForm(false)}
+                onClick={() => {
+                  setShowManualForm(false);
+                  setManualFormTab('sale');
+                }}
                 className="px-6 py-2.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded transition-colors"
               >
                 Cancelar

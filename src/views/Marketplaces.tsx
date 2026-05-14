@@ -129,23 +129,23 @@ export function Marketplaces() {
             
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Taxa da Plataforma (%)</label>
-              <input type="number" step="0.1" required value={formData.commissionPercent || ''} onChange={e => setFormData({...formData, commissionPercent: Number(e.target.value)})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none" placeholder="0.0" />
+              <input type="number" step="0.1" value={formData.commissionPercent || ''} onChange={e => setFormData({...formData, commissionPercent: Number(e.target.value)})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none" placeholder="0.0" />
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Taxa Fixa por Venda (R$)</label>
-              <input type="number" step="0.01" required value={formData.fixedFee || ''} onChange={e => setFormData({...formData, fixedFee: Number(e.target.value)})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none" placeholder="0.00" />
+              <input type="number" step="0.01" value={formData.fixedFee || ''} onChange={e => setFormData({...formData, fixedFee: Number(e.target.value)})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none" placeholder="0.00" />
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Frete Médio (R$)</label>
-              <input type="number" step="0.01" required value={formData.averageShipping || ''} onChange={e => setFormData({...formData, averageShipping: Number(e.target.value)})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none" placeholder="0.00" />
+              <input type="number" step="0.01" value={formData.averageShipping || ''} onChange={e => setFormData({...formData, averageShipping: Number(e.target.value)})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none" placeholder="0.00" />
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Comissão Afiliado (%)</label>
-              <input type="number" step="0.1" required value={formData.affiliateCommission || ''} onChange={e => setFormData({...formData, affiliateCommission: Number(e.target.value)})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none" placeholder="0.0" />
+              <input type="number" step="0.1" value={formData.affiliateCommission || ''} onChange={e => setFormData({...formData, affiliateCommission: Number(e.target.value)})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none" placeholder="0.0" />
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Prazo de Recebimento (Dias)</label>
-              <input type="number" required value={formData.payoutDays || ''} onChange={e => setFormData({...formData, payoutDays: Number(e.target.value)})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none" placeholder="Ex: 14" />
+              <input type="number" value={formData.payoutDays || ''} onChange={e => setFormData({...formData, payoutDays: Number(e.target.value)})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none" placeholder="Ex: 14" />
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Status</label>

@@ -139,13 +139,16 @@ service cloud.firestore {
     }
 
     function isValidOrder() {
-      let allowedFields = ['orderNumber', 'date', 'productName', 'channelName', 'status', 'quantity', 'soldPrice', 'fees', 'realCost', 'realProfit', 'createdAt'];
+      let allowedFields = ['orderNumber', 'date', 'productName', 'channelName', 'customerName', 'customerPhone', 'customerNotes', 'status', 'quantity', 'soldPrice', 'fees', 'realCost', 'realProfit', 'createdAt'];
       return hasOnlyAllowedFields(allowedFields) &&
-             hasRequiredFields(allowedFields) &&
+             hasRequiredFields(['orderNumber', 'date', 'productName', 'channelName', 'status', 'quantity', 'soldPrice', 'fees', 'realCost', 'realProfit', 'createdAt']) &&
              isValidString('orderNumber', 1, 50) &&
              isValidString('date', 1, 50) &&
              isValidString('productName', 1, 100) &&
              isValidString('channelName', 1, 50) &&
+             (!('customerName' in request.resource.data) || isValidString('customerName', 0, 120)) &&
+             (!('customerPhone' in request.resource.data) || isValidString('customerPhone', 0, 40)) &&
+             (!('customerNotes' in request.resource.data) || isValidString('customerNotes', 0, 500)) &&
              request.resource.data.status in ['pago', 'produzindo', 'enviado'] &&
              isPositiveNumber('quantity') &&
              isPositiveNumber('soldPrice') &&
@@ -171,14 +174,14 @@ service cloud.firestore {
     function isValidMarketplace() {
       let allowedFields = ['name', 'commissionPercent', 'fixedFee', 'averageShipping', 'affiliateCommission', 'payoutDays', 'status', 'createdAt'];
       return hasOnlyAllowedFields(allowedFields) &&
-             hasRequiredFields(allowedFields) &&
+             hasRequiredFields(['name', 'createdAt']) &&
              isValidString('name', 1, 50) &&
-             isPositiveNumber('commissionPercent') &&
-             isPositiveNumber('fixedFee') &&
-             isPositiveNumber('averageShipping') &&
-             isPositiveNumber('affiliateCommission') &&
-             isPositiveNumber('payoutDays') &&
-             request.resource.data.status in ['ativo', 'inativo'] &&
+             (!('commissionPercent' in request.resource.data) || isPositiveNumber('commissionPercent')) &&
+             (!('fixedFee' in request.resource.data) || isPositiveNumber('fixedFee')) &&
+             (!('averageShipping' in request.resource.data) || isPositiveNumber('averageShipping')) &&
+             (!('affiliateCommission' in request.resource.data) || isPositiveNumber('affiliateCommission')) &&
+             (!('payoutDays' in request.resource.data) || isPositiveNumber('payoutDays')) &&
+             (!('status' in request.resource.data) || request.resource.data.status in ['ativo', 'inativo']) &&
              request.resource.data.createdAt is string;
     }
 
