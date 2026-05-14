@@ -368,7 +368,21 @@ const mockProducts: Product[] = [
   }
 ];
 
-export function Produtos() {
+interface ProdutosProps {
+  mode?: 'list' | 'editor';
+  editorMode?: 'new' | 'edit';
+  editorProductId?: string | null;
+  onOpenEditor?: (mode: 'new' | 'edit', productId?: string | null) => void;
+  onCloseEditor?: () => void;
+}
+
+export function Produtos({
+  mode = 'list',
+  editorMode = 'new',
+  editorProductId = null,
+  onOpenEditor,
+  onCloseEditor,
+}: ProdutosProps) {
   const { tenantId } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [productionOrders, setProductionOrders] = useState<ProductionOrderFallback[]>([]);
@@ -390,6 +404,7 @@ export function Produtos() {
   const [filterDateStart, setFilterDateStart] = useState<string>('');
   const [filterDateEnd, setFilterDateEnd] = useState<string>('');
   const [filterError, setFilterError] = useState<string>('all');
+  const editorInitKeyRef = useRef<string>('');
 
   const handleTimeCalculate = (start: string, end: string, onChangeTotal: (hrs: number) => void) => {
     if (!start || !end) return;
@@ -449,12 +464,38 @@ export function Produtos() {
     setActiveTab('basic');
   };
 
+  const loadProductIntoForm = (product: Product) => {
+    const prioritizedProduct = prioritizeScheduledVariations(product);
+    const editableTables = ensureEditableProductionTables(
+      prioritizedProduct.productionTables && prioritizedProduct.productionTables.length > 0
+        ? prioritizedProduct.productionTables
+        : getProductProductionTables(prioritizedProduct),
+    );
+
+    setFormData({
+      ...prioritizedProduct,
+      productionTables: editableTables,
+    });
+    setEditingId(product.id);
+    setOpenTableIds(editableTables.map(table => table.id));
+    setShowForm(true);
+    setActiveTab('basic');
+  };
+
   const closeProductForm = () => {
+    if (mode === 'editor' && onCloseEditor) {
+      onCloseEditor();
+      return;
+    }
     setShowForm(false);
     resetProductForm();
   };
 
   const openNewProductForm = () => {
+    if (onOpenEditor) {
+      onOpenEditor('new');
+      return;
+    }
     resetProductForm();
     setShowForm(true);
   };
@@ -466,6 +507,31 @@ export function Produtos() {
       group: supply.category || 'Insumos',
     }));
   }, [supplies]);
+
+  useEffect(() => {
+    if (mode !== 'editor') {
+      editorInitKeyRef.current = '';
+      setShowForm(false);
+      return;
+    }
+
+    const editorKey = `${editorMode}:${editorProductId || 'new'}`;
+    if (editorInitKeyRef.current === editorKey) return;
+
+    if (editorMode === 'new') {
+      resetProductForm();
+      setShowForm(true);
+      editorInitKeyRef.current = editorKey;
+      return;
+    }
+
+    if (editorMode === 'edit' && editorProductId) {
+      const product = products.find(item => item.id === editorProductId);
+      if (!product) return;
+      loadProductIntoForm(product);
+      editorInitKeyRef.current = editorKey;
+    }
+  }, [mode, editorMode, editorProductId, products]);
 
   const buildVariationFromProductionTables = (tables: ProductProductionTable[], baseVariation?: Variation): Variation => {
     const materials = tables.flatMap((table, tableIndex) =>
@@ -884,21 +950,11 @@ export function Produtos() {
   };
 
   const handleEdit = (p: Product) => {
-    const prioritizedProduct = prioritizeScheduledVariations(p);
-    const editableTables = ensureEditableProductionTables(
-      prioritizedProduct.productionTables && prioritizedProduct.productionTables.length > 0
-        ? prioritizedProduct.productionTables
-        : getProductProductionTables(prioritizedProduct),
-    );
-
-    setFormData({
-      ...prioritizedProduct,
-      productionTables: editableTables,
-    });
-    setEditingId(p.id);
-    setOpenTableIds(editableTables.map(table => table.id));
-    setShowForm(true);
-    setActiveTab('basic');
+    if (onOpenEditor) {
+      onOpenEditor('edit', p.id);
+      return;
+    }
+    loadProductIntoForm(p);
   };
 
   const handleDelete = async (id: string) => {

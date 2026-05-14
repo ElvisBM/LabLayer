@@ -25,6 +25,10 @@ import { Toaster } from 'react-hot-toast';
 function MainApp() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [productEditorState, setProductEditorState] = useState<{ mode: 'new' | 'edit'; productId: string | null }>({
+    mode: 'new',
+    productId: null,
+  });
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -44,7 +48,27 @@ function MainApp() {
       case 'financeiro':
         return <Financeiro />;
       case 'produtos':
-        return <Produtos />;
+        return (
+          <Produtos
+            mode="list"
+            onOpenEditor={(mode, productId) => {
+              setProductEditorState({ mode, productId: productId || null });
+              setCurrentView('produto-editor');
+            }}
+          />
+        );
+      case 'produto-editor':
+        return (
+          <Produtos
+            mode="editor"
+            editorMode={productEditorState.mode}
+            editorProductId={productEditorState.productId}
+            onCloseEditor={() => {
+              setProductEditorState({ mode: 'new', productId: null });
+              setCurrentView('produtos');
+            }}
+          />
+        );
       case 'precificacao':
         return <Precificacao />;
       case 'valores-sugeridos':
@@ -80,6 +104,7 @@ function MainApp() {
       case 'vendas': return 'Gestão de Vendas';
       case 'financeiro': return 'Controle Financeiro';
       case 'produtos': return 'Catálogo de Produtos';
+      case 'produto-editor': return productEditorState.mode === 'edit' ? 'Editar Produto' : 'Novo Produto';
       case 'precificacao': return 'Simulador de Precificação';
       case 'valores-sugeridos': return 'Valores Sugeridos';
       case 'marketplaces': return 'Canais de Venda';

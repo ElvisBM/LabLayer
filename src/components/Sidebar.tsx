@@ -73,7 +73,7 @@ export function Sidebar({ currentView, setCurrentView, isOpen, setIsOpen }: Side
             </h3>
             {group.items.map((item) => {
               const Icon = item.icon;
-              const isActive = currentView === item.id;
+              const isActive = currentView === item.id || (item.id === 'produtos' && currentView === 'produto-editor');
               return (
                 <button
                   key={item.id}
