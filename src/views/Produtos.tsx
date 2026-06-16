@@ -1923,7 +1923,7 @@ export function Produtos({
                                   <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Duração da Mesa</label>
                                   <input
                                     type="text"
-                                    value={`${formatDurationLabel(getTableDurationMinutes(table))} • ${Number(table.hours || 0).toFixed(2)} h`}
+                                    value={formatDurationLabel(getTableDurationMinutes(table))}
                                     readOnly
                                     className="w-full bg-surface-container/50 border-none rounded p-2.5 text-sm text-on-surface-variant cursor-not-allowed tabular-nums outline-none"
                                   />

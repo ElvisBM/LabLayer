@@ -72,6 +72,18 @@ const getLocalDateTimeString = () => {
   return d.toISOString().slice(0, 16);
 };
 
+const getDurationMinutesFromHours = (hours?: number) => Math.max(0, Math.round((Number(hours) || 0) * 60));
+
+const formatDurationLabel = (totalMinutes: number) => {
+  const safeMinutes = Math.max(0, Math.round(totalMinutes));
+  const hours = Math.floor(safeMinutes / 60);
+  const minutes = safeMinutes % 60;
+
+  if (hours === 0) return `${minutes} min`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${minutes}min`;
+};
+
 const createFilamentEntry = (): ProductionFilament => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
   filamentId: '',
@@ -269,6 +281,7 @@ export function AgendaProducao() {
 
   const calendarCells = useMemo(() => buildCalendarDays(calendarDate), [calendarDate]);
   const totalQueuedHours = queueOrders.reduce((acc, order) => acc + getOrderTotalHours(order), 0);
+  const totalQueuedMinutes = getDurationMinutesFromHours(totalQueuedHours);
 
   const toggleOrder = (orderId: string) => {
     setOpenOrderIds(prev => prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]);
@@ -630,7 +643,7 @@ export function AgendaProducao() {
         </div>
         <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm">
           <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Horas Planejadas</h3>
-          <p className="text-3xl font-headline font-bold text-on-surface tabular-nums">{totalQueuedHours.toFixed(1)} h</p>
+          <p className="text-3xl font-headline font-bold text-on-surface tabular-nums">{formatDurationLabel(totalQueuedMinutes)}</p>
         </div>
         <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm">
           <h3 className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Produções Concluídas</h3>
@@ -697,7 +710,7 @@ export function AgendaProducao() {
                       >
                         <div className="text-sm font-bold text-on-surface">{table.tableName || `Mesa ${tableIndex + 1}`}</div>
                         <div className="mt-2 flex flex-wrap gap-2 text-[10px] uppercase tracking-widest text-on-surface-variant">
-                          <span>{Number(table.hours || 0).toFixed(1)} h</span>
+                          <span>{formatDurationLabel(getDurationMinutesFromHours(table.hours))}</span>
                           <span>{table.filaments.length} filamento(s)</span>
                           <span>{(table.filaments.reduce((sum, filament) => sum + (Number(filament.quantityKg) || 0), 0) * 1000).toFixed(0)} g</span>
                           <span>{table.filaments.reduce((sum, filament) => sum + (Number(filament.productsCount) || 0), 0)} un</span>
@@ -723,14 +736,12 @@ export function AgendaProducao() {
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Horas da Mesa</label>
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Duração da Mesa</label>
                         <input
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          value={table.hours}
-                          onChange={e => updateTable(table.id, 'hours', Number(e.target.value) || 0)}
-                          className="w-full bg-surface-container-lowest border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
+                          type="text"
+                          value={formatDurationLabel(getDurationMinutesFromHours(table.hours))}
+                          readOnly
+                          className="w-full bg-surface-container/50 border-none rounded p-2.5 text-sm text-on-surface-variant cursor-not-allowed tabular-nums outline-none"
                         />
                       </div>
                       <div className="space-y-1.5">
@@ -861,7 +872,7 @@ export function AgendaProducao() {
                           <span>{order.status === 'fila' ? 'Na fila' : 'Produzindo'}</span>
                           <span>{tables.length} mesa(s)</span>
                           <span>{getOrderProducedUnits(order)} produto(s)</span>
-                          <span>{getOrderTotalHours(order).toFixed(1)} h</span>
+                          <span>{formatDurationLabel(getDurationMinutesFromHours(getOrderTotalHours(order)))}</span>
                           <span>{(totalFilamentKg * 1000).toFixed(0)} g</span>
                           <span className="text-primary">{isOpen ? 'Fechar detalhes' : 'Abrir detalhes'}</span>
                         </div>
@@ -898,7 +909,7 @@ export function AgendaProducao() {
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 <span className="rounded-full bg-surface-container-lowest px-3 py-1 text-xs font-bold text-on-surface">
-                                  {Number(table.hours || 0).toFixed(1)} h
+                                  {formatDurationLabel(getDurationMinutesFromHours(table.hours))}
                                 </span>
                                 <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
                                   {table.filaments.reduce((acc, filament) => acc + (Number(filament.productsCount) || 0), 0)} un
