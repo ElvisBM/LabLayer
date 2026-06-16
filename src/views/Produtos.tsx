@@ -174,7 +174,7 @@ interface ProductProductionFilament {
   filamentId: string;
   filamentName: string;
   quantityKg: number;
-  productsCount: number;
+  productsCount?: number;
 }
 
 interface ProductProductionTable {
@@ -184,6 +184,7 @@ interface ProductProductionTable {
   startAt?: string;
   endAt?: string;
   hours: number;
+  productsCount: number;
   filaments: ProductProductionFilament[];
 }
 
@@ -280,7 +281,6 @@ const createProductFilamentEntry = (): ProductProductionFilament => ({
   filamentId: '',
   filamentName: '',
   quantityKg: 0,
-  productsCount: 0,
 });
 
 const createProductTableEntry = (index = 1): ProductProductionTable => {
@@ -293,6 +293,7 @@ const createProductTableEntry = (index = 1): ProductProductionTable => {
     startAt,
     endAt,
     hours: 1,
+    productsCount: 1,
     filaments: [createProductFilamentEntry()],
   };
 };
@@ -310,13 +311,15 @@ const normalizeProductionOrderTable = (table: any, index: number): ProductProduc
     startAt,
     endAt,
     hours,
+    productsCount: Number(table?.productsCount) || (Array.isArray(table?.filaments)
+      ? table.filaments.reduce((sum: number, item: any) => sum + (Number(item?.productsCount) || 0), 0)
+      : 0) || 1,
     filaments: Array.isArray(table?.filaments) && table.filaments.length > 0
       ? table.filaments.map((item: any, itemIndex: number) => ({
           id: item?.id || `legacy-filament-${index}-${itemIndex}`,
           filamentId: item?.filamentId || '',
           filamentName: item?.filamentName || '',
           quantityKg: Number(item?.quantityKg) || 0,
-          productsCount: Number(item?.productsCount) || 0,
         }))
       : [],
   };
@@ -338,12 +341,12 @@ const normalizeProductionOrderFallback = (order: ProductionOrderFallback): Produ
           tableName: 'Mesa 1',
           scheduledAt: order.scheduledAt || getLocalDateTimeString(),
           hours: Number(order.hoursPerTable) || 0,
+          productsCount: order.filaments.reduce((sum, item) => sum + (Number(item.productsCount) || 0), 0) || 1,
           filaments: order.filaments.map((item, index) => ({
             id: item.id || `legacy-filament-${index}`,
             filamentId: item.filamentId || '',
             filamentName: item.filamentName || '',
             quantityKg: Number(item.quantityKg) || 0,
-            productsCount: Number(item.productsCount) || 0,
           })),
         }]
       : [],
@@ -594,13 +597,13 @@ export function Produtos({
     const materials = tables.flatMap((table, tableIndex) =>
       (table.filaments || [])
         .filter(item => item.filamentId)
-        .map((item, filamentIndex) => ({
+          .map((item, filamentIndex) => ({
           id: item.id || `${table.id}-${filamentIndex}`,
           filamentId: item.filamentId,
           weightGrams: Number((Number(item.quantityKg || 0) * 1000).toFixed(2)),
           purgeGrams: 0,
           objectName: table.tableName || `Mesa ${tableIndex + 1}`,
-          pieces: Number(item.productsCount) || 0,
+          pieces: filamentIndex === 0 ? (Number(table.productsCount) || 0) : 0,
           printTimeHours: Number(table.hours) || 0,
           startTime: table.startAt || table.scheduledAt || '',
           endTime: table.endAt || '',
@@ -610,10 +613,7 @@ export function Produtos({
     const firstFilament = filaments.find(item => item.id === materials[0]?.filamentId);
     const totalWeightGrams = materials.reduce((sum, item) => sum + (Number(item.weightGrams) || 0), 0);
     const totalHours = tables.reduce((sum, table) => sum + (Number(table.hours) || 0), 0);
-    const totalPieces = tables.reduce(
-      (sum, table) => sum + table.filaments.reduce((tableSum, filament) => tableSum + (Number(filament.productsCount) || 0), 0),
-      0,
-    );
+    const totalPieces = tables.reduce((sum, table) => sum + (Number(table.productsCount) || 0), 0);
 
     return {
       ...(baseVariation || defaultVariation),
@@ -837,6 +837,7 @@ export function Produtos({
             getTableDurationMinutes(table) || 60,
           ),
         ) || Number(table.hours) || 0,
+        productsCount: Number(table.productsCount) || 1,
         filaments: (table.filaments || [])
           .map(item => {
             const filament = filaments.find(f => f.id === item.filamentId);
@@ -845,7 +846,6 @@ export function Produtos({
               filamentId: item.filamentId || '',
               filamentName: item.filamentName || (filament ? `${filament.material} ${filament.color}` : ''),
               quantityKg: Number(item.quantityKg) || 0,
-              productsCount: Number(item.productsCount) || 0,
             };
           })
           .filter(item => item.filamentId),
@@ -1348,11 +1348,11 @@ export function Produtos({
   const updateProductionFilament = (tableId: string, entryId: string, field: keyof ProductProductionFilament, value: string | number) => {
     setFormData(prev => ({
       ...prev,
-      productionTables: (prev.productionTables || []).map(table => {
-        if (table.id !== tableId) return table;
-        return {
-          ...table,
-          filaments: table.filaments.map(entry => {
+          productionTables: (prev.productionTables || []).map(table => {
+            if (table.id !== tableId) return table;
+            return {
+              ...table,
+              filaments: table.filaments.map(entry => {
             if (entry.id !== entryId) return entry;
             if (field === 'filamentId') {
               const filament = filaments.find(item => item.id === value);
@@ -1527,12 +1527,14 @@ export function Produtos({
             startAt,
             endAt,
             hours: calculateDateTimeHours(startAt, endAt) || Number(material.printTimeHours) || 0,
+            productsCount: Number(material.pieces) || 0,
             filaments: [],
           });
         }
 
         const table = grouped.get(key)!;
         table.hours = Math.max(Number(table.hours) || 0, Number(material.printTimeHours) || 0);
+        table.productsCount = Math.max(Number(table.productsCount) || 0, Number(material.pieces) || 0);
         if (!table.scheduledAt && material.startTime) {
           table.scheduledAt = material.startTime;
         }
@@ -1547,7 +1549,6 @@ export function Produtos({
           filamentId: material.filamentId,
           filamentName: filament ? `${filament.material} ${filament.color}` : '',
           quantityKg: Number(((Number(material.weightGrams) || 0) / 1000).toFixed(3)),
-          productsCount: Number(material.pieces) || 0,
         });
       });
     });
@@ -1837,7 +1838,7 @@ export function Produtos({
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Rendimento (Produto Final)</label>
                         <input type="number" 
-                          value={(formData.productionTables || []).reduce((sum, table) => sum + table.filaments.reduce((tableSum, filament) => tableSum + (Number(filament.productsCount) || 0), 0), 0) || '1'} 
+                          value={(formData.productionTables || []).reduce((sum, table) => sum + (Number(table.productsCount) || 0), 0) || '1'} 
                           readOnly 
                           className="w-full bg-surface-container/50 text-on-surface-variant border-none rounded p-2.5 text-sm cursor-not-allowed font-bold tabular-nums" 
                         />
@@ -1877,6 +1878,8 @@ export function Produtos({
                                       <span>•</span>
                                       <span>{formatDurationLabel(getTableDurationMinutes(table))}</span>
                                       <span>•</span>
+                                      <span>{Number(table.productsCount || 0)} un</span>
+                                      <span>•</span>
                                       <span>{table.filaments.length} filamento(s)</span>
                                       <span>•</span>
                                       <span>{Number((table.filaments.reduce((sum, filament) => sum + (Number(filament.quantityKg) || 0), 0) * 1000).toFixed(2))} g</span>
@@ -1890,7 +1893,7 @@ export function Produtos({
 
                               {openTableIds.includes(table.id) && (
                                 <>
-                              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                                 <div className="space-y-1.5">
                                   <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Mesa</label>
                                   <input
@@ -1928,13 +1931,23 @@ export function Produtos({
                                     className="w-full bg-surface-container/50 border-none rounded p-2.5 text-sm text-on-surface-variant cursor-not-allowed tabular-nums outline-none"
                                   />
                                 </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Qtd Produtos da Mesa</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={table.productsCount || ''}
+                                    onChange={e => updateProductionTable(table.id, 'productsCount', Number(e.target.value))}
+                                    className="w-full bg-surface-container-lowest border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
+                                  />
+                                </div>
                               </div>
 
                               <div className="space-y-3">
                                 <div className="flex items-center justify-between gap-3">
                                   <div>
                                     <h6 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Filamentos da Mesa</h6>
-                                    <p className="text-xs text-on-surface-variant">Informe o filamento, a quantidade e quantos produtos saem dele.</p>
+                                    <p className="text-xs text-on-surface-variant">Informe os filamentos e a quantidade consumida em cada um pela mesa.</p>
                                   </div>
                                   <button type="button" onClick={() => addProductionFilament(table.id)} className="px-3 py-1.5 bg-secondary-container text-on-secondary-container rounded text-xs font-bold">
                                     Adicionar Filamento
@@ -1943,7 +1956,7 @@ export function Produtos({
 
                                 <div className="space-y-3">
                                   {table.filaments.map(entry => (
-                                    <div key={entry.id} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end bg-surface-container-lowest rounded-lg p-3">
+                                    <div key={entry.id} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end bg-surface-container-lowest rounded-lg p-3">
                                       <SearchableSelectFilament
                                         value={entry.filamentId}
                                         onChange={(value) => updateProductionFilament(table.id, entry.id, 'filamentId', value)}
@@ -1961,18 +1974,22 @@ export function Produtos({
                                           className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
                                         />
                                       </div>
-                                      <div className="space-y-1.5">
-                                        <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Qtd Produtos por Filamento</label>
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          value={entry.productsCount || ''}
-                                          onChange={e => updateProductionFilament(table.id, entry.id, 'productsCount', Number(e.target.value))}
-                                          className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
-                                        />
-                                      </div>
                                       <div className="flex items-center justify-between gap-2">
-                                        <div className="text-xs text-on-surface-variant">{entry.filamentName || 'Sem filamento selecionado'}</div>
+                                        <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+                                          {(() => {
+                                            const selectedFilament = filaments.find(item => item.id === entry.filamentId);
+                                            if (!selectedFilament) return <span>Sem filamento selecionado</span>;
+                                            return (
+                                              <>
+                                                <span
+                                                  className="w-3 h-3 rounded-full border border-outline-variant/30"
+                                                  style={{ backgroundColor: selectedFilament.colorHex || '#ccc' }}
+                                                />
+                                                <span>{selectedFilament.color || entry.filamentName}</span>
+                                              </>
+                                            );
+                                          })()}
+                                        </div>
                                         <button type="button" onClick={() => removeProductionFilament(table.id, entry.id)} className="p-2 text-error hover:bg-surface-container rounded">
                                           <Trash2 className="w-4 h-4" />
                                         </button>
