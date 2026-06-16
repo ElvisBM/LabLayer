@@ -500,40 +500,10 @@ export function Precificacao() {
                       className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
                     />
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Vida Útil Padrão (h)</label>
-                    <input
-                      type="number"
-                      step="1"
-                      min="1"
-                      value={pricingSettings.fallbackPrinterLifespanHours}
-                      onChange={(e) => setPricingSettings(prev => ({ ...prev, fallbackPrinterLifespanHours: Math.max(1, Number(e.target.value) || 1) }))}
-                      className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Custo Impressora Base (R$)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={pricingSettings.fallbackPrinterAcquisitionCost}
-                      onChange={(e) => setPricingSettings(prev => ({ ...prev, fallbackPrinterAcquisitionCost: Number(e.target.value) || 0 }))}
-                      className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Consumo Base (kWh/h)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={pricingSettings.fallbackPowerConsumptionKwh}
-                      onChange={(e) => setPricingSettings(prev => ({ ...prev, fallbackPowerConsumptionKwh: Number(e.target.value) || 0 }))}
-                      className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
-                    />
-                  </div>
                 </div>
+                <p className="text-[11px] text-on-surface-variant">
+                  O custo da impressora passa a vir das impressoras cadastradas. Se a variação não tiver uma impressora vinculada, usamos a média das impressoras ativas do seu cadastro.
+                </p>
               </div>
 
             </div>

@@ -2,9 +2,6 @@ export interface PricingSettings {
   failureRate: number;
   maintenancePerMonth: number;
   monthlyUsageHours: number;
-  fallbackPrinterAcquisitionCost: number;
-  fallbackPrinterLifespanHours: number;
-  fallbackPowerConsumptionKwh: number;
 }
 
 export interface PricingFilamentLike {
@@ -18,6 +15,7 @@ export interface PricingPrinterLike {
   lifespanHours?: number;
   maintenanceBudget?: number;
   powerConsumption?: number;
+  status?: 'operacional' | 'manutenção' | 'inativa';
 }
 
 export interface PricingSupplyLike {
@@ -69,9 +67,6 @@ export const DEFAULT_PRICING_SETTINGS: PricingSettings = {
   failureRate: 5,
   maintenancePerMonth: 150,
   monthlyUsageHours: 160,
-  fallbackPrinterAcquisitionCost: 3500,
-  fallbackPrinterLifespanHours: 10000,
-  fallbackPowerConsumptionKwh: 0.12,
 };
 
 export const normalizePricingSettings = (raw?: Partial<PricingSettings> | null): PricingSettings => {
@@ -79,9 +74,6 @@ export const normalizePricingSettings = (raw?: Partial<PricingSettings> | null):
     failureRate: Number(raw?.failureRate ?? DEFAULT_PRICING_SETTINGS.failureRate) || DEFAULT_PRICING_SETTINGS.failureRate,
     maintenancePerMonth: Number(raw?.maintenancePerMonth ?? DEFAULT_PRICING_SETTINGS.maintenancePerMonth) || 0,
     monthlyUsageHours: Number(raw?.monthlyUsageHours ?? DEFAULT_PRICING_SETTINGS.monthlyUsageHours) || DEFAULT_PRICING_SETTINGS.monthlyUsageHours,
-    fallbackPrinterAcquisitionCost: Number(raw?.fallbackPrinterAcquisitionCost ?? DEFAULT_PRICING_SETTINGS.fallbackPrinterAcquisitionCost) || 0,
-    fallbackPrinterLifespanHours: Number(raw?.fallbackPrinterLifespanHours ?? DEFAULT_PRICING_SETTINGS.fallbackPrinterLifespanHours) || DEFAULT_PRICING_SETTINGS.fallbackPrinterLifespanHours,
-    fallbackPowerConsumptionKwh: Number(raw?.fallbackPowerConsumptionKwh ?? DEFAULT_PRICING_SETTINGS.fallbackPowerConsumptionKwh) || 0,
   };
 };
 
@@ -112,17 +104,28 @@ const calculatePrinterCostPerHour = (
   variation: PricingVariationLike,
   printers: PricingPrinterLike[],
   energyPrice: number,
-  pricingSettings: PricingSettings,
 ) => {
+  const calculateRegisteredPrinterCostPerHour = (printer: PricingPrinterLike) => {
+    const lifespanHours = Math.max(1, Number(printer.lifespanHours) || 10000);
+    const acquisitionCost = Number(printer.acquisitionCost) || 0;
+    const maintenanceBudget = Number(printer.maintenanceBudget) || 0;
+    const powerConsumption = Number(printer.powerConsumption) || 0;
+
+    return (acquisitionCost / lifespanHours) + (maintenanceBudget / lifespanHours) + (powerConsumption * energyPrice);
+  };
+
   const selectedPrinter = printers.find(item => item.id === variation.printerId);
 
   if (selectedPrinter) {
-    const lifespanHours = Math.max(1, Number(selectedPrinter.lifespanHours) || pricingSettings.fallbackPrinterLifespanHours);
-    const acquisitionCost = Number(selectedPrinter.acquisitionCost) || 0;
-    const maintenanceBudget = Number(selectedPrinter.maintenanceBudget) || 0;
-    const powerConsumption = Number(selectedPrinter.powerConsumption) || 0;
+    return calculateRegisteredPrinterCostPerHour(selectedPrinter);
+  }
 
-    return (acquisitionCost / lifespanHours) + (maintenanceBudget / lifespanHours) + (powerConsumption * energyPrice);
+  const activePrinters = printers.filter(printer => printer.status !== 'inativa');
+  const printersPool = activePrinters.length > 0 ? activePrinters : printers;
+
+  if (printersPool.length > 0) {
+    const totalCost = printersPool.reduce((sum, printer) => sum + calculateRegisteredPrinterCostPerHour(printer), 0);
+    return totalCost / printersPool.length;
   }
 
   const manualCostPerHour = Number(variation.printerCostPerHour) || 0;
@@ -130,11 +133,7 @@ const calculatePrinterCostPerHour = (
     return manualCostPerHour;
   }
 
-  const fallbackLifespanHours = Math.max(1, pricingSettings.fallbackPrinterLifespanHours);
-  return (
-    (pricingSettings.fallbackPrinterAcquisitionCost / fallbackLifespanHours) +
-    (pricingSettings.fallbackPowerConsumptionKwh * energyPrice)
-  );
+  return 0;
 };
 
 export const calculateVariationUnitCostBreakdown = ({
@@ -172,7 +171,7 @@ export const calculateVariationUnitCostBreakdown = ({
 
   const quantityPerPrint = Math.max(1, Number(variation.quantityPerPrint) || 1);
   const wasteCost = calculateWasteCost(wastes, filaments);
-  const printerCostPerHour = calculatePrinterCostPerHour(variation, printers, energyPrice, pricingSettings);
+  const printerCostPerHour = calculatePrinterCostPerHour(variation, printers, energyPrice);
   const operationalOverheadPerHour = pricingSettings.monthlyUsageHours > 0
     ? pricingSettings.maintenancePerMonth / pricingSettings.monthlyUsageHours
     : 0;
