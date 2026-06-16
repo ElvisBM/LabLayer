@@ -5,6 +5,7 @@ import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { SearchableSelect, SelectOption } from '../components/SearchableSelect';
 import toast from 'react-hot-toast';
+import { DEFAULT_PRICING_SETTINGS, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings } from '../utils/pricing';
 
 function SearchableSelectFilament({ value, onChange, filaments, placeholder = "Buscar..." }: { value: string, onChange: (v: string) => void, filaments: Filament[], placeholder?: string }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -196,27 +197,82 @@ interface ProductionOrderFallback {
   filaments?: ProductProductionFilament[];
 }
 
-const getLocalDateTimeString = (date = new Date()) => {
-  const d = new Date(date);
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 16);
+const padDateTimeSegment = (value: number) => String(value).padStart(2, '0');
+
+const formatLocalDateTimeInput = (date: Date) => {
+  return `${date.getFullYear()}-${padDateTimeSegment(date.getMonth() + 1)}-${padDateTimeSegment(date.getDate())}T${padDateTimeSegment(date.getHours())}:${padDateTimeSegment(date.getMinutes())}`;
+};
+
+const parseLocalDateTimeInput = (value?: string) => {
+  if (!value) return null;
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!match) return null;
+
+  const [, year, month, day, hour, minute] = match;
+  const date = new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    0,
+    0,
+  );
+
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const getLocalDateTimeString = (date = new Date()) => formatLocalDateTimeInput(new Date(date));
+
+const formatLocalDateTimeLabel = (value?: string) => {
+  const parsedDate = parseLocalDateTimeInput(value);
+  if (!parsedDate) return '';
+  return parsedDate.toLocaleString('pt-BR');
+};
+
+const addMinutesToDateTime = (startAt: string, minutes: number) => {
+  const startDate = parseLocalDateTimeInput(startAt);
+  if (!startDate) return '';
+  return formatLocalDateTimeInput(new Date(startDate.getTime() + Math.max(0, minutes) * 60 * 1000));
 };
 
 const addHoursToDateTime = (startAt: string, hours: number) => {
-  if (!startAt) return '';
-  const startDate = new Date(startAt);
-  if (Number.isNaN(startDate.getTime())) return '';
-  return getLocalDateTimeString(new Date(startDate.getTime() + Math.max(0, hours) * 60 * 60 * 1000));
+  return addMinutesToDateTime(startAt, Math.round(Math.max(0, hours) * 60));
+};
+
+const calculateDateTimeMinutes = (startAt?: string, endAt?: string) => {
+  const startDate = parseLocalDateTimeInput(startAt);
+  const endDate = parseLocalDateTimeInput(endAt);
+  if (!startDate || !endDate) return 0;
+  const diffMs = endDate.getTime() - startDate.getTime();
+  if (diffMs <= 0) return 0;
+  return Math.round(diffMs / (1000 * 60));
 };
 
 const calculateDateTimeHours = (startAt?: string, endAt?: string) => {
-  if (!startAt || !endAt) return 0;
-  const startDate = new Date(startAt);
-  const endDate = new Date(endAt);
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return 0;
-  const diffMs = endDate.getTime() - startDate.getTime();
-  if (diffMs <= 0) return 0;
-  return Number((diffMs / (1000 * 60 * 60)).toFixed(2));
+  const diffMinutes = calculateDateTimeMinutes(startAt, endAt);
+  return diffMinutes > 0 ? Number((diffMinutes / 60).toFixed(2)) : 0;
+};
+
+const getDurationMinutesFromHours = (hours?: number) => {
+  return Math.max(0, Math.round((Number(hours) || 0) * 60));
+};
+
+const formatDurationLabel = (totalMinutes: number) => {
+  const safeMinutes = Math.max(0, Math.round(totalMinutes));
+  const hours = Math.floor(safeMinutes / 60);
+  const minutes = safeMinutes % 60;
+
+  if (hours === 0) return `${minutes} min`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${minutes}min`;
+};
+
+const getTableDurationMinutes = (table: Pick<ProductProductionTable, 'startAt' | 'scheduledAt' | 'endAt' | 'hours'>) => {
+  const startAt = table.startAt || table.scheduledAt || '';
+  const diffMinutes = calculateDateTimeMinutes(startAt, table.endAt || '');
+  if (diffMinutes > 0) return diffMinutes;
+  return getDurationMinutesFromHours(table.hours);
 };
 
 const createProductFilamentEntry = (): ProductProductionFilament => ({
@@ -390,6 +446,7 @@ export function Produtos({
   const [supplies, setSupplies] = useState<Supply[]>([]);
   const [printers, setPrinters] = useState<Printer[]>([]);
   const [energyPrice, setEnergyPrice] = useState<number>(0.95);
+  const [pricingSettings, setPricingSettings] = useState<PricingSettings>(DEFAULT_PRICING_SETTINGS);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
@@ -633,6 +690,10 @@ export function Produtos({
       }
     });
 
+    const unsubscribePricingSettings = onSnapshot(doc(db, `tenants/${tenantId}/settings/pricing`), (docSnap) => {
+      setPricingSettings(normalizePricingSettings(docSnap.exists() ? (docSnap.data() as Partial<PricingSettings>) : null));
+    });
+
     return () => {
       unsubscribeProducts();
       unsubscribeProductionOrders();
@@ -640,6 +701,7 @@ export function Produtos({
       unsubscribeSupplies();
       unsubscribePrinters();
       unsubscribeSettings();
+      unsubscribePricingSettings();
     };
   }, [tenantId]);
 
@@ -764,10 +826,16 @@ export function Produtos({
         tableName: table.tableName || `Mesa ${index + 1}`,
         scheduledAt: table.startAt || table.scheduledAt || getLocalDateTimeString(),
         startAt: table.startAt || table.scheduledAt || getLocalDateTimeString(),
-        endAt: table.endAt || addHoursToDateTime(table.startAt || table.scheduledAt || getLocalDateTimeString(), Number(table.hours) || 1),
+        endAt: table.endAt || addMinutesToDateTime(
+          table.startAt || table.scheduledAt || getLocalDateTimeString(),
+          getTableDurationMinutes(table) || 60,
+        ),
         hours: calculateDateTimeHours(
           table.startAt || table.scheduledAt || getLocalDateTimeString(),
-          table.endAt || addHoursToDateTime(table.startAt || table.scheduledAt || getLocalDateTimeString(), Number(table.hours) || 1),
+          table.endAt || addMinutesToDateTime(
+            table.startAt || table.scheduledAt || getLocalDateTimeString(),
+            getTableDurationMinutes(table) || 60,
+          ),
         ) || Number(table.hours) || 0,
         filaments: (table.filaments || [])
           .map(item => {
@@ -1230,7 +1298,6 @@ export function Produtos({
 
         const updatedTable = { ...table, [field]: value } as ProductProductionTable;
         const startAt = updatedTable.startAt || updatedTable.scheduledAt || '';
-        const endAt = updatedTable.endAt || '';
 
         if (field === 'startAt') {
           updatedTable.scheduledAt = String(value);
@@ -1521,42 +1588,17 @@ export function Produtos({
 
   // --- INTELLIGENCE CALCULATIONS ---
   const calculateUnitCostBreakdown = (v: Variation, fixedCost: number, productState: Partial<Product> = formData) => {
-    let materialCost = 0;
-    
-    if (v.materials && v.materials.length > 0) {
-      materialCost = v.materials.reduce((acc, mat) => {
-        const filament = filaments.find(f => f.id === mat.filamentId);
-        const costPerGram = filament ? filament.pricePerKg / 1000 : (v.materialCostPerGram || 0);
-        return acc + ((mat.weightGrams || 0) + (mat.purgeGrams || 0)) * costPerGram;
-      }, 0);
-    } else {
-      materialCost = (v.weightGrams || 0) * (v.materialCostPerGram || 0);
-    }
-
-    const timeCost = (v.printTimeHours || 0) * (v.printerCostPerHour || 0);
-    const qty = v.quantityPerPrint || 1;
-    
-    // Add Wastes marked as "includeInCost" to the fixed cost
-    const totalWastesCost = (productState.wastes || [])
-      .filter(w => w.includeInCost)
-      .reduce((acc, w) => {
-        const filament = filaments.find(f => f.id === w.filamentId);
-        const cpG = filament ? filament.pricePerKg / 1000 : 0;
-        return acc + (w.weightGrams * cpG);
-      }, 0);
-    
-    // Waste is global per product design, or could be divided by some expected yield. For now, add it to 'fixedCost' side
-    const amortizedWasteCost = totalWastesCost; // Might need to be distributed over expected lifetime sales. We'll add it to the fixed cost for simplicity.
-
-    const materialCostPerUnit = materialCost / qty;
-    const timeCostPerUnit = timeCost / qty;
-    const supplyCostPerUnit = calculateSupplyCostPerUnit(productState);
-    
-    const combinedFixedCost = fixedCost + amortizedWasteCost;
-    
-    const total = materialCostPerUnit + timeCostPerUnit + supplyCostPerUnit + combinedFixedCost;
-    
-    return { materialCostPerUnit, timeCostPerUnit, supplyCostPerUnit, fixedCost: combinedFixedCost, total };
+    return calculateVariationUnitCostBreakdown({
+      variation: v,
+      fixedCost,
+      filaments,
+      supplies,
+      supplyUsages: productState.supplyUsages || [],
+      wastes: productState.wastes || [],
+      printers,
+      energyPrice,
+      pricingSettings,
+    });
   };
 
   const calculateUnitCost = (v: Variation, fixedCost: number, productState: Partial<Product> = formData) => {
@@ -1831,9 +1873,9 @@ export function Produtos({
                                       </span>
                                     </div>
                                     <div className="flex flex-wrap gap-2 text-xs text-on-surface-variant">
-                                      <span>{table.startAt ? new Date(table.startAt).toLocaleString('pt-BR') : 'Sem início'}</span>
+                                      <span>{table.startAt ? formatLocalDateTimeLabel(table.startAt) : 'Sem início'}</span>
                                       <span>•</span>
-                                      <span>{Number(table.hours || 0).toFixed(1)} h</span>
+                                      <span>{formatDurationLabel(getTableDurationMinutes(table))}</span>
                                       <span>•</span>
                                       <span>{table.filaments.length} filamento(s)</span>
                                       <span>•</span>
@@ -1878,12 +1920,10 @@ export function Produtos({
                                   />
                                 </div>
                                 <div className="space-y-1.5">
-                                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Horas da Mesa</label>
+                                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Duração da Mesa</label>
                                   <input
-                                    type="number"
-                                    step="0.1"
-                                    min="0"
-                                    value={table.hours}
+                                    type="text"
+                                    value={`${formatDurationLabel(getTableDurationMinutes(table))} • ${Number(table.hours || 0).toFixed(2)} h`}
                                     readOnly
                                     className="w-full bg-surface-container/50 border-none rounded p-2.5 text-sm text-on-surface-variant cursor-not-allowed tabular-nums outline-none"
                                   />
@@ -2311,7 +2351,7 @@ export function Produtos({
                               <div className="w-full bg-surface-container border-none rounded p-2 text-xs tabular-nums font-bold text-primary flex flex-col justify-center min-h-[34px]">
                                 <span>R$ {unitCost.toFixed(2)}</span>
                                 <span className="text-[8px] text-on-surface-variant font-normal leading-tight mt-0.5">
-                                  Mat: R$ {costBreakdown.materialCostPerUnit.toFixed(2)} | Imp: R$ {costBreakdown.timeCostPerUnit.toFixed(2)} | Ins: R$ {costBreakdown.supplyCostPerUnit.toFixed(2)}
+                                  Mat: R$ {costBreakdown.materialCostPerUnit.toFixed(2)} | Imp: R$ {costBreakdown.timeCostPerUnit.toFixed(2)} | Ins: R$ {costBreakdown.supplyCostPerUnit.toFixed(2)} | Falha: R$ {costBreakdown.failureAdjustmentPerUnit.toFixed(2)}
                                 </span>
                               </div>
                             </div>

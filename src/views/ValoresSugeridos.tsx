@@ -4,6 +4,7 @@ import { collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
+import { DEFAULT_PRICING_SETTINGS, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings } from '../utils/pricing';
 
 interface Supply {
   id: string;
@@ -69,6 +70,8 @@ export function ValoresSugeridos() {
   const [products, setProducts] = useState<Product[]>([]);
   const [filaments, setFilaments] = useState<Filament[]>([]);
   const [supplies, setSupplies] = useState<Supply[]>([]);
+  const [pricingSettings, setPricingSettings] = useState<PricingSettings>(DEFAULT_PRICING_SETTINGS);
+  const [energyPrice, setEnergyPrice] = useState(0.95);
   const [search, setSearch] = useState('');
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [savingIds, setSavingIds] = useState<string[]>([]);
@@ -88,10 +91,22 @@ export function ValoresSugeridos() {
       setSupplies(snapshot.docs.map(item => ({ id: item.id, ...item.data() } as Supply)));
     });
 
+    const unsubPrinterSettings = onSnapshot(doc(db, `tenants/${tenantId}/settings/printer`), (snapshot) => {
+      if (snapshot.exists() && snapshot.data().energyPrice !== undefined) {
+        setEnergyPrice(Number(snapshot.data().energyPrice) || 0.95);
+      }
+    });
+
+    const unsubPricingSettings = onSnapshot(doc(db, `tenants/${tenantId}/settings/pricing`), (snapshot) => {
+      setPricingSettings(normalizePricingSettings(snapshot.exists() ? (snapshot.data() as Partial<PricingSettings>) : null));
+    });
+
     return () => {
       unsubProducts();
       unsubFilaments();
       unsubSupplies();
+      unsubPrinterSettings();
+      unsubPricingSettings();
     };
   }, [tenantId]);
 
@@ -105,24 +120,15 @@ export function ValoresSugeridos() {
   const calculateUnitCost = (product: Product) => {
     const variation = (product.variations || [])[0];
     if (!variation) return Number(product.fixedCost) || 0;
-
-    let materialCost = 0;
-    if ((variation.materials || []).length > 0) {
-      materialCost = (variation.materials || []).reduce((sum, material) => {
-        const filament = filaments.find(item => item.id === material.filamentId);
-        const costPerGram = filament ? (Number(filament.pricePerKg) || 0) / 1000 : (Number(variation.materialCostPerGram) || 0);
-        return sum + (((Number(material.weightGrams) || 0) + (Number(material.purgeGrams) || 0)) * costPerGram);
-      }, 0);
-    } else {
-      materialCost = (Number(variation.weightGrams) || 0) * (Number(variation.materialCostPerGram) || 0);
-    }
-
-    const timeCost = (Number(variation.printTimeHours) || 0) * (Number(variation.printerCostPerHour) || 0);
-    const qty = Math.max(1, Number(variation.quantityPerPrint) || 1);
-    const fixedCost = Number(product.fixedCost) || 0;
-    const supplyCost = calculateSupplyCostPerUnit(product);
-
-    return (materialCost / qty) + (timeCost / qty) + fixedCost + supplyCost;
+    return calculateVariationUnitCostBreakdown({
+      variation,
+      fixedCost: Number(product.fixedCost) || 0,
+      filaments,
+      supplies,
+      supplyUsages: product.supplyUsages || [],
+      energyPrice,
+      pricingSettings,
+    }).total;
   };
 
   const productRows = useMemo(() => {

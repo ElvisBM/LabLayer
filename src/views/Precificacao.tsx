@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Calculator, DollarSign, TrendingUp, Percent, Target, AlertCircle, Save, CheckCircle2, ArrowRightLeft } from 'lucide-react';
-import { collection, onSnapshot, updateDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, updateDoc, doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
+import { DEFAULT_PRICING_SETTINGS, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings } from '../utils/pricing';
 
 type TargetType = 'profit' | 'margin' | 'markup' | 'custom';
 
@@ -28,6 +29,9 @@ export function Precificacao() {
   const [marketplaces, setMarketplaces] = useState<any[]>([]);
   const [filaments, setFilaments] = useState<any[]>([]);
   const [printers, setPrinters] = useState<any[]>([]);
+  const [energyPrice, setEnergyPrice] = useState<number>(0.95);
+  const [pricingSettings, setPricingSettings] = useState<PricingSettings>(DEFAULT_PRICING_SETTINGS);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   const [productId, setProductId] = useState<string>('');
   const [variationId, setVariationId] = useState<string>('');
@@ -67,11 +71,23 @@ export function Precificacao() {
       setPrinters(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    const unsubPrinterSettings = onSnapshot(doc(db, `tenants/${tenantId}/settings/printer`), (docSnap) => {
+      if (docSnap.exists() && docSnap.data().energyPrice !== undefined) {
+        setEnergyPrice(Number(docSnap.data().energyPrice) || 0.95);
+      }
+    });
+
+    const unsubPricingSettings = onSnapshot(doc(db, `tenants/${tenantId}/settings/pricing`), (docSnap) => {
+      setPricingSettings(normalizePricingSettings(docSnap.exists() ? (docSnap.data() as Partial<PricingSettings>) : null));
+    });
+
     return () => {
       unsubProducts();
       unsubMarketplaces();
       unsubFilaments();
       unsubPrinters();
+      unsubPrinterSettings();
+      unsubPricingSettings();
     };
   }, [tenantId]);
 
@@ -93,33 +109,26 @@ export function Precificacao() {
 
   const calculateUnitCost = (v: any, fixedCost: number) => {
     if (!v) return 0;
-    let materialCost = 0;
-    
-    if (v.materials && v.materials.length > 0) {
-      materialCost = v.materials.reduce((acc: number, mat: any) => {
-        const filament = filaments.find(f => f.id === mat.filamentId);
-        const costPerGram = filament ? filament.pricePerKg / 1000 : (v.materialCostPerGram || 0);
-        return acc + ((mat.weightGrams || 0) + (mat.purgeGrams || 0)) * costPerGram;
-      }, 0);
-    } else {
-      materialCost = (v.weightGrams || 0) * (v.materialCostPerGram || 0);
-    }
-
-    const printer = printers.find(p => p.id === v.printerId);
-    let printerCost = 0;
-    if (printer) {
-      const depreciationPerHour = (printer.acquisitionCost || 0) / (printer.lifespanHours || 1);
-      const maintenancePerHour = (printer.maintenanceBudget || 0) / (printer.lifespanHours || 1);
-      const energyCostPerHour = ((printer.powerConsumption || 0) / 1000) * (printer.energyCostKwh || 0);
-      const totalPrinterCostPerHour = depreciationPerHour + maintenancePerHour + energyCostPerHour;
-      printerCost = (v.printTimeHours || 0) * totalPrinterCostPerHour;
-    } else {
-      printerCost = (v.printTimeHours || 0) * (v.printerCostPerHour || 0);
-    }
-
-    const totalCost = materialCost + printerCost + fixedCost;
-    return totalCost / (v.quantityPerPrint || 1);
+    return calculateVariationUnitCostBreakdown({
+      variation: v,
+      fixedCost,
+      filaments,
+      printers,
+      energyPrice,
+      pricingSettings,
+    }).total;
   };
+
+  const unitBreakdown = variation
+    ? calculateVariationUnitCostBreakdown({
+        variation,
+        fixedCost: product?.fixedCost || 0,
+        filaments,
+        printers,
+        energyPrice,
+        pricingSettings,
+      })
+    : null;
 
   const unitCost = variation ? calculateUnitCost(variation, product?.fixedCost || 0) : 0;
 
@@ -267,6 +276,21 @@ export function Precificacao() {
       toast.error('Erro ao salvar preço sugerido no produto.');
     } finally {
       setIsSavingPrice(false);
+    }
+  };
+
+  const handleSavePricingSettings = async () => {
+    if (!tenantId) return;
+
+    try {
+      setIsSavingSettings(true);
+      await setDoc(doc(db, `tenants/${tenantId}/settings/pricing`), pricingSettings, { merge: true });
+      toast.success('Configurações avançadas de precificação salvas.');
+    } catch (error) {
+      console.error('Error saving pricing settings:', error);
+      toast.error('Erro ao salvar configurações avançadas.');
+    } finally {
+      setIsSavingSettings(false);
     }
   };
 
@@ -425,6 +449,93 @@ export function Precificacao() {
                 </div>
               </div>
 
+              <div className="border-t border-outline-variant/20 pt-5 mt-2 space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant block">Custos Avançados Padrão</label>
+                    <p className="text-[11px] text-on-surface-variant mt-1">Aplicados como base na precificação, valores sugeridos e análise de produto.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSavePricingSettings}
+                    disabled={isSavingSettings}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-secondary-container text-on-secondary-container text-xs font-bold hover:opacity-90 disabled:opacity-50"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    {isSavingSettings ? 'Salvando...' : 'Salvar padrões'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Taxa de Falha (%)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={pricingSettings.failureRate}
+                      onChange={(e) => setPricingSettings(prev => ({ ...prev, failureRate: Number(e.target.value) || 0 }))}
+                      className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Manutenção/Mês (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={pricingSettings.maintenancePerMonth}
+                      onChange={(e) => setPricingSettings(prev => ({ ...prev, maintenancePerMonth: Number(e.target.value) || 0 }))}
+                      className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Horas de Uso/Mês</label>
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      value={pricingSettings.monthlyUsageHours}
+                      onChange={(e) => setPricingSettings(prev => ({ ...prev, monthlyUsageHours: Math.max(1, Number(e.target.value) || 1) }))}
+                      className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Vida Útil Padrão (h)</label>
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      value={pricingSettings.fallbackPrinterLifespanHours}
+                      onChange={(e) => setPricingSettings(prev => ({ ...prev, fallbackPrinterLifespanHours: Math.max(1, Number(e.target.value) || 1) }))}
+                      className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Custo Impressora Base (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={pricingSettings.fallbackPrinterAcquisitionCost}
+                      onChange={(e) => setPricingSettings(prev => ({ ...prev, fallbackPrinterAcquisitionCost: Number(e.target.value) || 0 }))}
+                      className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Consumo Base (kWh/h)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={pricingSettings.fallbackPowerConsumptionKwh}
+                      onChange={(e) => setPricingSettings(prev => ({ ...prev, fallbackPowerConsumptionKwh: Number(e.target.value) || 0 }))}
+                      className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
         </div>
@@ -477,6 +588,18 @@ export function Precificacao() {
               <h3 className="font-headline font-bold text-lg mb-4">Composição do Preço (DRE)</h3>
               
               <div className="space-y-3 font-sans text-sm">
+                {unitBreakdown && (
+                  <div className="grid grid-cols-2 gap-3 mb-2">
+                    <div className="rounded-lg bg-surface-container p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Falha embutida</div>
+                      <div className="mt-1 text-base font-bold tabular-nums text-on-surface">R$ {unitBreakdown.failureAdjustmentPerUnit.toFixed(2)}</div>
+                    </div>
+                    <div className="rounded-lg bg-surface-container p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Overhead por hora</div>
+                      <div className="mt-1 text-base font-bold tabular-nums text-on-surface">R$ {unitBreakdown.operationalOverheadPerHour.toFixed(2)}</div>
+                    </div>
+                  </div>
+                )}
                 <div className="flex justify-between items-center p-2 hover:bg-surface-container-low rounded transition-colors">
                   <span className="text-on-surface-variant font-medium">Receita Bruta (Preço)</span>
                   <span className="font-bold tabular-nums">R$ {calculations.finalPrice.toFixed(2)}</span>
