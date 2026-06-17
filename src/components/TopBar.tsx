@@ -15,7 +15,8 @@ export function TopBar({ title, onMenuClick }: TopBarProps) {
       <div className="flex items-center gap-3 lg:gap-4">
         <button 
           onClick={onMenuClick}
-          className="p-2 -ml-2 text-slate-500 hover:bg-slate-200/50 rounded-lg lg:hidden"
+          className="p-2 -ml-2 text-slate-500 hover:bg-slate-200/50 rounded-lg"
+          title="Abrir ou fechar menu"
         >
           <Menu className="w-5 h-5" />
         </button>

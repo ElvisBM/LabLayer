@@ -1,14 +1,23 @@
-import { LayoutDashboard, Package, Printer, Settings, Wrench, Box, Store, Calculator, ShoppingCart, Activity, ClipboardList, AlertOctagon, Layers, Wallet, ShieldAlert, Cable, CalendarDays, Tag, X } from 'lucide-react';
+import { LayoutDashboard, Package, Printer, Settings, Wrench, Box, Store, Calculator, ShoppingCart, AlertOctagon, Layers, Wallet, ShieldAlert, Cable, CalendarDays, Tag, X, PanelLeftClose } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
   currentView: string;
   setCurrentView: (view: string) => void;
-  isOpen: boolean;
-  setIsOpen: (isOpen: boolean) => void;
+  isMobileOpen: boolean;
+  setIsMobileOpen: (isOpen: boolean) => void;
+  isDesktopOpen: boolean;
+  setIsDesktopOpen: (isOpen: boolean) => void;
 }
 
-export function Sidebar({ currentView, setCurrentView, isOpen, setIsOpen }: SidebarProps) {
+export function Sidebar({
+  currentView,
+  setCurrentView,
+  isMobileOpen,
+  setIsMobileOpen,
+  isDesktopOpen,
+  setIsDesktopOpen,
+}: SidebarProps) {
   const { isSuperAdmin } = useAuth();
 
   const navGroups = [
@@ -49,7 +58,7 @@ export function Sidebar({ currentView, setCurrentView, isOpen, setIsOpen }: Side
   }
 
   return (
-    <aside className={`h-screen w-64 fixed left-0 top-0 bg-slate-100 flex flex-col p-4 gap-2 z-50 border-r border-outline-variant/20 transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+    <aside className={`h-screen w-64 fixed left-0 top-0 bg-slate-100 flex flex-col p-4 gap-2 z-50 border-r border-outline-variant/20 transition-transform duration-300 ease-in-out ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'} ${isDesktopOpen ? 'lg:translate-x-0' : 'lg:-translate-x-full'}`}>
       <div className="mb-8 px-2 flex items-start justify-between">
         <img 
           src="https://i.postimg.cc/pXXRSprc/Logo-Lab-Layer-3D-(1).png" 
@@ -57,11 +66,18 @@ export function Sidebar({ currentView, setCurrentView, isOpen, setIsOpen }: Side
           className="h-24 w-auto object-contain mb-2 -ml-2"
           referrerPolicy="no-referrer"
         />
-        <button 
-          onClick={() => setIsOpen(false)}
+        <button
+          onClick={() => setIsMobileOpen(false)}
           className="p-1.5 text-slate-400 hover:bg-slate-200 rounded-lg lg:hidden"
         >
           <X className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => setIsDesktopOpen(false)}
+          className="hidden lg:inline-flex p-1.5 text-slate-400 hover:bg-slate-200 rounded-lg"
+          title="Fechar menu"
+        >
+          <PanelLeftClose className="w-5 h-5" />
         </button>
       </div>
       

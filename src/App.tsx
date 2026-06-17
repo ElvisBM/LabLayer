@@ -24,7 +24,8 @@ import { Toaster } from 'react-hot-toast';
 
 function MainApp() {
   const [currentView, setCurrentView] = useState('dashboard');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarMobileOpen, setIsSidebarMobileOpen] = useState(false);
+  const [isSidebarDesktopOpen, setIsSidebarDesktopOpen] = useState(true);
   const [productEditorState, setProductEditorState] = useState<{ mode: 'new' | 'edit'; productId: string | null }>({
     mode: 'new',
     productId: null,
@@ -127,22 +128,33 @@ function MainApp() {
         currentView={currentView} 
         setCurrentView={(view) => {
           setCurrentView(view);
-          setIsSidebarOpen(false);
+          setIsSidebarMobileOpen(false);
         }} 
-        isOpen={isSidebarOpen}
-        setIsOpen={setIsSidebarOpen}
+        isMobileOpen={isSidebarMobileOpen}
+        setIsMobileOpen={setIsSidebarMobileOpen}
+        isDesktopOpen={isSidebarDesktopOpen}
+        setIsDesktopOpen={setIsSidebarDesktopOpen}
       />
       
       {/* Mobile overlay */}
-      {isSidebarOpen && (
+      {isSidebarMobileOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          onClick={() => setIsSidebarOpen(false)}
+          onClick={() => setIsSidebarMobileOpen(false)}
         />
       )}
 
-      <main className="flex-1 lg:ml-64 flex flex-col min-h-screen w-full transition-all duration-300">
-        <TopBar title={getTitle()} onMenuClick={() => setIsSidebarOpen(true)} />
+      <main className={`flex-1 flex flex-col min-h-screen w-full transition-all duration-300 ${isSidebarDesktopOpen ? 'lg:ml-64' : 'lg:ml-0'}`}>
+        <TopBar
+          title={getTitle()}
+          onMenuClick={() => {
+            if (window.innerWidth >= 1024) {
+              setIsSidebarDesktopOpen(prev => !prev);
+              return;
+            }
+            setIsSidebarMobileOpen(true);
+          }}
+        />
         <div className="p-4 lg:p-8 flex-1 overflow-x-hidden">
           {renderView()}
         </div>
