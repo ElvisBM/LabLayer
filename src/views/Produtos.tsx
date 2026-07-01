@@ -408,6 +408,8 @@ const PRODUCT_RECORD_TYPE_OPTIONS: Array<{ value: ProductRecordType; label: stri
   { value: 'orcamento', label: 'Orcamento' },
 ];
 
+const PRODUCT_SUGGESTED_MARKUP_MULTIPLIER = 2.2;
+
 const getProductRecordTypeLabel = (type?: string) => {
   const option = PRODUCT_RECORD_TYPE_OPTIONS.find(item => item.value === type);
   return option?.label || 'Produto';
@@ -1712,9 +1714,7 @@ export function Produtos({
     return `R$ ${minCost.toFixed(2)} - R$ ${maxCost.toFixed(2)}`;
   };
 
-  const getProductPriceRange = (product: Product) => {
-    if (!product.variations || product.variations.length === 0) return 'R$ 0,00';
-    const prices = product.variations.flatMap(v => v.channelPrices?.map(cp => cp.price) || [0]).filter(p => p > 0);
+  const formatPriceRange = (prices: number[]) => {
     if (prices.length === 0) return 'Não definido';
     const minPrice = Math.min(...prices);
     const maxPrice = Math.max(...prices);
@@ -1722,14 +1722,31 @@ export function Produtos({
     return `R$ ${minPrice.toFixed(2)} - R$ ${maxPrice.toFixed(2)}`;
   };
 
+  const getLiveSuggestedPrices = (product: Product) => {
+    if (!product.variations || product.variations.length === 0) {
+      const fallback = Number(product.fixedCost) || 0;
+      return fallback > 0 ? [Number((fallback * PRODUCT_SUGGESTED_MARKUP_MULTIPLIER).toFixed(2))] : [];
+    }
+
+    return product.variations.map(variation => (
+      Number((calculateUnitCost(variation, product.fixedCost || 0, product) * PRODUCT_SUGGESTED_MARKUP_MULTIPLIER).toFixed(2))
+    ));
+  };
+
+  const getProductPriceRange = (product: Product) => {
+    return formatPriceRange(getLiveSuggestedPrices(product));
+  };
+
   const getSuggestedSalePrice = (product: Product) => {
-    const latestPrice = Number(product.latestSuggestedPrice?.suggestedPrice) || 0;
-    if (latestPrice > 0) return `R$ ${latestPrice.toFixed(2)}`;
-    return 'Não salvo';
+    const savedPrices = product.variations?.flatMap(v => v.channelPrices?.map(cp => cp.price) || []).filter(price => price > 0) || [];
+    if (savedPrices.length > 0) return formatPriceRange(savedPrices);
+    return getProductPriceRange(product);
   };
 
   const getSuggestedSalePriceMeta = (product: Product) => {
-    if (!product.latestSuggestedPrice?.savedAt) return '';
+    const savedPrices = product.variations?.flatMap(v => v.channelPrices?.map(cp => cp.price) || []).filter(price => price > 0) || [];
+    if (savedPrices.length === 0) return 'Sugestão automática 120%';
+    if (!product.latestSuggestedPrice?.savedAt) return 'Preço cadastrado';
     const savedAt = new Date(product.latestSuggestedPrice.savedAt).toLocaleDateString('pt-BR');
     const channelName = product.latestSuggestedPrice.channelName || 'Sem canal';
     return `${channelName} • ${savedAt}`;
