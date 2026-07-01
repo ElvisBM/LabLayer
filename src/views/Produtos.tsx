@@ -1554,6 +1554,20 @@ export function Produtos({
     };
   };
 
+  const getProductPricingVariations = (product: Product | Partial<Product>) => {
+    const baseVariations = product.variations || [];
+    const productionTables = getProductProductionTables(product);
+
+    if (productionTables.length === 0) {
+      return baseVariations;
+    }
+
+    const primaryVariation = buildVariationFromProductionTables(productionTables, baseVariations[0]);
+    return baseVariations.length > 0
+      ? [primaryVariation, ...baseVariations.slice(1)]
+      : [primaryVariation];
+  };
+
   const getProductProductionTables = (product: Product | Partial<Product>) => {
     if (product.productionTables && product.productionTables.length > 0) {
       return product.productionTables.map((table, index) => normalizeProductionOrderTable(table, index));
@@ -1706,8 +1720,9 @@ export function Produtos({
   const intel = generateIntelligenceData();
 
   const getProductCostRange = (product: Product) => {
-    if (!product.variations || product.variations.length === 0) return 'R$ 0,00';
-    const costs = product.variations.map(v => calculateUnitCost(v, product.fixedCost || 0, product));
+    const pricingVariations = getProductPricingVariations(product);
+    if (pricingVariations.length === 0) return 'R$ 0,00';
+    const costs = pricingVariations.map(v => calculateUnitCost(v, product.fixedCost || 0, product));
     const minCost = Math.min(...costs);
     const maxCost = Math.max(...costs);
     if (minCost === maxCost) return `R$ ${minCost.toFixed(2)}`;
@@ -1723,12 +1738,13 @@ export function Produtos({
   };
 
   const getLiveSuggestedPrices = (product: Product) => {
-    if (!product.variations || product.variations.length === 0) {
+    const pricingVariations = getProductPricingVariations(product);
+    if (pricingVariations.length === 0) {
       const fallback = Number(product.fixedCost) || 0;
       return fallback > 0 ? [Number((fallback * PRODUCT_SUGGESTED_MARKUP_MULTIPLIER).toFixed(2))] : [];
     }
 
-    return product.variations.map(variation => (
+    return pricingVariations.map(variation => (
       Number((calculateUnitCost(variation, product.fixedCost || 0, product) * PRODUCT_SUGGESTED_MARKUP_MULTIPLIER).toFixed(2))
     ));
   };
