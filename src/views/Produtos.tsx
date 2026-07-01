@@ -276,6 +276,10 @@ const getTableDurationMinutes = (table: Pick<ProductProductionTable, 'startAt' |
   return getDurationMinutesFromHours(table.hours);
 };
 
+const getTableDurationHours = (table: Pick<ProductProductionTable, 'startAt' | 'scheduledAt' | 'endAt' | 'hours'>) => {
+  return Number((getTableDurationMinutes(table) / 60).toFixed(2));
+};
+
 const createProductFilamentEntry = (): ProductProductionFilament => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
   filamentId: '',
@@ -637,7 +641,7 @@ export function Produtos({
           purgeGrams: 0,
           objectName: table.tableName || `Mesa ${tableIndex + 1}`,
           pieces: filamentIndex === 0 ? (Number(table.productsCount) || 0) : 0,
-          printTimeHours: Number(table.hours) || 0,
+          printTimeHours: getTableDurationHours(table),
           startTime: table.startAt || table.scheduledAt || '',
           endTime: table.endAt || '',
         })),
@@ -645,7 +649,7 @@ export function Produtos({
 
     const firstFilament = filaments.find(item => item.id === materials[0]?.filamentId);
     const totalWeightGrams = materials.reduce((sum, item) => sum + (Number(item.weightGrams) || 0), 0);
-    const totalHours = tables.reduce((sum, table) => sum + (Number(table.hours) || 0), 0);
+    const totalHours = tables.reduce((sum, table) => sum + getTableDurationHours(table), 0);
     const totalPieces = tables.reduce((sum, table) => sum + (Number(table.productsCount) || 0), 0);
 
     return {
@@ -1432,6 +1436,15 @@ export function Produtos({
 
   // --- ESTOQUE CALCULATION ---
   const getProductStockInfo = (product: Product | Partial<Product>) => {
+    const productionTables = getProductProductionTables(product);
+    if (productionTables.length > 0) {
+      return {
+        complete: productionTables.reduce((sum, table) => sum + (Number(table.productsCount) || 0), 0),
+        extra: [],
+        isDerived: true,
+      };
+    }
+
     let hasMaterialWithPieces = false;
     let totalCompletos = 0;
     const extraStock: string[] = [];
@@ -1879,7 +1892,7 @@ export function Produtos({
                         <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Tempo Total (horas)</label>
                         <input type="number" 
                           step="0.1"
-                          value={Number((formData.productionTables || []).reduce((sum, table) => sum + (Number(table.hours) || 0), 0).toFixed(2)) || ''} 
+                          value={Number((formData.productionTables || []).reduce((sum, table) => sum + getTableDurationHours(table), 0).toFixed(2)) || ''} 
                           readOnly
                           className="w-full border-none rounded p-2.5 text-sm tabular-nums bg-surface-container/50 text-on-surface-variant cursor-not-allowed" 
                           placeholder="Ex: 2.5"
