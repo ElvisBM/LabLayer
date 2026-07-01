@@ -1737,15 +1737,21 @@ export function Produtos({
     return formatPriceRange(getLiveSuggestedPrices(product));
   };
 
-  const getSuggestedSalePrice = (product: Product) => {
+  const getProductSavedPriceRange = (product: Product) => {
     const savedPrices = product.variations?.flatMap(v => v.channelPrices?.map(cp => cp.price) || []).filter(price => price > 0) || [];
     if (savedPrices.length > 0) return formatPriceRange(savedPrices);
+    return '';
+  };
+
+  const getDisplayedSalePrice = (product: Product) => {
+    const savedPriceRange = getProductSavedPriceRange(product);
+    if (savedPriceRange) return savedPriceRange;
     return getProductPriceRange(product);
   };
 
-  const getSuggestedSalePriceMeta = (product: Product) => {
+  const getDisplayedSalePriceMeta = (product: Product) => {
     const savedPrices = product.variations?.flatMap(v => v.channelPrices?.map(cp => cp.price) || []).filter(price => price > 0) || [];
-    if (savedPrices.length === 0) return 'Sugestão automática 120%';
+    if (savedPrices.length === 0) return 'Sugestão automática';
     if (!product.latestSuggestedPrice?.savedAt) return 'Preço cadastrado';
     const savedAt = new Date(product.latestSuggestedPrice.savedAt).toLocaleDateString('pt-BR');
     const channelName = product.latestSuggestedPrice.channelName || 'Sem canal';
@@ -2877,7 +2883,7 @@ export function Produtos({
                   <th className="p-4 whitespace-nowrap cursor-pointer select-none" onClick={() => handleSort('cost')}>
                     Custo Unitário {getSortIndicator('cost')}
                   </th>
-                  <th className="p-4 whitespace-nowrap">Preço de Venda</th>
+                  <th className="p-4 whitespace-nowrap">Venda</th>
                   <th className="p-4 text-right whitespace-nowrap">Ações</th>
                 </tr>
               </thead>
@@ -2950,11 +2956,16 @@ export function Produtos({
                       <span className="font-bold text-sm text-error whitespace-nowrap">{getProductCostRange(p)}</span>
                     </td>
                     <td className="p-4">
-                      <div className="flex flex-col gap-1">
-                        <span className="font-bold text-sm text-primary whitespace-nowrap">{getSuggestedSalePrice(p)}</span>
-                        {getSuggestedSalePriceMeta(p) && (
-                          <span className="text-[10px] text-on-surface-variant">{getSuggestedSalePriceMeta(p)}</span>
-                        )}
+                      <div className="flex flex-col gap-1.5 min-w-[170px]">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">Atual</span>
+                          <span className="font-bold text-sm text-primary whitespace-nowrap">{getDisplayedSalePrice(p)}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold">Sugestão</span>
+                          <span className="text-[11px] font-bold text-on-surface whitespace-nowrap">{getProductPriceRange(p)}</span>
+                        </div>
+                        <span className="text-[10px] text-on-surface-variant">{getDisplayedSalePriceMeta(p)}</span>
                       </div>
                     </td>
                     <td className="p-4 text-right">
@@ -3004,12 +3015,19 @@ export function Produtos({
                 </div>
                 <p className="text-xs font-mono text-on-surface-variant uppercase mb-4">{p.baseSku}</p>
 
-                <div className="mb-4 p-3 rounded-lg bg-surface-container border border-outline-variant/20">
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Preço de Venda</div>
-                  <div className="text-lg font-bold text-primary">{getSuggestedSalePrice(p)}</div>
-                  {getSuggestedSalePriceMeta(p) && (
-                    <div className="text-[10px] text-on-surface-variant mt-1">{getSuggestedSalePriceMeta(p)}</div>
-                  )}
+                <div className="mb-4 p-4 rounded-lg bg-surface-container border border-outline-variant/20">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Venda Atual</div>
+                      <div className="text-lg font-bold text-primary">{getDisplayedSalePrice(p)}</div>
+                      <div className="text-[10px] text-on-surface-variant mt-1">{getDisplayedSalePriceMeta(p)}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Sugestão</div>
+                      <div className="text-sm font-bold text-on-surface">{getProductPriceRange(p)}</div>
+                      <div className="text-[10px] text-on-surface-variant mt-1">Regra 120%</div>
+                    </div>
+                  </div>
                 </div>
                 
                 <div className="space-y-2">
@@ -3056,10 +3074,6 @@ export function Produtos({
                   <div className="flex items-center justify-between text-sm pt-2 border-t border-outline-variant/10">
                     <span className="text-on-surface-variant">Custo Unitário</span>
                     <span className="font-bold text-error">{getProductCostRange(p)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-on-surface-variant">Preço Sugerido</span>
-                    <span className="font-bold text-primary">{getProductPriceRange(p)}</span>
                   </div>
                 </div>
               </div>
