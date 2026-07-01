@@ -332,50 +332,6 @@ export function Precificacao() {
             </h3>
 
             <div className="space-y-5">
-              {/* Produto */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Produto Base</label>
-                <select 
-                  value={productId || ''}
-                  onChange={(e) => setProductId(e.target.value)}
-                  className="w-full bg-surface-container border-none rounded p-3 text-sm focus:ring-2 focus:ring-primary outline-none font-medium"
-                >
-                  {products.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Variação */}
-              {product?.variations && product.variations.length > 0 && (
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Variação</label>
-                  <select 
-                    value={variationId || ''}
-                    onChange={(e) => setVariationId(e.target.value)}
-                    className="w-full bg-surface-container border-none rounded p-3 text-sm focus:ring-2 focus:ring-primary outline-none font-medium"
-                  >
-                    {product.variations.map((v: any) => (
-                      <option key={v.id} value={v.id}>{v.color} ({v.material})</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {/* Canal */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Canal de Venda</label>
-                <select 
-                  value={channelId || ''}
-                  onChange={(e) => setChannelId(e.target.value)}
-                  className="w-full bg-surface-container border-none rounded p-3 text-sm focus:ring-2 focus:ring-primary outline-none font-medium"
-                >
-                  {marketplaces.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.commissionPercent}% + R$ {c.fixedFee.toFixed(2)})</option>
-                  ))}
-                </select>
-              </div>
-
               <div className="grid grid-cols-2 gap-4 pt-2">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Custo Total (R$)</label>
@@ -513,6 +469,66 @@ export function Precificacao() {
         {/* BLOCO DIREITO - RESULTADOS */}
         {calculations && (
           <div className="xl:col-span-7 space-y-6">
+            <div className="sticky top-3 z-20">
+              <div className="bg-surface-container-lowest/95 backdrop-blur-sm p-5 rounded-xl border border-outline-variant/20 shadow-sm">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div>
+                  <h3 className="font-headline font-bold text-base text-on-surface">Selecao do Produto</h3>
+                  <p className="text-xs text-on-surface-variant mt-1">Deixe a escolha principal mais perto da analise e da lista comparativa.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Produto Base</label>
+                  <select
+                    value={productId || ''}
+                    onChange={(e) => setProductId(e.target.value)}
+                    className="w-full bg-surface-container border-none rounded p-3 text-sm focus:ring-2 focus:ring-primary outline-none font-medium"
+                  >
+                    {products.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {product?.variations && product.variations.length > 0 ? (
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Variação</label>
+                    <select
+                      value={variationId || ''}
+                      onChange={(e) => setVariationId(e.target.value)}
+                      className="w-full bg-surface-container border-none rounded p-3 text-sm focus:ring-2 focus:ring-primary outline-none font-medium"
+                    >
+                      {product.variations.map((v: any) => (
+                        <option key={v.id} value={v.id}>{v.color} ({v.material})</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Variação</label>
+                    <div className="w-full bg-surface-container-highest border-none rounded p-3 text-sm text-on-surface-variant">
+                      Sem variações
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Canal de Venda</label>
+                  <select
+                    value={channelId || ''}
+                    onChange={(e) => setChannelId(e.target.value)}
+                    className="w-full bg-surface-container border-none rounded p-3 text-sm focus:ring-2 focus:ring-primary outline-none font-medium"
+                  >
+                    {marketplaces.map(c => (
+                      <option key={c.id} value={c.id}>{c.name} ({c.commissionPercent}% + R$ {c.fixedFee.toFixed(2)})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+            </div>
             
             {/* Preço Final Destaque */}
             <div className="bg-primary-container text-on-primary-container p-8 rounded-xl shadow-sm relative overflow-hidden">

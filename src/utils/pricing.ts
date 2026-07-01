@@ -108,10 +108,9 @@ const calculatePrinterCostPerHour = (
   const calculateRegisteredPrinterCostPerHour = (printer: PricingPrinterLike) => {
     const lifespanHours = Math.max(1, Number(printer.lifespanHours) || 10000);
     const acquisitionCost = Number(printer.acquisitionCost) || 0;
-    const maintenanceBudget = Number(printer.maintenanceBudget) || 0;
     const powerConsumption = Number(printer.powerConsumption) || 0;
 
-    return (acquisitionCost / lifespanHours) + (maintenanceBudget / lifespanHours) + (powerConsumption * energyPrice);
+    return (acquisitionCost / lifespanHours) + (powerConsumption * energyPrice);
   };
 
   const selectedPrinter = printers.find(item => item.id === variation.printerId);

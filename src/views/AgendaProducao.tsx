@@ -138,9 +138,11 @@ const normalizeTable = (table: any, index: number): ProductionTable => ({
   tableName: table?.tableName || `Mesa ${index + 1}`,
   scheduledAt: table?.scheduledAt || getLocalDateTimeString(),
   hours: Number(table?.hours) || Number(table?.hoursPerTable) || 0,
-  productsCount: Number(table?.productsCount) || (Array.isArray(table?.filaments)
-    ? table.filaments.reduce((sum: number, item: any) => sum + (Number(item?.productsCount) || 0), 0)
-    : 0) || 1,
+  productsCount: table?.productsCount !== undefined && table?.productsCount !== null
+    ? Number(table.productsCount) || 0
+    : (Array.isArray(table?.filaments)
+      ? table.filaments.reduce((sum: number, item: any) => sum + (Number(item?.productsCount) || 0), 0)
+      : 0),
   filaments: Array.isArray(table?.filaments) && table.filaments.length > 0
     ? table.filaments.map((item: any, itemIndex: number) => ({
         id: item?.id || `legacy-filament-${index}-${itemIndex}`,
@@ -168,8 +170,8 @@ const normalizeOrder = (order: ProductionOrder): ProductionOrder => {
         scheduledAt: order.scheduledAt || getLocalDateTimeString(),
         hours: Number(order.hoursPerTable) || 0,
         productsCount: Array.isArray(order.filaments) && order.filaments.length > 0
-          ? order.filaments.reduce((sum, item) => sum + (Number(item.productsCount) || 0), 0) || 1
-          : 1,
+          ? order.filaments.reduce((sum, item) => sum + (Number(item.productsCount) || 0), 0)
+          : 0,
         filaments: Array.isArray(order.filaments) && order.filaments.length > 0
           ? order.filaments.map((item, index) => ({
               id: item.id || `legacy-filament-${index}`,
@@ -187,7 +189,7 @@ const getOrderTables = (order: ProductionOrder) => normalizeOrder(order).tables 
 const getOrderTotalHours = (order: ProductionOrder) => getOrderTables(order).reduce((acc, table) => acc + (Number(table.hours) || 0), 0);
 const getOrderProducedUnits = (order: ProductionOrder) => {
   const total = getOrderTables(order).reduce((acc, table) => acc + (Number(table.productsCount) || 0), 0);
-  return total > 0 ? total : getOrderTables(order).length;
+  return total;
 };
 const getOrderFirstSchedule = (order: ProductionOrder) => {
   const tables = getOrderTables(order);
@@ -489,7 +491,7 @@ export function AgendaProducao() {
             quantityKg: Number(entry.quantityKg) || 0,
           }))
           .filter(entry => entry.filamentId && entry.quantityKg > 0),
-        productsCount: Number(table.productsCount) || 1,
+        productsCount: Number(table.productsCount) || 0,
       }));
 
       const payload = {
@@ -564,7 +566,7 @@ export function AgendaProducao() {
           filamentName: filament.filamentName,
           quantityKg: Number(filament.quantityKg) || 0,
         })),
-        productsCount: Number(table.productsCount) || 1,
+        productsCount: Number(table.productsCount) || 0,
       }));
 
       if (existingProduct) {
@@ -762,7 +764,7 @@ export function AgendaProducao() {
                         <input
                           type="number"
                           min="0"
-                          value={table.productsCount || ''}
+                          value={table.productsCount ?? ''}
                           onChange={e => updateTable(table.id, 'productsCount', Number(e.target.value) || 0)}
                           className="w-full bg-surface-container-lowest border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
                         />

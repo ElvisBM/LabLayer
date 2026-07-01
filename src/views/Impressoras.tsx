@@ -120,10 +120,11 @@ export function Impressoras() {
     }
   };
 
-  // Calculate cost per hour: (Acquisition + Maintenance) / Lifespan + Energy
+  // Calculate cost per hour: Depreciation + Energy.
+  // Monthly maintenance is configured in Precificacao and rateado there.
   const calculateCostPerHour = (p: Printer) => {
     if (!p.lifespanHours) return 0;
-    const depreciationAndMaintenance = (p.acquisitionCost + p.maintenanceBudget) / p.lifespanHours;
+    const depreciationAndMaintenance = p.acquisitionCost / p.lifespanHours;
     const energyCost = p.powerConsumption * energyPrice;
     return depreciationAndMaintenance + energyCost;
   };
@@ -201,10 +202,12 @@ export function Impressoras() {
             <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Orçamento Manutenção (R$)</label>
               <input type="number" step="0.01" required value={formData.maintenanceBudget || ''} onChange={e => setFormData({...formData, maintenanceBudget: Number(e.target.value)})} className="w-full bg-surface-container border-none rounded p-2 text-sm focus:ring-2 focus:ring-primary tabular-nums" placeholder="500.00" />
+              <p className="text-[10px] text-on-surface-variant">Campo informativo. O rateio mensal da manutenção é configurado na Precificação.</p>
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Consumo (kWh/h)</label>
+              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Consumo por Hora (kWh)</label>
               <input type="number" step="0.01" required value={formData.powerConsumption || ''} onChange={e => setFormData({...formData, powerConsumption: Number(e.target.value)})} className="w-full bg-surface-container border-none rounded p-2 text-sm focus:ring-2 focus:ring-primary tabular-nums" placeholder="0.12" />
+              <p className="text-[10px] text-on-surface-variant">Ex.: 200 W = 0,20 kWh por hora.</p>
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Status</label>
@@ -250,7 +253,7 @@ export function Impressoras() {
                 </tr>
               )}
               {printers.map((p) => {
-                const depreciation = p.lifespanHours ? (p.acquisitionCost + p.maintenanceBudget) / p.lifespanHours : 0;
+                const depreciation = p.lifespanHours ? p.acquisitionCost / p.lifespanHours : 0;
                 const energy = p.powerConsumption * energyPrice;
                 const totalCost = calculateCostPerHour(p);
                 
@@ -286,7 +289,7 @@ export function Impressoras() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right tabular-nums text-sm font-semibold">
-                      {p.powerConsumption} kWh
+                      {p.powerConsumption} kWh/h
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex flex-col items-end">

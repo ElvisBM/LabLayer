@@ -303,6 +303,12 @@ const normalizeProductionOrderTable = (table: any, index: number): ProductProduc
   const baseHours = Number(table?.hours) || Number(table?.hoursPerTable) || 0;
   const endAt = table?.endAt || addHoursToDateTime(startAt, baseHours || 1);
   const hours = calculateDateTimeHours(startAt, endAt) || baseHours;
+  const derivedProductsCount = Array.isArray(table?.filaments)
+    ? table.filaments.reduce((sum: number, item: any) => sum + (Number(item?.productsCount) || 0), 0)
+    : 0;
+  const normalizedProductsCount = table?.productsCount !== undefined && table?.productsCount !== null
+    ? Number(table.productsCount) || 0
+    : derivedProductsCount;
 
   return {
     id: table?.id || `legacy-table-${index}`,
@@ -311,9 +317,7 @@ const normalizeProductionOrderTable = (table: any, index: number): ProductProduc
     startAt,
     endAt,
     hours,
-    productsCount: Number(table?.productsCount) || (Array.isArray(table?.filaments)
-      ? table.filaments.reduce((sum: number, item: any) => sum + (Number(item?.productsCount) || 0), 0)
-      : 0) || 1,
+    productsCount: normalizedProductsCount,
     filaments: Array.isArray(table?.filaments) && table.filaments.length > 0
       ? table.filaments.map((item: any, itemIndex: number) => ({
           id: item?.id || `legacy-filament-${index}-${itemIndex}`,
@@ -339,12 +343,12 @@ const normalizeProductionOrderFallback = (order: ProductionOrderFallback): Produ
       ? [{
           id: 'legacy-table-0',
           tableName: 'Mesa 1',
-          scheduledAt: order.scheduledAt || getLocalDateTimeString(),
-          hours: Number(order.hoursPerTable) || 0,
-          productsCount: order.filaments.reduce((sum, item) => sum + (Number(item.productsCount) || 0), 0) || 1,
-          filaments: order.filaments.map((item, index) => ({
-            id: item.id || `legacy-filament-${index}`,
-            filamentId: item.filamentId || '',
+        scheduledAt: order.scheduledAt || getLocalDateTimeString(),
+        hours: Number(order.hoursPerTable) || 0,
+        productsCount: order.filaments.reduce((sum, item) => sum + (Number(item.productsCount) || 0), 0),
+        filaments: order.filaments.map((item, index) => ({
+          id: item.id || `legacy-filament-${index}`,
+          filamentId: item.filamentId || '',
             filamentName: item.filamentName || '',
             quantityKg: Number(item.quantityKg) || 0,
           })),
@@ -358,6 +362,7 @@ interface Product {
   name: string;
   baseSku: string;
   category: string;
+  productType?: 'produto' | 'encomenda' | 'orcamento';
   status: 'ativo' | 'inativo' | 'desenvolvimento';
   fixedCost: number;
   stock?: number;
@@ -391,6 +396,30 @@ interface Product {
 }
 
 type ProductSortKey = 'name' | 'category' | 'status' | 'stock' | 'cost';
+type ProductRecordType = NonNullable<Product['productType']>;
+
+const PRODUCT_RECORD_TYPE_OPTIONS: Array<{ value: ProductRecordType; label: string }> = [
+  { value: 'produto', label: 'Produto' },
+  { value: 'encomenda', label: 'Encomenda' },
+  { value: 'orcamento', label: 'Orcamento' },
+];
+
+const getProductRecordTypeLabel = (type?: string) => {
+  const option = PRODUCT_RECORD_TYPE_OPTIONS.find(item => item.value === type);
+  return option?.label || 'Produto';
+};
+
+const getProductRecordTypeClasses = (type?: string) => {
+  switch (type) {
+    case 'encomenda':
+      return 'bg-tertiary-container text-on-tertiary-container';
+    case 'orcamento':
+      return 'bg-secondary-container text-on-secondary-container';
+    case 'produto':
+    default:
+      return 'bg-primary/10 text-primary';
+  }
+};
 
 const mockProducts: Product[] = [
   { 
@@ -461,6 +490,7 @@ export function Produtos({
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [filterCategories, setFilterCategories] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterRecordType, setFilterRecordType] = useState<string>('all');
   const [filterDateStart, setFilterDateStart] = useState<string>('');
   const [filterDateEnd, setFilterDateEnd] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -490,6 +520,7 @@ export function Produtos({
 
   // Form State
   const [formData, setFormData] = useState<Partial<Product>>({
+    productType: 'produto',
     status: 'desenvolvimento',
     fixedCost: 0,
     imageUrl: '',
@@ -509,6 +540,7 @@ export function Produtos({
 
   const resetProductForm = () => {
     setFormData({
+      productType: 'produto',
       status: 'desenvolvimento',
       fixedCost: 0,
       imageUrl: '',
@@ -534,6 +566,7 @@ export function Produtos({
 
     setFormData({
       ...prioritizedProduct,
+      productType: prioritizedProduct.productType || 'produto',
       productionTables: editableTables,
     });
     setEditingId(product.id);
@@ -650,7 +683,11 @@ export function Produtos({
     if (!tenantId) return;
 
     const unsubscribeProducts = onSnapshot(collection(db, `tenants/${tenantId}/products`), (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        productType: 'produto',
+        ...doc.data(),
+      } as Product));
       setProducts(data);
     }, (error) => {
       console.error("Error fetching products:", error);
@@ -710,6 +747,7 @@ export function Produtos({
       const matchSearch = !searchTerm.trim() || (p.name || '').toLowerCase().includes(searchTerm.trim().toLowerCase());
       const matchCategory = filterCategories.length === 0 || filterCategories.includes(p.category);
       const matchStatus = filterStatus === 'all' || p.status === filterStatus;
+      const matchRecordType = filterRecordType === 'all' || (p.productType || 'produto') === filterRecordType;
       
       let matchDate = true;
       if (filterDateStart || filterDateEnd) {
@@ -718,9 +756,9 @@ export function Produtos({
         if (filterDateEnd && pDate > filterDateEnd) matchDate = false;
       }
 
-      return matchSearch && matchCategory && matchStatus && matchDate;
+      return matchSearch && matchCategory && matchStatus && matchRecordType && matchDate;
     });
-  }, [products, searchTerm, filterCategories, filterStatus, filterDateStart, filterDateEnd]);
+  }, [products, searchTerm, filterCategories, filterStatus, filterRecordType, filterDateStart, filterDateEnd]);
 
   const getProductSortValue = (product: Product, key: ProductSortKey) => {
     switch (key) {
@@ -837,7 +875,7 @@ export function Produtos({
             getTableDurationMinutes(table) || 60,
           ),
         ) || Number(table.hours) || 0,
-        productsCount: Number(table.productsCount) || 1,
+        productsCount: Number(table.productsCount) || 0,
         filaments: (table.filaments || [])
           .map(item => {
             const filament = filaments.find(f => f.id === item.filamentId);
@@ -906,6 +944,7 @@ export function Produtos({
         name: formData.name || '',
         baseSku: formData.baseSku || '',
         category: formData.category || '',
+        productType: formData.productType || 'produto',
         status: formData.status || 'desenvolvimento',
         fixedCost: Number(formData.fixedCost) || 0,
         stock: getProductStockInfo({ ...formData, variations: sanitizedVariations }).complete,
@@ -1219,7 +1258,7 @@ export function Produtos({
   const handlePrinterChange = (variationId: string, printerId: string) => {
     const printer = printers.find(p => p.id === printerId);
     if (printer && printer.lifespanHours > 0) {
-      const depreciation = (printer.acquisitionCost + printer.maintenanceBudget) / printer.lifespanHours;
+      const depreciation = printer.acquisitionCost / printer.lifespanHours;
       const energy = (printer.powerConsumption || 0) * energyPrice;
       const costPerHour = depreciation + energy;
       updateVariationFields(variationId, {
@@ -1747,10 +1786,22 @@ export function Produtos({
                 {/* Informações Gerais */}
                 <div>
                   <h3 className="text-sm font-bold text-on-surface mb-4 flex items-center gap-2"><Box className="w-4 h-4 text-primary" /> Informações Gerais</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div className="space-y-1.5 md:col-span-2">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Nome do Produto</label>
                       <input type="text" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" placeholder="Ex: Suporte de Fone" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Tipo de Registro</label>
+                      <select
+                        value={formData.productType || 'produto'}
+                        onChange={e => setFormData({ ...formData, productType: e.target.value as ProductRecordType })}
+                        className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                      >
+                        {PRODUCT_RECORD_TYPE_OPTIONS.map(option => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Categoria</label>
@@ -1838,7 +1889,7 @@ export function Produtos({
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Rendimento (Produto Final)</label>
                         <input type="number" 
-                          value={(formData.productionTables || []).reduce((sum, table) => sum + (Number(table.productsCount) || 0), 0) || '1'} 
+                          value={(formData.productionTables || []).reduce((sum, table) => sum + (Number(table.productsCount) || 0), 0)} 
                           readOnly 
                           className="w-full bg-surface-container/50 text-on-surface-variant border-none rounded p-2.5 text-sm cursor-not-allowed font-bold tabular-nums" 
                         />
@@ -1936,7 +1987,7 @@ export function Produtos({
                                   <input
                                     type="number"
                                     min="0"
-                                    value={table.productsCount || ''}
+                                    value={table.productsCount ?? ''}
                                     onChange={e => updateProductionTable(table.id, 'productsCount', Number(e.target.value))}
                                     className="w-full bg-surface-container-lowest border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary tabular-nums outline-none"
                                   />
@@ -2658,51 +2709,6 @@ export function Produtos({
         <>
       {/* Filtros */}
       <div className="flex flex-col gap-4 bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/10">
-        <div className="flex flex-wrap gap-4 items-center justify-between">
-          <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
-            <div className="relative w-full md:w-72">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                placeholder="Buscar por nome do produto..."
-                className="w-full bg-surface-container border-none rounded-lg p-2.5 pl-10 text-sm focus:ring-2 focus:ring-primary outline-none"
-              />
-            </div>
-            {/* Categorias (Pills) */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Categorias:</label>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => setFilterCategories([])}
-                  className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${filterCategories.length === 0 ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}
-                >
-                  Todas
-                </button>
-                {uniqueCategories.map(cat => (
-                  <button
-                    key={cat}
-                    onClick={() => {
-                      if (filterCategories.includes(cat)) {
-                        setFilterCategories(filterCategories.filter(c => c !== cat));
-                      } else {
-                        setFilterCategories([...filterCategories, cat]);
-                      }
-                    }}
-                    className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${filterCategories.includes(cat) ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="text-sm text-on-surface-variant font-medium">
-            Mostrando {sortedProducts.length} produto(s)
-          </div>
-        </div>
-        
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex bg-surface-container rounded-lg p-1 mr-2">
             <button 
@@ -2736,6 +2742,20 @@ export function Produtos({
           </div>
 
           <div className="flex items-center gap-2">
+            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Tipo:</label>
+            <select
+              value={filterRecordType || 'all'}
+              onChange={e => setFilterRecordType(e.target.value)}
+              className="bg-surface-container border-none rounded p-2 text-sm focus:ring-2 focus:ring-primary outline-none"
+            >
+              <option value="all">Todos</option>
+              {PRODUCT_RECORD_TYPE_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
             <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Criado entre:</label>
             <input 
               type="date" 
@@ -2750,6 +2770,58 @@ export function Produtos({
               onChange={e => setFilterDateEnd(e.target.value)}
               className="bg-surface-container border-none rounded p-2 text-sm focus:ring-2 focus:ring-primary outline-none"
             />
+          </div>
+        </div>
+
+        <div className="border-t border-outline-variant/10 pt-4 flex flex-col gap-4">
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Categorias:</label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setFilterCategories([])}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${filterCategories.length === 0 ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}
+              >
+                Todas
+              </button>
+              {uniqueCategories.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => {
+                    if (filterCategories.includes(cat)) {
+                      setFilterCategories(filterCategories.filter(c => c !== cat));
+                    } else {
+                      setFilterCategories([...filterCategories, cat]);
+                    }
+                  }}
+                  className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${filterCategories.includes(cat) ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'}`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="sticky top-3 z-20 -mt-1">
+        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between bg-surface-container-lowest/95 backdrop-blur-sm p-4 rounded-xl border border-outline-variant/10 shadow-sm">
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Busca da Lista</div>
+            <div className="relative w-full sm:max-w-md">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                placeholder="Buscar por nome do produto..."
+                className="w-full bg-surface-container border-none rounded-lg p-2.5 pl-10 text-sm focus:ring-2 focus:ring-primary outline-none"
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-between sm:justify-end gap-3">
+            <div className="text-sm text-on-surface-variant font-medium whitespace-nowrap">
+              Mostrando {sortedProducts.length} produto(s)
+            </div>
           </div>
         </div>
       </div>
@@ -2794,6 +2866,11 @@ export function Produtos({
                         <div>
                           <div className="font-bold text-sm text-on-surface leading-tight">{p.name}</div>
                           <div className="text-[10px] font-mono text-on-surface-variant uppercase">{p.baseSku}</div>
+                          <div className="mt-1">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${getProductRecordTypeClasses(p.productType)}`}>
+                              {getProductRecordTypeLabel(p.productType)}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -2890,6 +2967,11 @@ export function Produtos({
                 </div>
                 
                 <h3 className="text-lg font-bold text-on-surface mb-1 leading-tight">{p.name}</h3>
+                <div className="mb-2">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${getProductRecordTypeClasses(p.productType)}`}>
+                    {getProductRecordTypeLabel(p.productType)}
+                  </span>
+                </div>
                 <p className="text-xs font-mono text-on-surface-variant uppercase mb-4">{p.baseSku}</p>
 
                 <div className="mb-4 p-3 rounded-lg bg-surface-container border border-outline-variant/20">
