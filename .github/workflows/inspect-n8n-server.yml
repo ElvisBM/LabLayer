@@ -1,10 +1,10 @@
-name: Reset n8n User Management
+name: Inspect n8n Server
 
 on:
   workflow_dispatch:
 
 jobs:
-  reset:
+  inspect:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,28 +20,27 @@ jobs:
           printf '%s\n' "$HOSTINGER_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
-      - name: Reset n8n users on VPS
+      - name: Inspect n8n runtime on VPS
         env:
           HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST }}
           HOSTINGER_USER: ${{ secrets.HOSTINGER_USER }}
         run: |
           ssh "$HOSTINGER_USER@$HOSTINGER_HOST" '
             set -e
-
+            echo "HOSTNAME=$(hostname)"
+            echo "DOCKER_PRESENT=$(command -v docker >/dev/null 2>&1 && echo yes || echo no)"
+            echo "PM2_PRESENT=$(command -v pm2 >/dev/null 2>&1 && echo yes || echo no)"
+            echo "N8N_PRESENT=$(command -v n8n >/dev/null 2>&1 && echo yes || echo no)"
             if command -v docker >/dev/null 2>&1; then
-              N8N_CONTAINER="$(docker ps --format "{{.Names}}" | grep -E "^n8n$|n8n" | head -n 1 || true)"
-              if [ -n "$N8N_CONTAINER" ]; then
-                docker exec -u node "$N8N_CONTAINER" n8n user-management:reset --help >/dev/null 2>&1 || true
-                printf "y\n" | docker exec -i -u node "$N8N_CONTAINER" n8n user-management:reset
-                exit 0
-              fi
+              echo "--- docker ps"
+              docker ps --format "{{.Names}}\t{{.Image}}\t{{.Status}}" | grep -i n8n || true
             fi
-
-            if command -v n8n >/dev/null 2>&1; then
-              printf "y\n" | n8n user-management:reset
-              exit 0
+            if command -v pm2 >/dev/null 2>&1; then
+              echo "--- pm2 list"
+              pm2 list || true
             fi
-
-            echo "n8n installation not found"
-            exit 1
+            if command -v systemctl >/dev/null 2>&1; then
+              echo "--- systemctl n8n"
+              systemctl status n8n --no-pager || true
+            fi
           '
