@@ -322,6 +322,7 @@ export function EncomendasOrcamentos() {
         estimatedUnitCost: pricingPreview.estimatedUnitCost,
         suggestedUnitPrice: pricingPreview.suggestedUnitPrice,
         quotedPrice: Number(formData.quotedPrice) || pricingPreview.totalSuggestedPrice,
+        createdAt: formData.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
 
@@ -329,10 +330,7 @@ export function EncomendasOrcamentos() {
         await updateDoc(doc(db, `tenants/${tenantId}/customRequests`, editingId), payload);
         toast.success('Item atualizado com sucesso!');
       } else {
-        await addDoc(collection(db, `tenants/${tenantId}/customRequests`), {
-          ...payload,
-          createdAt: new Date().toISOString(),
-        });
+        await addDoc(collection(db, `tenants/${tenantId}/customRequests`), payload);
         toast.success('Solicitação cadastrada com sucesso!');
       }
 

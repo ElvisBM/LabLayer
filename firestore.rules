@@ -204,6 +204,45 @@ service cloud.firestore {
              request.resource.data.createdAt is string;
     }
 
+    function isValidCustomRequest() {
+      let allowedFields = [
+        'title',
+        'type',
+        'status',
+        'description',
+        'requestedQuantity',
+        'productionTimeHours',
+        'printerId',
+        'filaments',
+        'referenceImageUrl',
+        'quoteMediaImageUrl',
+        'quoteMediaUrl',
+        'estimatedUnitCost',
+        'suggestedUnitPrice',
+        'quotedPrice',
+        'createdAt',
+        'updatedAt'
+      ];
+      return hasOnlyAllowedFields(allowedFields) &&
+             hasRequiredFields(['title', 'type', 'status', 'requestedQuantity', 'productionTimeHours', 'filaments', 'updatedAt']) &&
+             isValidString('title', 1, 150) &&
+             request.resource.data.type in ['orcamento', 'encomenda'] &&
+             request.resource.data.status in ['aguardando-orcamento', 'orcado', 'fila-producao', 'produzindo', 'finalizado'] &&
+             (!('description' in request.resource.data) || isValidString('description', 0, 5000)) &&
+             isPositiveNumber('requestedQuantity') &&
+             isPositiveNumber('productionTimeHours') &&
+             (!('printerId' in request.resource.data) || isValidString('printerId', 0, 100)) &&
+             request.resource.data.filaments is list &&
+             (!('referenceImageUrl' in request.resource.data) || request.resource.data.referenceImageUrl is string) &&
+             (!('quoteMediaImageUrl' in request.resource.data) || request.resource.data.quoteMediaImageUrl is string) &&
+             (!('quoteMediaUrl' in request.resource.data) || isValidString('quoteMediaUrl', 0, 2000)) &&
+             (!('estimatedUnitCost' in request.resource.data) || isPositiveNumber('estimatedUnitCost')) &&
+             (!('suggestedUnitPrice' in request.resource.data) || isPositiveNumber('suggestedUnitPrice')) &&
+             (!('quotedPrice' in request.resource.data) || isPositiveNumber('quotedPrice')) &&
+             (!('createdAt' in request.resource.data) || request.resource.data.createdAt is string) &&
+             request.resource.data.updatedAt is string;
+    }
+
     function isValidInventoryMovement() {
       let allowedFields = ['date', 'filamentId', 'filamentName', 'type', 'amount', 'reason', 'createdAt'];
       return hasOnlyAllowedFields(allowedFields) &&
@@ -340,6 +379,13 @@ service cloud.firestore {
         allow read: if isTenantOwner(tenantId);
         allow create: if isTenantOwner(tenantId) && isValidProductionOrder();
         allow update: if isTenantOwner(tenantId) && isValidProductionOrder() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantOwner(tenantId);
+      }
+
+      match /customRequests/{requestId} {
+        allow read: if isTenantOwner(tenantId);
+        allow create: if isTenantOwner(tenantId) && isValidCustomRequest();
+        allow update: if isTenantOwner(tenantId) && isValidCustomRequest() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
         allow delete: if isTenantOwner(tenantId);
       }
 
