@@ -29,11 +29,14 @@ jobs:
             set -e
             echo "HOSTNAME=$(hostname)"
             echo "DOCKER_PRESENT=$(command -v docker >/dev/null 2>&1 && echo yes || echo no)"
+            echo "SUDO_PRESENT=$(command -v sudo >/dev/null 2>&1 && echo yes || echo no)"
             echo "PM2_PRESENT=$(command -v pm2 >/dev/null 2>&1 && echo yes || echo no)"
             echo "N8N_PRESENT=$(command -v n8n >/dev/null 2>&1 && echo yes || echo no)"
             if command -v docker >/dev/null 2>&1; then
               echo "--- docker ps"
               docker ps --format "{{.Names}}\t{{.Image}}\t{{.Status}}" | grep -i n8n || true
+              echo "--- sudo docker ps"
+              sudo -n docker ps --format "{{.Names}}\t{{.Image}}\t{{.Status}}" | grep -i n8n || true
             fi
             if command -v pm2 >/dev/null 2>&1; then
               echo "--- pm2 list"
