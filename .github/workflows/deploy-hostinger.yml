@@ -65,3 +65,14 @@ jobs:
             pm2 reload ecosystem.config.cjs --update-env || pm2 start ecosystem.config.cjs
             pm2 save
           '
+
+      - name: Inspect n8n Runtime on VPS
+        env:
+          HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST }}
+          HOSTINGER_USER: ${{ secrets.HOSTINGER_USER }}
+        run: |
+          ssh "$HOSTINGER_USER@$HOSTINGER_HOST" '
+            set -e
+            echo "--- sudo docker ps n8n"
+            sudo -n docker ps --format "{{.Names}}\t{{.Image}}\t{{.Status}}" | grep -i n8n || true
+          '
