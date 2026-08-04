@@ -10,6 +10,7 @@ export function Login() {
   const [loading, setLoading] = useState(false);
 
   const getValidEmail = () => email.includes('@') ? email : `${email}@empresa.com`;
+  const getResetEmail = () => email.trim();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +36,13 @@ export function Login() {
 
   const handleResetPassword = async () => {
     if (!email.trim()) {
-      setError('Informe seu usuário ou e-mail para receber o link de redefinição.');
+      setError('Informe seu e-mail para receber o link de redefinição.');
+      setMessage('');
+      return;
+    }
+
+    if (!getResetEmail().includes('@')) {
+      setError('Para redefinir a senha, informe o e-mail completo da conta.');
       setMessage('');
       return;
     }
@@ -45,7 +52,7 @@ export function Login() {
     setLoading(true);
 
     try {
-      await resetPassword(getValidEmail());
+      await resetPassword(getResetEmail());
       setMessage('Enviamos o link de redefinição para o seu e-mail.');
     } catch (err: any) {
       console.error(err);
@@ -137,6 +144,9 @@ export function Login() {
         >
           Esqueci minha senha
         </button>
+        <p className="mt-2 text-xs text-on-surface-variant">
+          Para redefinir a senha, use o e-mail completo da conta.
+        </p>
       </div>
     </div>
   );
