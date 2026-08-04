@@ -4,6 +4,7 @@ import { TopBar } from './components/TopBar';
 import { Dashboard } from './views/Dashboard';
 import { Filamentos } from './views/Filamentos';
 import { AgendaProducao } from './views/AgendaProducao';
+import { EncomendasOrcamentos } from './views/EncomendasOrcamentos';
 import { Fornecedores } from './views/Fornecedores';
 import { Impressoras } from './views/Impressoras';
 import { Insumos } from './views/Insumos';
@@ -84,6 +85,8 @@ function MainApp() {
         return <Filamentos />;
       case 'agenda':
         return <AgendaProducao />;
+      case 'encomendas':
+        return <EncomendasOrcamentos />;
       case 'fornecedores':
         return <Fornecedores />;
       case 'impressoras':
@@ -113,6 +116,7 @@ function MainApp() {
       case 'estoque': return 'Estoque Inteligente';
       case 'filamentos': return 'Gestão de Filamentos';
       case 'agenda': return 'Agenda de Produção';
+      case 'encomendas': return 'Encomendas e Orçamentos';
       case 'fornecedores': return 'Cadastro de Fornecedores';
       case 'impressoras': return 'Frota de Impressoras';
       case 'insumos': return 'Insumos e Componentes';

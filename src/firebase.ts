@@ -1,21 +1,11 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { getAuth, signOut, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-
-export const loginWithGoogle = async () => {
-  const provider = new GoogleAuthProvider();
-  try {
-    await signInWithPopup(auth, provider);
-  } catch (error) {
-    console.error("Error signing in with Google", error);
-    throw error;
-  }
-};
 
 export const loginWithEmail = async (email: string, password: string) => {
   try {
@@ -26,11 +16,11 @@ export const loginWithEmail = async (email: string, password: string) => {
   }
 };
 
-export const registerWithEmail = async (email: string, password: string) => {
+export const resetPassword = async (email: string) => {
   try {
-    await createUserWithEmailAndPassword(auth, email, password);
+    await sendPasswordResetEmail(auth, email);
   } catch (error) {
-    console.error("Error registering with email", error);
+    console.error("Error resetting password", error);
     throw error;
   }
 };
