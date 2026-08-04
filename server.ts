@@ -45,6 +45,7 @@ const wooCommerce = hasWooCommerceCredentials
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
+  const whatsappIngestToken = process.env.WHATSAPP_INGEST_TOKEN?.trim();
 
   app.disable("x-powered-by");
   app.use(express.json());
@@ -52,6 +53,88 @@ async function startServer() {
   // API routes FIRST
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  app.post("/api/public/tenants/:tenantId/custom-requests/whatsapp", async (req, res) => {
+    try {
+      const { tenantId } = req.params;
+      const providedToken =
+        (typeof req.headers["x-lablayer-webhook-token"] === "string" ? req.headers["x-lablayer-webhook-token"] : "") ||
+        (typeof req.headers.authorization === "string" && req.headers.authorization.startsWith("Bearer ")
+          ? req.headers.authorization.slice("Bearer ".length)
+          : "");
+
+      if (!tenantId) {
+        return res.status(400).json({ error: "tenantId é obrigatório." });
+      }
+
+      if (whatsappIngestToken && providedToken !== whatsappIngestToken) {
+        return res.status(401).json({ error: "Token do webhook inválido." });
+      }
+
+      if (!db) {
+        return res.status(503).json({ error: "Banco de dados não disponível." });
+      }
+
+      const {
+        title,
+        type,
+        status,
+        customerName,
+        customerPhone,
+        sourceMessage,
+        description,
+        requestedQuantity,
+        productionTimeHours,
+        quotedPrice,
+        referenceImageUrl,
+        quoteMediaUrl,
+      } = req.body ?? {};
+
+      const safeTitle = typeof title === "string" && title.trim().length > 0
+        ? title.trim()
+        : `Solicitação WhatsApp ${typeof customerName === "string" && customerName.trim() ? `- ${customerName.trim()}` : ''}`.trim();
+
+      const safeDescription = typeof description === "string" && description.trim().length > 0
+        ? description.trim()
+        : typeof sourceMessage === "string"
+          ? sourceMessage.trim()
+          : "";
+
+      const payload = {
+        title: safeTitle,
+        type: type === "encomenda" ? "encomenda" : "orcamento",
+        status: status || "aguardando-orcamento",
+        sourceChannel: "whatsapp",
+        customerName: typeof customerName === "string" ? customerName.trim() : "",
+        customerPhone: typeof customerPhone === "string" ? customerPhone.trim() : "",
+        sourceMessage: typeof sourceMessage === "string" ? sourceMessage.trim() : "",
+        description: safeDescription,
+        requestedQuantity: Math.max(1, Number(requestedQuantity) || 1),
+        productionTimeHours: Math.max(0, Number(productionTimeHours) || 0),
+        printerId: "",
+        filaments: [],
+        referenceImageUrl: typeof referenceImageUrl === "string" ? referenceImageUrl.trim() : "",
+        quoteMediaImageUrl: "",
+        quoteMediaUrl: typeof quoteMediaUrl === "string" ? quoteMediaUrl.trim() : "",
+        estimatedUnitCost: 0,
+        suggestedUnitPrice: 0,
+        quotedPrice: Math.max(0, Number(quotedPrice) || 0),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const docRef = await db.collection(`tenants/${tenantId}/customRequests`).add(payload);
+
+      return res.status(201).json({
+        success: true,
+        id: docRef.id,
+        tenantId,
+      });
+    } catch (error) {
+      console.error("Erro ao receber solicitação do WhatsApp:", error);
+      return res.status(500).json({ error: "Erro interno ao salvar solicitação do WhatsApp." });
+    }
   });
 
   // ==========================================

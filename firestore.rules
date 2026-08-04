@@ -209,6 +209,10 @@ service cloud.firestore {
         'title',
         'type',
         'status',
+        'sourceChannel',
+        'customerName',
+        'customerPhone',
+        'sourceMessage',
         'description',
         'requestedQuantity',
         'productionTimeHours',
@@ -228,6 +232,10 @@ service cloud.firestore {
              isValidString('title', 1, 150) &&
              request.resource.data.type in ['orcamento', 'encomenda'] &&
              request.resource.data.status in ['aguardando-orcamento', 'orcado', 'fila-producao', 'produzindo', 'finalizado'] &&
+             (!('sourceChannel' in request.resource.data) || request.resource.data.sourceChannel in ['manual', 'whatsapp']) &&
+             (!('customerName' in request.resource.data) || isValidString('customerName', 0, 150)) &&
+             (!('customerPhone' in request.resource.data) || isValidString('customerPhone', 0, 50)) &&
+             (!('sourceMessage' in request.resource.data) || isValidString('sourceMessage', 0, 10000)) &&
              (!('description' in request.resource.data) || isValidString('description', 0, 5000)) &&
              isPositiveNumber('requestedQuantity') &&
              isPositiveNumber('productionTimeHours') &&

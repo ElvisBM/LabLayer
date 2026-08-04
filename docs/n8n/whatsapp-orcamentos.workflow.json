@@ -1,0 +1,93 @@
+{
+  "name": "Whatsapp Encomendas e Orcamentos LabLayer",
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "nodes": [
+    {
+      "id": "webhook_whatsapp",
+      "name": "Webhook WhatsApp",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        260,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lablayer-whatsapp-orcamentos",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "normalizar_payload",
+      "name": "Normalizar Solicitação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        540,
+        300
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const payload = $json.body ?? $json;\nconst event = payload.event ?? payload.type ?? '';\nconst data = payload.data ?? payload.message ?? payload;\nconst sender = data.key?.remoteJid ?? data.sender ?? data.from ?? payload.sender ?? payload.from ?? '';\nconst pushName = data.pushName ?? data.senderName ?? payload.pushName ?? payload.senderName ?? '';\nconst textMessage = data.message?.conversation ?? data.message?.extendedTextMessage?.text ?? data.message?.imageMessage?.caption ?? data.message?.videoMessage?.caption ?? data.text ?? data.body ?? payload.text ?? payload.body ?? '';\nconst mediaUrl = data.message?.imageMessage?.url ?? data.message?.videoMessage?.url ?? data.mediaUrl ?? payload.mediaUrl ?? '';\nconst shouldIgnore = [\n  !sender,\n  String(sender).includes('@g.us'),\n  String(sender).includes('status@broadcast'),\n  Boolean(data.key?.fromMe),\n  event && !['messages.upsert', 'message.upsert', 'messages.update', 'send.message'].includes(String(event)),\n].some(Boolean);\n\nif (shouldIgnore) {\n  return [];\n}\n\nconst cleanPhone = String(sender).replace(/@s\\.whatsapp\\.net$/, '').replace(/\\D/g, '');\nconst customerName = String(pushName || cleanPhone || 'Cliente WhatsApp').trim();\nconst sourceMessage = String(textMessage || '').trim();\nconst title = sourceMessage\n  ? `WhatsApp - ${customerName} - ${sourceMessage.slice(0, 60)}`\n  : `WhatsApp - ${customerName}`;\n\nreturn [{\n  json: {\n    tenantId: '5byAJZJsXDhUKYtdYKpqIaTzaUQ2',\n    title,\n    type: 'orcamento',\n    status: 'aguardando-orcamento',\n    customerName,\n    customerPhone: cleanPhone,\n    sourceMessage,\n    description: sourceMessage,\n    requestedQuantity: 1,\n    productionTimeHours: 0,\n    referenceImageUrl: mediaUrl,\n    rawPayload: payload,\n  },\n}];"
+      }
+    },
+    {
+      "id": "enviar_para_lablayer",
+      "name": "Criar Solicitação no LabLayer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        860,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://app.lablayer.com.br/api/public/tenants/{{$json.tenantId}}/custom-requests/whatsapp",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-lablayer-webhook-token",
+              "value": "={{ $env.WHATSAPP_INGEST_TOKEN || '' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { title: $json.title, type: $json.type, status: $json.status, customerName: $json.customerName, customerPhone: $json.customerPhone, sourceMessage: $json.sourceMessage, description: $json.description, requestedQuantity: $json.requestedQuantity, productionTimeHours: $json.productionTimeHours, referenceImageUrl: $json.referenceImageUrl } }}"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Solicitação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Solicitação": {
+      "main": [
+        [
+          {
+            "node": "Criar Solicitação no LabLayer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

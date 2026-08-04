@@ -9,6 +9,7 @@ import { DEFAULT_PRICING_SETTINGS, type PricingPrinterLike, type PricingSettings
 
 type RequestType = 'orcamento' | 'encomenda';
 type RequestStatus = 'aguardando-orcamento' | 'orcado' | 'fila-producao' | 'produzindo' | 'finalizado';
+type RequestSourceChannel = 'manual' | 'whatsapp';
 
 interface RequestFilament {
   id: string;
@@ -22,6 +23,10 @@ interface CustomRequest {
   title: string;
   type: RequestType;
   status: RequestStatus;
+  sourceChannel?: RequestSourceChannel;
+  customerName?: string;
+  customerPhone?: string;
+  sourceMessage?: string;
   description: string;
   requestedQuantity: number;
   productionTimeHours: number;
@@ -78,6 +83,10 @@ const getDefaultFormData = (): Omit<CustomRequest, 'id'> => ({
   title: '',
   type: 'orcamento',
   status: 'aguardando-orcamento',
+  sourceChannel: 'manual',
+  customerName: '',
+  customerPhone: '',
+  sourceMessage: '',
   description: '',
   requestedQuantity: 1,
   productionTimeHours: 0,
@@ -306,6 +315,10 @@ export function EncomendasOrcamentos() {
         title: formData.title.trim(),
         type: formData.type,
         status: formData.status,
+        sourceChannel: formData.sourceChannel || 'manual',
+        customerName: formData.customerName?.trim() || '',
+        customerPhone: formData.customerPhone?.trim() || '',
+        sourceMessage: formData.sourceMessage?.trim() || '',
         description: formData.description.trim(),
         requestedQuantity: Math.max(1, Number(formData.requestedQuantity) || 1),
         productionTimeHours: Number(formData.productionTimeHours) || 0,
@@ -455,6 +468,40 @@ export function EncomendasOrcamentos() {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Cliente</label>
+                <input
+                  type="text"
+                  value={formData.customerName || ''}
+                  onChange={e => setFormData(prev => ({ ...prev, customerName: e.target.value }))}
+                  className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                  placeholder="Nome do cliente"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Telefone / WhatsApp</label>
+                <input
+                  type="text"
+                  value={formData.customerPhone || ''}
+                  onChange={e => setFormData(prev => ({ ...prev, customerPhone: e.target.value }))}
+                  className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                  placeholder="(13) 99999-9999"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Origem</label>
+                <select
+                  value={formData.sourceChannel || 'manual'}
+                  onChange={e => setFormData(prev => ({ ...prev, sourceChannel: e.target.value as RequestSourceChannel }))}
+                  className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                >
+                  <option value="manual">Manual</option>
+                  <option value="whatsapp">WhatsApp</option>
+                </select>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Descritivo Breve</label>
@@ -466,6 +513,16 @@ export function EncomendasOrcamentos() {
                 />
               </div>
               <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Mensagem Original</label>
+                  <textarea
+                    value={formData.sourceMessage || ''}
+                    onChange={e => setFormData(prev => ({ ...prev, sourceMessage: e.target.value }))}
+                    className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none min-h-[90px] resize-y"
+                    placeholder="Mensagem recebida do cliente no WhatsApp ou observação inicial..."
+                  />
+                </div>
+
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Foto / Logo da Solicitação</label>
                   <label className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-outline-variant/30 bg-surface-container px-4 py-5 text-sm text-on-surface-variant cursor-pointer hover:border-primary/40">
@@ -702,9 +759,18 @@ export function EncomendasOrcamentos() {
                     <div className="flex flex-wrap items-center gap-2 mb-2">
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary">{typeLabel}</span>
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${getStatusClasses(request.status)}`}>{statusLabel}</span>
+                      {request.sourceChannel === 'whatsapp' && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700">WhatsApp</span>
+                      )}
                     </div>
                     <h3 className="text-lg font-bold text-on-surface leading-tight">{request.title}</h3>
                     {request.description && <p className="text-sm text-on-surface-variant mt-2 leading-relaxed">{request.description}</p>}
+                    {(request.customerName || request.customerPhone) && (
+                      <div className="mt-3 flex flex-wrap gap-3 text-xs text-on-surface-variant">
+                        {request.customerName && <span>Cliente: <strong className="text-on-surface">{request.customerName}</strong></span>}
+                        {request.customerPhone && <span>WhatsApp: <strong className="text-on-surface">{request.customerPhone}</strong></span>}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={() => handleEdit(request)} className="p-2 text-slate-400 hover:text-primary hover:bg-surface-container rounded">
@@ -766,6 +832,13 @@ export function EncomendasOrcamentos() {
                         {entry.filamentName || 'Filamento'} • {Number(entry.weightGrams || 0).toFixed(0)} g
                       </span>
                     ))}
+                  </div>
+                )}
+
+                {request.sourceMessage && (
+                  <div className="pt-3 border-t border-outline-variant/10">
+                    <div className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant mb-2">Mensagem Original</div>
+                    <p className="text-sm text-on-surface-variant whitespace-pre-wrap leading-relaxed">{request.sourceMessage}</p>
                   </div>
                 )}
               </div>
