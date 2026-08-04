@@ -1,0 +1,47 @@
+name: Reset n8n User Management
+
+on:
+  workflow_dispatch:
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure SSH
+        env:
+          HOSTINGER_SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          HOSTINGER_KNOWN_HOSTS: ${{ secrets.HOSTINGER_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$HOSTINGER_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$HOSTINGER_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Reset n8n users on VPS
+        env:
+          HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST }}
+          HOSTINGER_USER: ${{ secrets.HOSTINGER_USER }}
+        run: |
+          ssh "$HOSTINGER_USER@$HOSTINGER_HOST" '
+            set -e
+
+            if command -v docker >/dev/null 2>&1; then
+              N8N_CONTAINER="$(docker ps --format "{{.Names}}" | grep -E "^n8n$|n8n" | head -n 1 || true)"
+              if [ -n "$N8N_CONTAINER" ]; then
+                docker exec -u node "$N8N_CONTAINER" n8n user-management:reset --help >/dev/null 2>&1 || true
+                printf "y\n" | docker exec -i -u node "$N8N_CONTAINER" n8n user-management:reset
+                exit 0
+              fi
+            fi
+
+            if command -v n8n >/dev/null 2>&1; then
+              printf "y\n" | n8n user-management:reset
+              exit 0
+            fi
+
+            echo "n8n installation not found"
+            exit 1
+          '
