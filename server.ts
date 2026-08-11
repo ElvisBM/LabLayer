@@ -42,10 +42,70 @@ const wooCommerce = hasWooCommerceCredentials
     })
   : null;
 
+const ADMIN_API_COLLECTIONS = new Set([
+  "products",
+  "filaments",
+  "printers",
+  "supplies",
+  "orders",
+  "transactions",
+  "marketplaces",
+  "productionOrders",
+  "customRequests",
+  "losses",
+  "suppliers",
+  "inventoryMovements",
+  "failures",
+  "settings",
+]);
+
+const extractBearerToken = (authorizationHeader?: string) => {
+  if (!authorizationHeader?.startsWith("Bearer ")) {
+    return "";
+  }
+
+  return authorizationHeader.slice("Bearer ".length).trim();
+};
+
+const parsePositiveLimit = (rawLimit: unknown, fallback = 100, max = 500) => {
+  const parsed = Number(rawLimit);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+
+  return Math.min(Math.floor(parsed), max);
+};
+
+const isValidAdminCollection = (collectionName: string) => ADMIN_API_COLLECTIONS.has(collectionName);
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const buildTenantCollectionPath = (tenantId: string, collectionName: string) =>
+  `tenants/${tenantId}/${collectionName}`;
+
+const normalizeAdminPayload = (
+  payload: Record<string, unknown>,
+  {
+    preserveCreatedAt = false,
+  }: { preserveCreatedAt?: boolean } = {},
+) => {
+  const normalizedPayload = { ...payload };
+
+  if (!preserveCreatedAt && normalizedPayload.createdAt == null) {
+    normalizedPayload.createdAt = new Date().toISOString();
+  }
+
+  normalizedPayload.updatedAt = new Date().toISOString();
+
+  return normalizedPayload;
+};
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
   const whatsappIngestToken = process.env.WHATSAPP_INGEST_TOKEN?.trim();
+  const adminApiToken = process.env.ADMIN_API_TOKEN?.trim();
 
   app.disable("x-powered-by");
   app.use(express.json());
@@ -53,6 +113,401 @@ async function startServer() {
   // API routes FIRST
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  const requireAdminApiToken: express.RequestHandler = (req, res, next) => {
+    const providedToken =
+      (typeof req.headers["x-lablayer-admin-token"] === "string" ? req.headers["x-lablayer-admin-token"] : "") ||
+      extractBearerToken(typeof req.headers.authorization === "string" ? req.headers.authorization : undefined);
+
+    if (!adminApiToken) {
+      return res.status(503).json({ error: "ADMIN_API_TOKEN não configurado." });
+    }
+
+    if (!providedToken || providedToken !== adminApiToken) {
+      return res.status(401).json({ error: "Token administrativo inválido." });
+    }
+
+    next();
+  };
+
+  app.get("/api/admin/health", requireAdminApiToken, (req, res) => {
+    res.json({
+      status: "ok",
+      service: "lablayer-admin-api",
+      databaseAvailable: Boolean(db),
+      collections: Array.from(ADMIN_API_COLLECTIONS),
+    });
+  });
+
+  app.get("/api/admin/tenants/:tenantId", requireAdminApiToken, async (req, res) => {
+    try {
+      const { tenantId } = req.params;
+
+      if (!tenantId) {
+        return res.status(400).json({ error: "tenantId é obrigatório." });
+      }
+
+      if (!db) {
+        return res.status(503).json({ error: "Banco de dados não disponível." });
+      }
+
+      const tenantDoc = await db.doc(`tenants/${tenantId}`).get();
+
+      if (!tenantDoc.exists) {
+        return res.status(404).json({ error: "Tenant não encontrado." });
+      }
+
+      return res.json({
+        id: tenantDoc.id,
+        ...tenantDoc.data(),
+      });
+    } catch (error) {
+      console.error("Erro ao carregar tenant pela API admin:", error);
+      return res.status(500).json({ error: "Erro interno ao carregar tenant." });
+    }
+  });
+
+  app.get("/api/admin/tenants/:tenantId/export", requireAdminApiToken, async (req, res) => {
+    try {
+      const { tenantId } = req.params;
+      const requestedCollections = String(req.query.collections || "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const collectionsToFetch = requestedCollections.length > 0
+        ? requestedCollections
+        : Array.from(ADMIN_API_COLLECTIONS);
+      const invalidCollections = collectionsToFetch.filter((item) => !ADMIN_API_COLLECTIONS.has(item));
+      const limit = parsePositiveLimit(req.query.limit, 100, 500);
+
+      if (!tenantId) {
+        return res.status(400).json({ error: "tenantId é obrigatório." });
+      }
+
+      if (invalidCollections.length > 0) {
+        return res.status(400).json({
+          error: "Coleções inválidas informadas.",
+          invalidCollections,
+          allowedCollections: Array.from(ADMIN_API_COLLECTIONS),
+        });
+      }
+
+      if (!db) {
+        return res.status(503).json({ error: "Banco de dados não disponível." });
+      }
+
+      const exportPayload = await Promise.all(
+        collectionsToFetch.map(async (collectionName) => {
+          const snapshot = await db.collection(`tenants/${tenantId}/${collectionName}`).limit(limit).get();
+
+          return [
+            collectionName,
+            snapshot.docs.map((docSnapshot) => ({
+              id: docSnapshot.id,
+              ...docSnapshot.data(),
+            })),
+          ] as const;
+        }),
+      );
+
+      return res.json({
+        tenantId,
+        exportedAt: new Date().toISOString(),
+        limit,
+        collections: Object.fromEntries(exportPayload),
+      });
+    } catch (error) {
+      console.error("Erro ao exportar dados pela API admin:", error);
+      return res.status(500).json({ error: "Erro interno ao exportar dados." });
+    }
+  });
+
+  app.get("/api/admin/tenants/:tenantId/:collectionName", requireAdminApiToken, async (req, res) => {
+    try {
+      const { tenantId, collectionName } = req.params;
+      const limit = parsePositiveLimit(req.query.limit, 100, 500);
+
+      if (!tenantId) {
+        return res.status(400).json({ error: "tenantId é obrigatório." });
+      }
+
+      if (!isValidAdminCollection(collectionName)) {
+        return res.status(400).json({
+          error: "Coleção não permitida.",
+          allowedCollections: Array.from(ADMIN_API_COLLECTIONS),
+        });
+      }
+
+      if (!db) {
+        return res.status(503).json({ error: "Banco de dados não disponível." });
+      }
+
+      const snapshot = await db.collection(buildTenantCollectionPath(tenantId, collectionName)).limit(limit).get();
+
+      return res.json({
+        tenantId,
+        collection: collectionName,
+        count: snapshot.size,
+        items: snapshot.docs.map((docSnapshot) => ({
+          id: docSnapshot.id,
+          ...docSnapshot.data(),
+        })),
+      });
+    } catch (error) {
+      console.error("Erro ao listar coleção pela API admin:", error);
+      return res.status(500).json({ error: "Erro interno ao listar coleção." });
+    }
+  });
+
+  app.get("/api/admin/tenants/:tenantId/:collectionName/:docId", requireAdminApiToken, async (req, res) => {
+    try {
+      const { tenantId, collectionName, docId } = req.params;
+
+      if (!tenantId || !docId) {
+        return res.status(400).json({ error: "tenantId e docId são obrigatórios." });
+      }
+
+      if (!isValidAdminCollection(collectionName)) {
+        return res.status(400).json({
+          error: "Coleção não permitida.",
+          allowedCollections: Array.from(ADMIN_API_COLLECTIONS),
+        });
+      }
+
+      if (!db) {
+        return res.status(503).json({ error: "Banco de dados não disponível." });
+      }
+
+      const docSnapshot = await db.doc(`${buildTenantCollectionPath(tenantId, collectionName)}/${docId}`).get();
+
+      if (!docSnapshot.exists) {
+        return res.status(404).json({ error: "Documento não encontrado." });
+      }
+
+      return res.json({
+        id: docSnapshot.id,
+        ...docSnapshot.data(),
+      });
+    } catch (error) {
+      console.error("Erro ao carregar documento pela API admin:", error);
+      return res.status(500).json({ error: "Erro interno ao carregar documento." });
+    }
+  });
+
+  app.post("/api/admin/tenants/:tenantId/:collectionName", requireAdminApiToken, async (req, res) => {
+    try {
+      const { tenantId, collectionName } = req.params;
+      const requestedId = typeof req.body?.id === "string" ? req.body.id.trim() : "";
+      const rawPayload = isPlainObject(req.body) ? req.body : null;
+
+      if (!tenantId) {
+        return res.status(400).json({ error: "tenantId é obrigatório." });
+      }
+
+      if (!isValidAdminCollection(collectionName)) {
+        return res.status(400).json({
+          error: "Coleção não permitida.",
+          allowedCollections: Array.from(ADMIN_API_COLLECTIONS),
+        });
+      }
+
+      if (!db) {
+        return res.status(503).json({ error: "Banco de dados não disponível." });
+      }
+
+      if (!rawPayload) {
+        return res.status(400).json({ error: "O body deve ser um objeto JSON válido." });
+      }
+
+      const { id: _ignoredId, ...payloadWithoutId } = rawPayload;
+      const normalizedPayload = normalizeAdminPayload(payloadWithoutId);
+      const collectionPath = buildTenantCollectionPath(tenantId, collectionName);
+
+      if (requestedId) {
+        await db.doc(`${collectionPath}/${requestedId}`).set(normalizedPayload, { merge: false });
+        return res.status(201).json({
+          success: true,
+          tenantId,
+          collection: collectionName,
+          id: requestedId,
+          item: {
+            id: requestedId,
+            ...normalizedPayload,
+          },
+        });
+      }
+
+      const docRef = await db.collection(collectionPath).add(normalizedPayload);
+      return res.status(201).json({
+        success: true,
+        tenantId,
+        collection: collectionName,
+        id: docRef.id,
+        item: {
+          id: docRef.id,
+          ...normalizedPayload,
+        },
+      });
+    } catch (error) {
+      console.error("Erro ao criar documento pela API admin:", error);
+      return res.status(500).json({ error: "Erro interno ao criar documento." });
+    }
+  });
+
+  app.put("/api/admin/tenants/:tenantId/:collectionName/:docId", requireAdminApiToken, async (req, res) => {
+    try {
+      const { tenantId, collectionName, docId } = req.params;
+      const rawPayload = isPlainObject(req.body) ? req.body : null;
+
+      if (!tenantId || !docId) {
+        return res.status(400).json({ error: "tenantId e docId são obrigatórios." });
+      }
+
+      if (!isValidAdminCollection(collectionName)) {
+        return res.status(400).json({
+          error: "Coleção não permitida.",
+          allowedCollections: Array.from(ADMIN_API_COLLECTIONS),
+        });
+      }
+
+      if (!db) {
+        return res.status(503).json({ error: "Banco de dados não disponível." });
+      }
+
+      if (!rawPayload) {
+        return res.status(400).json({ error: "O body deve ser um objeto JSON válido." });
+      }
+
+      const docPath = `${buildTenantCollectionPath(tenantId, collectionName)}/${docId}`;
+      const currentDoc = await db.doc(docPath).get();
+
+      if (!currentDoc.exists) {
+        return res.status(404).json({ error: "Documento não encontrado." });
+      }
+
+      const { id: _ignoredId, ...payloadWithoutId } = rawPayload;
+      const normalizedPayload = normalizeAdminPayload(payloadWithoutId, {
+        preserveCreatedAt: Boolean(payloadWithoutId.createdAt ?? currentDoc.data()?.createdAt),
+      });
+
+      if (normalizedPayload.createdAt == null && currentDoc.data()?.createdAt != null) {
+        normalizedPayload.createdAt = currentDoc.data()?.createdAt;
+      }
+
+      await db.doc(docPath).set(normalizedPayload, { merge: false });
+
+      return res.json({
+        success: true,
+        tenantId,
+        collection: collectionName,
+        id: docId,
+        item: {
+          id: docId,
+          ...normalizedPayload,
+        },
+      });
+    } catch (error) {
+      console.error("Erro ao substituir documento pela API admin:", error);
+      return res.status(500).json({ error: "Erro interno ao substituir documento." });
+    }
+  });
+
+  app.patch("/api/admin/tenants/:tenantId/:collectionName/:docId", requireAdminApiToken, async (req, res) => {
+    try {
+      const { tenantId, collectionName, docId } = req.params;
+      const rawPayload = isPlainObject(req.body) ? req.body : null;
+
+      if (!tenantId || !docId) {
+        return res.status(400).json({ error: "tenantId e docId são obrigatórios." });
+      }
+
+      if (!isValidAdminCollection(collectionName)) {
+        return res.status(400).json({
+          error: "Coleção não permitida.",
+          allowedCollections: Array.from(ADMIN_API_COLLECTIONS),
+        });
+      }
+
+      if (!db) {
+        return res.status(503).json({ error: "Banco de dados não disponível." });
+      }
+
+      if (!rawPayload) {
+        return res.status(400).json({ error: "O body deve ser um objeto JSON válido." });
+      }
+
+      const docPath = `${buildTenantCollectionPath(tenantId, collectionName)}/${docId}`;
+      const currentDoc = await db.doc(docPath).get();
+
+      if (!currentDoc.exists) {
+        return res.status(404).json({ error: "Documento não encontrado." });
+      }
+
+      const { id: _ignoredId, ...payloadWithoutId } = rawPayload;
+      const mergedPayload = normalizeAdminPayload(payloadWithoutId, {
+        preserveCreatedAt: true,
+      });
+
+      await db.doc(docPath).set(mergedPayload, { merge: true });
+
+      const updatedDoc = await db.doc(docPath).get();
+
+      return res.json({
+        success: true,
+        tenantId,
+        collection: collectionName,
+        id: docId,
+        item: {
+          id: updatedDoc.id,
+          ...updatedDoc.data(),
+        },
+      });
+    } catch (error) {
+      console.error("Erro ao atualizar documento pela API admin:", error);
+      return res.status(500).json({ error: "Erro interno ao atualizar documento." });
+    }
+  });
+
+  app.delete("/api/admin/tenants/:tenantId/:collectionName/:docId", requireAdminApiToken, async (req, res) => {
+    try {
+      const { tenantId, collectionName, docId } = req.params;
+
+      if (!tenantId || !docId) {
+        return res.status(400).json({ error: "tenantId e docId são obrigatórios." });
+      }
+
+      if (!isValidAdminCollection(collectionName)) {
+        return res.status(400).json({
+          error: "Coleção não permitida.",
+          allowedCollections: Array.from(ADMIN_API_COLLECTIONS),
+        });
+      }
+
+      if (!db) {
+        return res.status(503).json({ error: "Banco de dados não disponível." });
+      }
+
+      const docPath = `${buildTenantCollectionPath(tenantId, collectionName)}/${docId}`;
+      const currentDoc = await db.doc(docPath).get();
+
+      if (!currentDoc.exists) {
+        return res.status(404).json({ error: "Documento não encontrado." });
+      }
+
+      await db.doc(docPath).delete();
+
+      return res.json({
+        success: true,
+        tenantId,
+        collection: collectionName,
+        id: docId,
+        deleted: true,
+      });
+    } catch (error) {
+      console.error("Erro ao excluir documento pela API admin:", error);
+      return res.status(500).json({ error: "Erro interno ao excluir documento." });
+    }
   });
 
   app.post("/api/public/tenants/:tenantId/custom-requests/whatsapp", async (req, res) => {
