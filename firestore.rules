@@ -44,6 +44,14 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == tenantId;
     }
 
+    function isTenantMember(tenantId) {
+      return isAuthenticated() && (
+        isTenantOwner(tenantId) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId)
+      );
+    }
+
     function hasOnlyAllowedFields(allowedFields) {
       return request.resource.data.keys().hasOnly(allowedFields);
     }
@@ -305,8 +313,8 @@ service cloud.firestore {
     }
 
     match /tenants/{tenantId} {
-      // Owner or Super Admin can read
-      allow read: if isTenantOwner(tenantId) || isSuperAdmin();
+      // Members or Super Admin can read
+      allow read: if isTenantMember(tenantId) || isSuperAdmin();
       
       // Owner can create
       allow create: if isTenantOwner(tenantId);
@@ -321,99 +329,99 @@ service cloud.firestore {
 
       // Subcollections
       match /products/{productId} {
-        allow read: if isTenantOwner(tenantId);
-        allow create: if isTenantOwner(tenantId) && isValidProduct();
-        allow update: if isTenantOwner(tenantId) && isValidProduct() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
-        allow delete: if isTenantOwner(tenantId);
+        allow read: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId) && isValidProduct();
+        allow update: if isTenantMember(tenantId) && isValidProduct() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+        allow delete: if isTenantMember(tenantId);
       }
 
       match /printers/{printerId} {
-        allow read: if isTenantOwner(tenantId);
-        allow create: if isTenantOwner(tenantId) && isValidPrinter();
-        allow update: if isTenantOwner(tenantId) && isValidPrinter() && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isTenantOwner(tenantId);
+        allow read: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId) && isValidPrinter();
+        allow update: if isTenantMember(tenantId) && isValidPrinter() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantMember(tenantId);
       }
 
       match /filaments/{filamentId} {
-        allow read: if isTenantOwner(tenantId);
-        allow create: if isTenantOwner(tenantId) && isValidFilament();
-        allow update: if isTenantOwner(tenantId) && isValidFilament() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
-        allow delete: if isTenantOwner(tenantId);
+        allow read: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId) && isValidFilament();
+        allow update: if isTenantMember(tenantId) && isValidFilament() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+        allow delete: if isTenantMember(tenantId);
       }
 
       match /suppliers/{supplierId} {
-        allow read: if isTenantOwner(tenantId);
-        allow create: if isTenantOwner(tenantId) && isValidSupplier();
-        allow update: if isTenantOwner(tenantId) && isValidSupplier() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
-        allow delete: if isTenantOwner(tenantId);
+        allow read: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId) && isValidSupplier();
+        allow update: if isTenantMember(tenantId) && isValidSupplier() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+        allow delete: if isTenantMember(tenantId);
       }
 
       match /orders/{orderId} {
-        allow read: if isTenantOwner(tenantId);
-        allow create: if isTenantOwner(tenantId) && isValidOrder();
-        allow update: if isTenantOwner(tenantId) && isValidOrder() && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isTenantOwner(tenantId);
+        allow read: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId) && isValidOrder();
+        allow update: if isTenantMember(tenantId) && isValidOrder() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantMember(tenantId);
       }
 
       match /transactions/{transactionId} {
-        allow read: if isTenantOwner(tenantId);
-        allow create: if isTenantOwner(tenantId) && isValidTransaction();
-        allow update: if isTenantOwner(tenantId) && isValidTransaction() && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isTenantOwner(tenantId);
+        allow read: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId) && isValidTransaction();
+        allow update: if isTenantMember(tenantId) && isValidTransaction() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantMember(tenantId);
       }
 
       match /losses/{lossId} {
-        allow read: if isTenantOwner(tenantId);
-        allow create: if isTenantOwner(tenantId) && isValidLoss();
-        allow update: if isTenantOwner(tenantId) && isValidLoss();
-        allow delete: if isTenantOwner(tenantId);
+        allow read: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId) && isValidLoss();
+        allow update: if isTenantMember(tenantId) && isValidLoss();
+        allow delete: if isTenantMember(tenantId);
       }
 
       match /supplies/{supplyId} {
-        allow read: if isTenantOwner(tenantId);
-        allow create: if isTenantOwner(tenantId) && isValidSupply();
-        allow update: if isTenantOwner(tenantId) && isValidSupply() && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isTenantOwner(tenantId);
+        allow read: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId) && isValidSupply();
+        allow update: if isTenantMember(tenantId) && isValidSupply() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantMember(tenantId);
       }
 
       match /marketplaces/{marketplaceId} {
-        allow read: if isTenantOwner(tenantId);
-        allow create: if isTenantOwner(tenantId) && isValidMarketplace();
-        allow update: if isTenantOwner(tenantId) && isValidMarketplace() && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isTenantOwner(tenantId);
+        allow read: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId) && isValidMarketplace();
+        allow update: if isTenantMember(tenantId) && isValidMarketplace() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantMember(tenantId);
       }
 
       match /productionOrders/{orderId} {
-        allow read: if isTenantOwner(tenantId);
-        allow create: if isTenantOwner(tenantId) && isValidProductionOrder();
-        allow update: if isTenantOwner(tenantId) && isValidProductionOrder() && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isTenantOwner(tenantId);
+        allow read: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId) && isValidProductionOrder();
+        allow update: if isTenantMember(tenantId) && isValidProductionOrder() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantMember(tenantId);
       }
 
       match /customRequests/{requestId} {
-        allow read: if isTenantOwner(tenantId);
-        allow create: if isTenantOwner(tenantId) && isValidCustomRequest();
-        allow update: if isTenantOwner(tenantId) && isValidCustomRequest() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
-        allow delete: if isTenantOwner(tenantId);
+        allow read: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId) && isValidCustomRequest();
+        allow update: if isTenantMember(tenantId) && isValidCustomRequest() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+        allow delete: if isTenantMember(tenantId);
       }
 
       match /inventoryMovements/{movementId} {
-        allow read: if isTenantOwner(tenantId);
-        allow create: if isTenantOwner(tenantId) && isValidInventoryMovement();
-        allow update: if isTenantOwner(tenantId) && isValidInventoryMovement() && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isTenantOwner(tenantId);
+        allow read: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId) && isValidInventoryMovement();
+        allow update: if isTenantMember(tenantId) && isValidInventoryMovement() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantMember(tenantId);
       }
 
       match /failures/{failureId} {
-        allow read: if isTenantOwner(tenantId);
-        allow create: if isTenantOwner(tenantId) && isValidFailureRecord();
-        allow update: if isTenantOwner(tenantId) && isValidFailureRecord() && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isTenantOwner(tenantId);
+        allow read: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId) && isValidFailureRecord();
+        allow update: if isTenantMember(tenantId) && isValidFailureRecord() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantMember(tenantId);
       }
 
       match /settings/{settingId} {
-        allow read: if isTenantOwner(tenantId);
-        allow write: if isTenantOwner(tenantId);
+        allow read: if isTenantMember(tenantId);
+        allow write: if isTenantMember(tenantId);
       }
     }
   }

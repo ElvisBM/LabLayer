@@ -25,44 +25,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(currentUser);
       
       if (currentUser) {
-        setTenantId(currentUser.uid);
-        
         try {
           // Check Super Admin status
           let superAdminStatus = currentUser.email === 'elvisbmartins@gmail.com';
           
           const userRef = doc(db, 'users', currentUser.uid);
           const userSnap = await getDoc(userRef);
+          const defaultTenantId = currentUser.uid;
+          let resolvedTenantId = defaultTenantId;
           
           if (!userSnap.exists()) {
             await setDoc(userRef, {
               email: currentUser.email,
               role: superAdminStatus ? 'superadmin' : 'admin',
+              tenantId: defaultTenantId,
+              tenantRole: 'owner',
               createdAt: new Date().toISOString()
             });
           } else {
-            if (userSnap.data().role === 'superadmin') {
+            const userData = userSnap.data();
+
+            if (userData.role === 'superadmin') {
               superAdminStatus = true;
             }
+
+            resolvedTenantId = typeof userData.tenantId === 'string' && userData.tenantId.trim()
+              ? userData.tenantId
+              : defaultTenantId;
+
+            if (!userData.tenantId || !userData.tenantRole) {
+              await setDoc(userRef, {
+                tenantId: resolvedTenantId,
+                tenantRole: userData.tenantRole || 'owner',
+              }, { merge: true });
+            }
           }
+
+          setTenantId(resolvedTenantId);
           setIsSuperAdmin(superAdminStatus);
 
-          // Ensure tenant document exists
-          const tenantRef = doc(db, 'tenants', currentUser.uid);
-          const tenantSnap = await getDoc(tenantRef);
-          
-          if (!tenantSnap.exists()) {
-            await setDoc(tenantRef, {
-              ownerUid: currentUser.uid,
-              ownerEmail: currentUser.email,
-              companyName: currentUser.displayName || 'Minha Empresa',
-              plan: 'free',
-              status: 'active', // active, inactive, past_due
-              createdAt: new Date().toISOString()
-            });
+          // Ensure tenant document exists only for the owner tenant
+          if (resolvedTenantId === currentUser.uid) {
+            const tenantRef = doc(db, 'tenants', currentUser.uid);
+            const tenantSnap = await getDoc(tenantRef);
+            
+            if (!tenantSnap.exists()) {
+              await setDoc(tenantRef, {
+                ownerUid: currentUser.uid,
+                ownerEmail: currentUser.email,
+                companyName: currentUser.displayName || 'Minha Empresa',
+                plan: 'free',
+                status: 'active', // active, inactive, past_due
+                createdAt: new Date().toISOString()
+              });
+            }
           }
         } catch (error) {
           console.error("Error initializing user/tenant:", error);
+          setTenantId(currentUser.uid);
         }
       } else {
         setTenantId(null);
