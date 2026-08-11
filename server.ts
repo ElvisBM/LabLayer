@@ -101,6 +101,67 @@ const normalizeAdminPayload = (
   return normalizedPayload;
 };
 
+const isEqualValue = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
+
+const buildChangedFields = (
+  previousValue: Record<string, unknown>,
+  nextValue: Record<string, unknown>,
+) => {
+  const changedKeys = new Set([
+    ...Object.keys(previousValue),
+    ...Object.keys(nextValue),
+  ]);
+
+  return Array.from(changedKeys).reduce<Record<string, { before: unknown; after: unknown }>>((acc, key) => {
+    const before = previousValue[key];
+    const after = nextValue[key];
+
+    if (!isEqualValue(before, after)) {
+      acc[key] = { before, after };
+    }
+
+    return acc;
+  }, {});
+};
+
+const resolveActor = (req: express.Request) => {
+  const actorHeader = req.headers["x-lablayer-admin-actor"];
+  if (typeof actorHeader === "string" && actorHeader.trim()) {
+    return actorHeader.trim();
+  }
+
+  return "api-token";
+};
+
+const writeAuditLog = async ({
+  tenantId,
+  actor,
+  action,
+  collectionName,
+  docId,
+  changedFields,
+}: {
+  tenantId: string;
+  actor: string;
+  action: "create" | "update" | "delete";
+  collectionName: string;
+  docId: string;
+  changedFields: Record<string, { before: unknown; after: unknown }>;
+}) => {
+  if (!db || Object.keys(changedFields).length === 0) {
+    return;
+  }
+
+  await db.collection(buildTenantCollectionPath(tenantId, "auditLogs")).add({
+    actor,
+    action,
+    collectionName,
+    docId,
+    changedFields,
+    createdAt: new Date().toISOString(),
+  });
+};
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
@@ -137,6 +198,7 @@ async function startServer() {
       service: "lablayer-admin-api",
       databaseAvailable: Boolean(db),
       collections: Array.from(ADMIN_API_COLLECTIONS),
+      auditCollection: "auditLogs",
     });
   });
 
@@ -223,6 +285,40 @@ async function startServer() {
     }
   });
 
+  app.get("/api/admin/tenants/:tenantId/audit-logs", requireAdminApiToken, async (req, res) => {
+    try {
+      const { tenantId } = req.params;
+      const limit = parsePositiveLimit(req.query.limit, 100, 500);
+
+      if (!tenantId) {
+        return res.status(400).json({ error: "tenantId é obrigatório." });
+      }
+
+      if (!db) {
+        return res.status(503).json({ error: "Banco de dados não disponível." });
+      }
+
+      const snapshot = await db
+        .collection(buildTenantCollectionPath(tenantId, "auditLogs"))
+        .orderBy("createdAt", "desc")
+        .limit(limit)
+        .get();
+
+      return res.json({
+        tenantId,
+        collection: "auditLogs",
+        count: snapshot.size,
+        items: snapshot.docs.map((docSnapshot) => ({
+          id: docSnapshot.id,
+          ...docSnapshot.data(),
+        })),
+      });
+    } catch (error) {
+      console.error("Erro ao listar histórico da API admin:", error);
+      return res.status(500).json({ error: "Erro interno ao listar histórico." });
+    }
+  });
+
   app.get("/api/admin/tenants/:tenantId/:collectionName", requireAdminApiToken, async (req, res) => {
     try {
       const { tenantId, collectionName } = req.params;
@@ -298,6 +394,7 @@ async function startServer() {
   app.post("/api/admin/tenants/:tenantId/:collectionName", requireAdminApiToken, async (req, res) => {
     try {
       const { tenantId, collectionName } = req.params;
+      const actor = resolveActor(req);
       const requestedId = typeof req.body?.id === "string" ? req.body.id.trim() : "";
       const rawPayload = isPlainObject(req.body) ? req.body : null;
 
@@ -326,6 +423,14 @@ async function startServer() {
 
       if (requestedId) {
         await db.doc(`${collectionPath}/${requestedId}`).set(normalizedPayload, { merge: false });
+        await writeAuditLog({
+          tenantId,
+          actor,
+          action: "create",
+          collectionName,
+          docId: requestedId,
+          changedFields: buildChangedFields({}, normalizedPayload),
+        });
         return res.status(201).json({
           success: true,
           tenantId,
@@ -339,6 +444,14 @@ async function startServer() {
       }
 
       const docRef = await db.collection(collectionPath).add(normalizedPayload);
+      await writeAuditLog({
+        tenantId,
+        actor,
+        action: "create",
+        collectionName,
+        docId: docRef.id,
+        changedFields: buildChangedFields({}, normalizedPayload),
+      });
       return res.status(201).json({
         success: true,
         tenantId,
@@ -358,6 +471,7 @@ async function startServer() {
   app.put("/api/admin/tenants/:tenantId/:collectionName/:docId", requireAdminApiToken, async (req, res) => {
     try {
       const { tenantId, collectionName, docId } = req.params;
+      const actor = resolveActor(req);
       const rawPayload = isPlainObject(req.body) ? req.body : null;
 
       if (!tenantId || !docId) {
@@ -387,15 +501,24 @@ async function startServer() {
       }
 
       const { id: _ignoredId, ...payloadWithoutId } = rawPayload;
+      const currentData = (currentDoc.data() ?? {}) as Record<string, unknown>;
       const normalizedPayload = normalizeAdminPayload(payloadWithoutId, {
-        preserveCreatedAt: Boolean(payloadWithoutId.createdAt ?? currentDoc.data()?.createdAt),
+        preserveCreatedAt: Boolean(payloadWithoutId.createdAt ?? currentData.createdAt),
       });
 
-      if (normalizedPayload.createdAt == null && currentDoc.data()?.createdAt != null) {
-        normalizedPayload.createdAt = currentDoc.data()?.createdAt;
+      if (normalizedPayload.createdAt == null && currentData.createdAt != null) {
+        normalizedPayload.createdAt = currentData.createdAt;
       }
 
       await db.doc(docPath).set(normalizedPayload, { merge: false });
+      await writeAuditLog({
+        tenantId,
+        actor,
+        action: "update",
+        collectionName,
+        docId,
+        changedFields: buildChangedFields(currentData, normalizedPayload),
+      });
 
       return res.json({
         success: true,
@@ -416,6 +539,7 @@ async function startServer() {
   app.patch("/api/admin/tenants/:tenantId/:collectionName/:docId", requireAdminApiToken, async (req, res) => {
     try {
       const { tenantId, collectionName, docId } = req.params;
+      const actor = resolveActor(req);
       const rawPayload = isPlainObject(req.body) ? req.body : null;
 
       if (!tenantId || !docId) {
@@ -445,6 +569,7 @@ async function startServer() {
       }
 
       const { id: _ignoredId, ...payloadWithoutId } = rawPayload;
+      const currentData = (currentDoc.data() ?? {}) as Record<string, unknown>;
       const mergedPayload = normalizeAdminPayload(payloadWithoutId, {
         preserveCreatedAt: true,
       });
@@ -452,6 +577,15 @@ async function startServer() {
       await db.doc(docPath).set(mergedPayload, { merge: true });
 
       const updatedDoc = await db.doc(docPath).get();
+      const updatedData = (updatedDoc.data() ?? {}) as Record<string, unknown>;
+      await writeAuditLog({
+        tenantId,
+        actor,
+        action: "update",
+        collectionName,
+        docId,
+        changedFields: buildChangedFields(currentData, updatedData),
+      });
 
       return res.json({
         success: true,
@@ -472,6 +606,7 @@ async function startServer() {
   app.delete("/api/admin/tenants/:tenantId/:collectionName/:docId", requireAdminApiToken, async (req, res) => {
     try {
       const { tenantId, collectionName, docId } = req.params;
+      const actor = resolveActor(req);
 
       if (!tenantId || !docId) {
         return res.status(400).json({ error: "tenantId e docId são obrigatórios." });
@@ -495,7 +630,16 @@ async function startServer() {
         return res.status(404).json({ error: "Documento não encontrado." });
       }
 
+      const currentData = (currentDoc.data() ?? {}) as Record<string, unknown>;
       await db.doc(docPath).delete();
+      await writeAuditLog({
+        tenantId,
+        actor,
+        action: "delete",
+        collectionName,
+        docId,
+        changedFields: buildChangedFields(currentData, {}),
+      });
 
       return res.json({
         success: true,

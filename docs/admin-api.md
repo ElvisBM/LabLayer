@@ -2,6 +2,9 @@
 
 API protegida por token para acessar os dados do tenant sem expor a chave do Firebase.
 
+Hoje o `ADMIN_API_TOKEN` é um token técnico e não fica vinculado sozinho a um usuário específico.
+Para auditoria, envie também o header `x-lablayer-admin-actor` com o nome, email ou identificador da sessão que está fazendo a alteração.
+
 ## Autenticação
 
 Configure a variável:
@@ -20,6 +23,12 @@ ou
 
 ```http
 Authorization: Bearer seu_token_admin_aqui
+```
+
+Header opcional recomendado para auditoria:
+
+```http
+x-lablayer-admin-actor: elvisbmartins@gmail.com
 ```
 
 ## Endpoints
@@ -109,6 +118,13 @@ curl -X DELETE "https://app.lablayer.com.br/api/admin/tenants/SEU_TENANT_ID/prod
   -H "x-lablayer-admin-token: SEU_TOKEN"
 ```
 
+### Ler histórico de alterações
+
+```bash
+curl "https://app.lablayer.com.br/api/admin/tenants/SEU_TENANT_ID/audit-logs?limit=100" \
+  -H "x-lablayer-admin-token: SEU_TOKEN"
+```
+
 ### Exportar várias coleções
 
 ```bash
@@ -140,3 +156,33 @@ curl "https://app.lablayer.com.br/api/admin/tenants/SEU_TENANT_ID/export?collect
 - `PUT` substituição completa de documentos
 - `PATCH` atualização parcial
 - `DELETE` exclusão
+
+## Histórico de alterações
+
+As operações de `POST`, `PUT`, `PATCH` e `DELETE` geram auditoria em:
+
+- `tenants/{tenantId}/auditLogs`
+
+Cada item guarda:
+
+- `actor`
+- `action`
+- `collectionName`
+- `docId`
+- `createdAt`
+- `changedFields`
+
+O campo `changedFields` salva apenas o que mudou, no formato:
+
+```json
+{
+  "stock": {
+    "before": 10,
+    "after": 12
+  },
+  "status": {
+    "before": "ativo",
+    "after": "inativo"
+  }
+}
+```
