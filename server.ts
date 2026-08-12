@@ -126,7 +126,10 @@ const buildChangedFields = (
     const after = nextValue[key];
 
     if (!isEqualValue(before, after)) {
-      acc[key] = { before, after };
+      acc[key] = {
+        before: before === undefined ? null : before,
+        after: after === undefined ? null : after,
+      };
     }
 
     return acc;
