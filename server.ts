@@ -6,6 +6,7 @@ import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 
 const WooCommerceRestApi = (WooCommerceRestApiModule as unknown as { default?: typeof WooCommerceRestApiModule }).default || WooCommerceRestApiModule;
+const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "ai-studio-914d19ee-caef-46d9-9cf8-561cc915d716";
 
 // Inicializa Firebase Admin apenas uma vez
 if (!getApps().length) {
@@ -23,7 +24,7 @@ if (!getApps().length) {
     console.error("Erro ao inicializar Firebase Admin:", err);
   }
 }
-const db = getApps().length ? getFirestore() : null;
+const db = getApps().length ? getFirestore(getApps()[0], FIRESTORE_DATABASE_ID) : null;
 
 // Inicializa API do WooCommerce
 const hasWooCommerceCredentials = Boolean(
