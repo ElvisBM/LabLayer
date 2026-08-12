@@ -69,31 +69,11 @@ jobs:
             else
               printf '\nADMIN_API_TOKEN=\"%s\"\n' '${ADMIN_API_TOKEN}' >> .env.production
             fi
-            python3 - <<'PY'
-from pathlib import Path
-
-env_path = Path('.env.production')
-lines = env_path.read_text().splitlines()
-filtered = [
-    line for line in lines
-    if not (
-        line.startswith('FIREBASE_SERVICE_ACCOUNT=')
-        or line.startswith('FIREBASE_SERVICE_ACCOUNT_FILE=')
-        or line.startswith('FIRESTORE_DATABASE_ID=')
-    )
-]
-env_path.write_text('\n'.join(filtered).strip() + '\n' if filtered else '')
-PY
-            cat <<'EOF' > firebase-service-account.json
-${FIREBASE_SERVICE_ACCOUNT}
-EOF
+            python3 -c 'from pathlib import Path; env_path = Path(".env.production"); lines = env_path.read_text().splitlines() if env_path.exists() else []; filtered = [line for line in lines if not (line.startswith("FIREBASE_SERVICE_ACCOUNT=") or line.startswith("FIREBASE_SERVICE_ACCOUNT_FILE=") or line.startswith("FIRESTORE_DATABASE_ID="))]; env_path.write_text(("\\n".join(filtered).strip() + "\\n") if filtered else "")'
+            printf '%s' '${FIREBASE_SERVICE_ACCOUNT}' > firebase-service-account.json
             chmod 600 firebase-service-account.json
             printf 'FIREBASE_SERVICE_ACCOUNT_FILE=\"%s\"\n' '/var/www/lablayer/app/firebase-service-account.json' >> .env.production
-            if grep -q '^FIRESTORE_DATABASE_ID=' .env.production; then
-              perl -0pi -e 's/^FIRESTORE_DATABASE_ID=.*/FIRESTORE_DATABASE_ID=\"${FIRESTORE_DATABASE_ID}\"/m' .env.production
-            else
-              printf '\nFIRESTORE_DATABASE_ID=\"%s\"\n' '${FIRESTORE_DATABASE_ID}' >> .env.production
-            fi
+            printf 'FIRESTORE_DATABASE_ID=\"%s\"\n' '${FIRESTORE_DATABASE_ID}' >> .env.production
             npm ci
             npm run build
             pm2 reload ecosystem.config.cjs --update-env || pm2 start ecosystem.config.cjs
