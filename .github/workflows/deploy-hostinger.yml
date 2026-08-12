@@ -57,6 +57,7 @@ jobs:
           HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST }}
           HOSTINGER_USER: ${{ secrets.HOSTINGER_USER }}
           ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
           ssh "$HOSTINGER_USER@$HOSTINGER_HOST" "
             set -e
@@ -66,6 +67,11 @@ jobs:
               perl -0pi -e 's/^ADMIN_API_TOKEN=.*/ADMIN_API_TOKEN=\"${ADMIN_API_TOKEN}\"/m' .env.production
             else
               printf '\nADMIN_API_TOKEN=\"%s\"\n' '${ADMIN_API_TOKEN}' >> .env.production
+            fi
+            if grep -q '^FIREBASE_SERVICE_ACCOUNT=' .env.production; then
+              perl -0pi -e 's{^FIREBASE_SERVICE_ACCOUNT=.*}{FIREBASE_SERVICE_ACCOUNT='\''${FIREBASE_SERVICE_ACCOUNT}'\''}m' .env.production
+            else
+              printf '\nFIREBASE_SERVICE_ACCOUNT='\''%s'\''\n' '${FIREBASE_SERVICE_ACCOUNT}' >> .env.production
             fi
             npm ci
             npm run build
