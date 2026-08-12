@@ -1,5 +1,6 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
+import fs from "fs";
 import path from "path";
 import WooCommerceRestApiModule from "@woocommerce/woocommerce-rest-api";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
@@ -7,6 +8,7 @@ import { FieldValue, getFirestore } from "firebase-admin/firestore";
 
 const WooCommerceRestApi = (WooCommerceRestApiModule as unknown as { default?: typeof WooCommerceRestApiModule }).default || WooCommerceRestApiModule;
 const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "ai-studio-914d19ee-caef-46d9-9cf8-561cc915d716";
+const FIREBASE_SERVICE_ACCOUNT_FILE = process.env.FIREBASE_SERVICE_ACCOUNT_FILE || path.join(process.cwd(), "firebase-service-account.json");
 
 // Inicializa Firebase Admin apenas uma vez
 if (!getApps().length) {
@@ -17,8 +19,14 @@ if (!getApps().length) {
         credential: cert(serviceAccount)
       });
       console.log("Firebase Admin inicializado com sucesso.");
+    } else if (fs.existsSync(FIREBASE_SERVICE_ACCOUNT_FILE)) {
+      const serviceAccount = JSON.parse(fs.readFileSync(FIREBASE_SERVICE_ACCOUNT_FILE, "utf8"));
+      initializeApp({
+        credential: cert(serviceAccount)
+      });
+      console.log("Firebase Admin inicializado com sucesso via arquivo.");
     } else {
-      console.warn("Aviso: FIREBASE_SERVICE_ACCOUNT não encontrado no .env.");
+      console.warn("Aviso: credenciais Firebase Admin não encontradas no ambiente ou arquivo.");
     }
   } catch (err) {
     console.error("Erro ao inicializar Firebase Admin:", err);

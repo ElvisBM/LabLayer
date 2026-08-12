@@ -69,11 +69,26 @@ jobs:
             else
               printf '\nADMIN_API_TOKEN=\"%s\"\n' '${ADMIN_API_TOKEN}' >> .env.production
             fi
-            if grep -q '^FIREBASE_SERVICE_ACCOUNT=' .env.production; then
-              perl -0pi -e 's{^FIREBASE_SERVICE_ACCOUNT=.*}{FIREBASE_SERVICE_ACCOUNT='\''${FIREBASE_SERVICE_ACCOUNT}'\''}m' .env.production
-            else
-              printf '\nFIREBASE_SERVICE_ACCOUNT='\''%s'\''\n' '${FIREBASE_SERVICE_ACCOUNT}' >> .env.production
-            fi
+            python3 - <<'PY'
+from pathlib import Path
+
+env_path = Path('.env.production')
+lines = env_path.read_text().splitlines()
+filtered = [
+    line for line in lines
+    if not (
+        line.startswith('FIREBASE_SERVICE_ACCOUNT=')
+        or line.startswith('FIREBASE_SERVICE_ACCOUNT_FILE=')
+        or line.startswith('FIRESTORE_DATABASE_ID=')
+    )
+]
+env_path.write_text('\n'.join(filtered).strip() + '\n' if filtered else '')
+PY
+            cat <<'EOF' > firebase-service-account.json
+${FIREBASE_SERVICE_ACCOUNT}
+EOF
+            chmod 600 firebase-service-account.json
+            printf 'FIREBASE_SERVICE_ACCOUNT_FILE=\"%s\"\n' '/var/www/lablayer/app/firebase-service-account.json' >> .env.production
             if grep -q '^FIRESTORE_DATABASE_ID=' .env.production; then
               perl -0pi -e 's/^FIRESTORE_DATABASE_ID=.*/FIRESTORE_DATABASE_ID=\"${FIRESTORE_DATABASE_ID}\"/m' .env.production
             else
