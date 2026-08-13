@@ -325,30 +325,26 @@ const prepareCollectionPayload = async ({
     return normalizedPayload;
   }
 
-  const preparedPayload = {
-    ...normalizedPayload,
-  };
-
   const [referenceImageUrl, quoteMediaImageUrl] = await Promise.all([
     resolveCustomRequestImageField({ tenantId, docId, fieldName: "referenceImageUrl", payload }),
     resolveCustomRequestImageField({ tenantId, docId, fieldName: "quoteMediaImageUrl", payload }),
   ]);
 
-  if (referenceImageUrl !== undefined) {
-    preparedPayload.referenceImageUrl = referenceImageUrl;
-  }
+  const preparedPayload = {
+    ...normalizedPayload,
+    referenceImageUrl: referenceImageUrl ?? normalizedPayload.referenceImageUrl,
+    quoteMediaImageUrl: quoteMediaImageUrl ?? normalizedPayload.quoteMediaImageUrl,
+  } as Record<string, unknown>;
 
-  if (quoteMediaImageUrl !== undefined) {
-    preparedPayload.quoteMediaImageUrl = quoteMediaImageUrl;
-  }
+  const {
+    referenceImageBase64: _referenceImageBase64,
+    referenceImageDataUrl: _referenceImageDataUrl,
+    quoteMediaImageBase64: _quoteMediaImageBase64,
+    quoteMediaImageDataUrl: _quoteMediaImageDataUrl,
+    ...preparedPayloadWithoutAliases
+  } = preparedPayload;
 
-  const mutablePreparedPayload = preparedPayload as Record<string, unknown>;
-  delete mutablePreparedPayload.referenceImageBase64;
-  delete mutablePreparedPayload.referenceImageDataUrl;
-  delete mutablePreparedPayload.quoteMediaImageBase64;
-  delete mutablePreparedPayload.quoteMediaImageDataUrl;
-
-  return mutablePreparedPayload;
+  return preparedPayloadWithoutAliases;
 };
 
 const formatCurrencyRangeLabel = (values: number[]) => {
