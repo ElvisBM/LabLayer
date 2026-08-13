@@ -62,6 +62,7 @@ jobs:
         run: |
           ssh "$HOSTINGER_USER@$HOSTINGER_HOST" "
             set -e
+            mkdir -p /var/www/lablayer/shared
             cd /var/www/lablayer/app
             touch .env.production
             if grep -q '^ADMIN_API_TOKEN=' .env.production; then
@@ -70,9 +71,9 @@ jobs:
               printf '\nADMIN_API_TOKEN=\"%s\"\n' '${ADMIN_API_TOKEN}' >> .env.production
             fi
             python3 -c 'from pathlib import Path; env_path = Path(".env.production"); lines = env_path.read_text().splitlines() if env_path.exists() else []; filtered = [line for line in lines if not (line.startswith("FIREBASE_SERVICE_ACCOUNT=") or line.startswith("FIREBASE_SERVICE_ACCOUNT_FILE=") or line.startswith("FIRESTORE_DATABASE_ID="))]; env_path.write_text(("\\n".join(filtered).strip() + "\\n") if filtered else "")'
-            printf '%s' '${FIREBASE_SERVICE_ACCOUNT}' > firebase-service-account.json
-            chmod 600 firebase-service-account.json
-            printf 'FIREBASE_SERVICE_ACCOUNT_FILE=\"%s\"\n' '/var/www/lablayer/app/firebase-service-account.json' >> .env.production
+            printf '%s' '${FIREBASE_SERVICE_ACCOUNT}' > /var/www/lablayer/shared/firebase-service-account.json
+            chmod 600 /var/www/lablayer/shared/firebase-service-account.json
+            printf 'FIREBASE_SERVICE_ACCOUNT_FILE=\"%s\"\n' '/var/www/lablayer/shared/firebase-service-account.json' >> .env.production
             printf 'FIRESTORE_DATABASE_ID=\"%s\"\n' '${FIRESTORE_DATABASE_ID}' >> .env.production
             npm ci
             npm run build
