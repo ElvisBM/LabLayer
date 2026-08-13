@@ -54,6 +54,30 @@ curl "https://app.lablayer.com.br/api/admin/tenants/SEU_TENANT_ID/products?limit
   -H "x-lablayer-admin-token: SEU_TOKEN"
 ```
 
+Filtros suportados:
+
+- `q`
+  busca geral por texto
+- `name`
+  busca por nome em `products`
+- `color`
+  busca por cor em `filaments`
+- `title`
+  busca por título em `customRequests`
+
+Exemplos:
+
+```bash
+curl "https://app.lablayer.com.br/api/admin/tenants/SEU_TENANT_ID/products?name=chaveiro&limit=20" \
+  -H "x-lablayer-admin-token: SEU_TOKEN"
+
+curl "https://app.lablayer.com.br/api/admin/tenants/SEU_TENANT_ID/filaments?color=azul&limit=20" \
+  -H "x-lablayer-admin-token: SEU_TOKEN"
+
+curl "https://app.lablayer.com.br/api/admin/tenants/SEU_TENANT_ID/customRequests?title=pudim&limit=20" \
+  -H "x-lablayer-admin-token: SEU_TOKEN"
+```
+
 ### Criar um documento
 
 ```bash
@@ -66,6 +90,28 @@ curl -X POST "https://app.lablayer.com.br/api/admin/tenants/SEU_TENANT_ID/produc
     "stock": 10
   }'
 ```
+
+### Criar orçamento simples em `customRequests`
+
+Você pode criar um orçamento só com nome e observação. A API completa o restante com defaults:
+
+- `type`: `orcamento`
+- `status`: `aguardando-orcamento`
+- `requestedQuantity`: `1`
+- `productionTimeHours`: `0`
+- `filaments`: `[]`
+
+```bash
+curl -X POST "https://app.lablayer.com.br/api/admin/tenants/SEU_TENANT_ID/customRequests" \
+  -H "Content-Type: application/json" \
+  -H "x-lablayer-admin-token: SEU_TOKEN" \
+  -d '{
+    "title": "Chaveiros para SR Pudim",
+    "observation": "Ele quer chaveiro de 5 cm na cor azul e manda a imagem da marca depois"
+  }'
+```
+
+Também aceita `observacao`, `notes` ou `description`.
 
 ### Criar com ID fixo
 

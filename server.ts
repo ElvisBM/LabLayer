@@ -85,6 +85,16 @@ const parsePositiveLimit = (rawLimit: unknown, fallback = 100, max = 500) => {
   return Math.min(Math.floor(parsed), max);
 };
 
+const normalizeComparableValue = (value: unknown) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const matchesSearchTerm = (value: unknown, term: string) =>
+  normalizeComparableValue(value).includes(normalizeComparableValue(term));
+
 const isValidAdminCollection = (collectionName: string) => ADMIN_API_COLLECTIONS.has(collectionName);
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -108,6 +118,99 @@ const normalizeAdminPayload = (
   normalizedPayload.updatedAt = new Date().toISOString();
 
   return normalizedPayload;
+};
+
+const normalizeCustomRequestPayload = (payload: Record<string, unknown>) => {
+  const title =
+    typeof payload.title === "string" && payload.title.trim()
+      ? payload.title.trim()
+      : typeof payload.name === "string" && payload.name.trim()
+        ? payload.name.trim()
+        : "";
+
+  const descriptionCandidates = [
+    payload.description,
+    payload.observation,
+    payload.observacao,
+    payload.notes,
+  ];
+
+  const description =
+    descriptionCandidates.find((value) => typeof value === "string" && value.trim())?.toString().trim() || "";
+
+  const filaments = Array.isArray(payload.filaments)
+    ? payload.filaments
+    : [];
+
+  return {
+    ...payload,
+    title,
+    description,
+    type: payload.type === "encomenda" ? "encomenda" : "orcamento",
+    status: typeof payload.status === "string" && payload.status.trim() ? payload.status : "aguardando-orcamento",
+    sourceChannel: payload.sourceChannel === "whatsapp" ? "whatsapp" : "manual",
+    customerName: typeof payload.customerName === "string" ? payload.customerName.trim() : "",
+    customerPhone: typeof payload.customerPhone === "string" ? payload.customerPhone.trim() : "",
+    sourceMessage: typeof payload.sourceMessage === "string" ? payload.sourceMessage.trim() : "",
+    requestedQuantity: Math.max(1, Number(payload.requestedQuantity) || 1),
+    productionTimeHours: Math.max(0, Number(payload.productionTimeHours) || 0),
+    printerId: typeof payload.printerId === "string" ? payload.printerId.trim() : "",
+    filaments,
+    referenceImageUrl: typeof payload.referenceImageUrl === "string" ? payload.referenceImageUrl : "",
+    quoteMediaImageUrl: typeof payload.quoteMediaImageUrl === "string" ? payload.quoteMediaImageUrl : "",
+    quoteMediaUrl: typeof payload.quoteMediaUrl === "string" ? payload.quoteMediaUrl.trim() : "",
+    estimatedUnitCost: Math.max(0, Number(payload.estimatedUnitCost) || 0),
+    suggestedUnitPrice: Math.max(0, Number(payload.suggestedUnitPrice) || 0),
+    quotedPrice: Math.max(0, Number(payload.quotedPrice) || 0),
+  };
+};
+
+const normalizeCollectionPayload = (collectionName: string, payload: Record<string, unknown>) => {
+  if (collectionName === "customRequests") {
+    return normalizeCustomRequestPayload(payload);
+  }
+
+  return payload;
+};
+
+const filterCollectionItems = (
+  collectionName: string,
+  items: Array<Record<string, unknown>>,
+  query: express.Request["query"],
+) => {
+  const q = typeof query.q === "string" ? query.q.trim() : "";
+  const name = typeof query.name === "string" ? query.name.trim() : "";
+  const color = typeof query.color === "string" ? query.color.trim() : "";
+  const title = typeof query.title === "string" ? query.title.trim() : "";
+
+  return items.filter((item) => {
+    if (q) {
+      const haystackByCollection: Record<string, unknown[]> = {
+        products: [item.name, item.baseSku, item.category, item.status],
+        filaments: [item.color, item.brand, item.material, item.lineType, item.store],
+        customRequests: [item.title, item.description, item.customerName, item.sourceMessage, item.status],
+      };
+
+      const haystack = haystackByCollection[collectionName] || Object.values(item);
+      if (!haystack.some((value) => matchesSearchTerm(value, q))) {
+        return false;
+      }
+    }
+
+    if (collectionName === "products" && name && !matchesSearchTerm(item.name, name)) {
+      return false;
+    }
+
+    if (collectionName === "filaments" && color && !matchesSearchTerm(item.color, color)) {
+      return false;
+    }
+
+    if (collectionName === "customRequests" && title && !matchesSearchTerm(item.title, title)) {
+      return false;
+    }
+
+    return true;
+  });
 };
 
 const isEqualValue = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
@@ -352,15 +455,17 @@ async function startServer() {
       }
 
       const snapshot = await db.collection(buildTenantCollectionPath(tenantId, collectionName)).limit(limit).get();
+      const items = snapshot.docs.map((docSnapshot) => ({
+        id: docSnapshot.id,
+        ...docSnapshot.data(),
+      }));
+      const filteredItems = filterCollectionItems(collectionName, items, req.query);
 
       return res.json({
         tenantId,
         collection: collectionName,
-        count: snapshot.size,
-        items: snapshot.docs.map((docSnapshot) => ({
-          id: docSnapshot.id,
-          ...docSnapshot.data(),
-        })),
+        count: filteredItems.length,
+        items: filteredItems,
       });
     } catch (error) {
       console.error("Erro ao listar coleção pela API admin:", error);
@@ -430,7 +535,8 @@ async function startServer() {
       }
 
       const { id: _ignoredId, ...payloadWithoutId } = rawPayload;
-      const normalizedPayload = normalizeAdminPayload(payloadWithoutId);
+      const collectionPayload = normalizeCollectionPayload(collectionName, payloadWithoutId);
+      const normalizedPayload = normalizeAdminPayload(collectionPayload);
       const collectionPath = buildTenantCollectionPath(tenantId, collectionName);
 
       if (requestedId) {
