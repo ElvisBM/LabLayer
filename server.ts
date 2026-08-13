@@ -5,11 +5,13 @@ import path from "path";
 import WooCommerceRestApiModule from "@woocommerce/woocommerce-rest-api";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { DEFAULT_PRICING_SETTINGS, calculateVariationUnitCostBreakdown, normalizePricingSettings } from "./src/utils/pricing";
 
 const WooCommerceRestApi = (WooCommerceRestApiModule as unknown as { default?: typeof WooCommerceRestApiModule }).default || WooCommerceRestApiModule;
 const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "ai-studio-914d19ee-caef-46d9-9cf8-561cc915d716";
 const FIREBASE_SERVICE_ACCOUNT_FILE = process.env.FIREBASE_SERVICE_ACCOUNT_FILE || path.join(process.cwd(), "firebase-service-account.json");
 const ADMIN_API_DOCS_PATH = path.join(process.cwd(), "docs", "admin-api.md");
+const PRODUCT_SUGGESTED_MARKUP_MULTIPLIER = 2.2;
 
 // Inicializa Firebase Admin apenas uma vez
 if (!getApps().length) {
@@ -101,6 +103,14 @@ const isValidAdminCollection = (collectionName: string) => ADMIN_API_COLLECTIONS
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+type ProductPricingContext = {
+  filaments: Array<Record<string, unknown> & { id: string }>;
+  supplies: Array<Record<string, unknown> & { id: string }>;
+  printers: Array<Record<string, unknown> & { id: string }>;
+  energyPrice: number;
+  pricingSettings: ReturnType<typeof normalizePricingSettings>;
+};
+
 const buildTenantCollectionPath = (tenantId: string, collectionName: string) =>
   `tenants/${tenantId}/${collectionName}`;
 
@@ -178,6 +188,130 @@ const normalizeCollectionPayload = (collectionName: string, payload: Record<stri
   }
 
   return payload;
+};
+
+const formatCurrencyRangeLabel = (values: number[]) => {
+  if (values.length === 0) return "Nao definido";
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  if (minValue === maxValue) return `R$ ${minValue.toFixed(2)}`;
+  return `R$ ${minValue.toFixed(2)} - R$ ${maxValue.toFixed(2)}`;
+};
+
+const getSavedProductSalePrices = (product: Record<string, unknown>) => {
+  const variations = Array.isArray(product.variations) ? product.variations : [];
+
+  return variations.flatMap((variation) => {
+    const channelPrices = isPlainObject(variation) && Array.isArray(variation.channelPrices)
+      ? variation.channelPrices
+      : [];
+
+    return channelPrices
+      .map((channelPrice) => (isPlainObject(channelPrice) ? Number(channelPrice.price) || 0 : 0))
+      .filter((price) => price > 0);
+  });
+};
+
+const calculateProductVariationCost = (
+  product: Record<string, unknown>,
+  variation: Record<string, unknown>,
+  context: ProductPricingContext,
+) => {
+  return calculateVariationUnitCostBreakdown({
+    variation,
+    fixedCost: Number(product.fixedCost) || 0,
+    filaments: context.filaments,
+    supplies: context.supplies,
+    supplyUsages: Array.isArray(product.supplyUsages) ? product.supplyUsages : [],
+    wastes: Array.isArray(product.wastes) ? product.wastes : [],
+    printers: context.printers,
+    energyPrice: context.energyPrice,
+    pricingSettings: context.pricingSettings,
+  }).total;
+};
+
+const buildProductComputedPricing = (
+  product: Record<string, unknown>,
+  context: ProductPricingContext,
+) => {
+  const variations = (Array.isArray(product.variations) ? product.variations : [])
+    .filter((variation): variation is Record<string, unknown> => isPlainObject(variation));
+
+  const unitCosts = variations.map((variation) => Number(calculateProductVariationCost(product, variation, context).toFixed(2)));
+  const suggestedSalePrices = unitCosts.map((unitCost) => Number((unitCost * PRODUCT_SUGGESTED_MARKUP_MULTIPLIER).toFixed(2)));
+  const savedSalePrices = getSavedProductSalePrices(product);
+  const latestSuggestedPrice = isPlainObject(product.latestSuggestedPrice)
+    ? Number(product.latestSuggestedPrice.suggestedPrice) || 0
+    : 0;
+
+  const resolvedSalePrices = savedSalePrices.length > 0
+    ? savedSalePrices
+    : (suggestedSalePrices.length > 0 ? suggestedSalePrices : (latestSuggestedPrice > 0 ? [latestSuggestedPrice] : []));
+
+  const resolvedSalePriceSource = savedSalePrices.length > 0
+    ? "saved_price"
+    : (suggestedSalePrices.length > 0 ? "automatic_suggestion" : (latestSuggestedPrice > 0 ? "latest_suggested_price" : "unavailable"));
+
+  return {
+    calculatedUnitCost: unitCosts[0] ?? (Number(product.fixedCost) || 0),
+    calculatedUnitCostRange: unitCosts,
+    calculatedUnitCostLabel: formatCurrencyRangeLabel(unitCosts),
+    calculatedSuggestedSalePrice: suggestedSalePrices[0] ?? (Number(product.fixedCost) > 0
+      ? Number((Number(product.fixedCost) * PRODUCT_SUGGESTED_MARKUP_MULTIPLIER).toFixed(2))
+      : 0),
+    calculatedSuggestedSalePriceRange: suggestedSalePrices,
+    calculatedSuggestedSalePriceLabel: formatCurrencyRangeLabel(suggestedSalePrices),
+    resolvedSalePrice: resolvedSalePrices[0] ?? 0,
+    resolvedSalePriceRange: resolvedSalePrices,
+    resolvedSalePriceLabel: formatCurrencyRangeLabel(resolvedSalePrices),
+    resolvedSalePriceSource,
+    hasSavedSalePrice: savedSalePrices.length > 0,
+  };
+};
+
+const loadProductPricingContext = async (tenantId: string): Promise<ProductPricingContext> => {
+  if (!db) {
+    return {
+      filaments: [],
+      supplies: [],
+      printers: [],
+      energyPrice: 0.95,
+      pricingSettings: DEFAULT_PRICING_SETTINGS,
+    };
+  }
+
+  const [filamentsSnapshot, suppliesSnapshot, printersSnapshot, printerSettingsSnapshot, pricingSettingsSnapshot] = await Promise.all([
+    db.collection(buildTenantCollectionPath(tenantId, "filaments")).get(),
+    db.collection(buildTenantCollectionPath(tenantId, "supplies")).get(),
+    db.collection(buildTenantCollectionPath(tenantId, "printers")).get(),
+    db.doc(`tenants/${tenantId}/settings/printer`).get(),
+    db.doc(`tenants/${tenantId}/settings/pricing`).get(),
+  ]);
+
+  return {
+    filaments: filamentsSnapshot.docs.map((docSnapshot) => ({ id: docSnapshot.id, ...docSnapshot.data() })),
+    supplies: suppliesSnapshot.docs.map((docSnapshot) => ({ id: docSnapshot.id, ...docSnapshot.data() })),
+    printers: printersSnapshot.docs.map((docSnapshot) => ({ id: docSnapshot.id, ...docSnapshot.data() })),
+    energyPrice: printerSettingsSnapshot.exists ? Number(printerSettingsSnapshot.data()?.energyPrice) || 0.95 : 0.95,
+    pricingSettings: normalizePricingSettings(pricingSettingsSnapshot.exists ? pricingSettingsSnapshot.data() : null),
+  };
+};
+
+const enrichAdminItem = async (
+  tenantId: string,
+  collectionName: string,
+  item: Record<string, unknown>,
+  productPricingContext?: ProductPricingContext,
+) => {
+  if (collectionName !== "products") {
+    return item;
+  }
+
+  const context = productPricingContext || await loadProductPricingContext(tenantId);
+  return {
+    ...item,
+    apiComputedPricing: buildProductComputedPricing(item, context),
+  };
 };
 
 const filterCollectionItems = (
@@ -489,12 +623,18 @@ async function startServer() {
         ...docSnapshot.data(),
       }));
       const filteredItems = filterCollectionItems(collectionName, items, req.query);
+      const productPricingContext = collectionName === "products"
+        ? await loadProductPricingContext(tenantId)
+        : undefined;
+      const enrichedItems = await Promise.all(
+        filteredItems.map((item) => enrichAdminItem(tenantId, collectionName, item, productPricingContext)),
+      );
 
       return res.json({
         tenantId,
         collection: collectionName,
-        count: filteredItems.length,
-        items: filteredItems,
+        count: enrichedItems.length,
+        items: enrichedItems,
       });
     } catch (error) {
       console.error("Erro ao listar coleção pela API admin:", error);
@@ -527,10 +667,12 @@ async function startServer() {
         return res.status(404).json({ error: "Documento não encontrado." });
       }
 
-      return res.json({
+      const item = await enrichAdminItem(tenantId, collectionName, {
         id: docSnapshot.id,
         ...docSnapshot.data(),
       });
+
+      return res.json(item);
     } catch (error) {
       console.error("Erro ao carregar documento pela API admin:", error);
       return res.status(500).json({ error: "Erro interno ao carregar documento." });
