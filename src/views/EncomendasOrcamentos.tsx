@@ -39,6 +39,11 @@ interface CustomRequest {
   suggestedUnitPrice?: number;
   quotedPrice?: number;
   createdAt?: string;
+  quoteSentAt?: string;
+  approvedAt?: string;
+  paidAt?: string;
+  startedAt?: string;
+  completedAt?: string;
   updatedAt?: string;
 }
 
@@ -98,6 +103,12 @@ const getDefaultFormData = (): Omit<CustomRequest, 'id'> => ({
   estimatedUnitCost: 0,
   suggestedUnitPrice: 0,
   quotedPrice: 0,
+  createdAt: '',
+  quoteSentAt: '',
+  approvedAt: '',
+  paidAt: '',
+  startedAt: '',
+  completedAt: '',
 });
 
 const getStatusClasses = (status: RequestStatus) => {
@@ -117,6 +128,28 @@ const getStatusClasses = (status: RequestStatus) => {
 };
 
 const formatCurrency = (value?: number) => `R$ ${(Number(value) || 0).toFixed(2)}`;
+const formatDateLabel = (value?: string) => {
+  if (!value) return 'Nao informado';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString('pt-BR');
+};
+
+const formatDateTimeInputValue = (value?: string) => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value.length >= 16 ? value.slice(0, 16) : value;
+  }
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  const hours = String(parsed.getHours()).padStart(2, '0');
+  const minutes = String(parsed.getMinutes()).padStart(2, '0');
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
 
 export function EncomendasOrcamentos() {
   const { tenantId } = useAuth();
@@ -336,6 +369,11 @@ export function EncomendasOrcamentos() {
         suggestedUnitPrice: pricingPreview.suggestedUnitPrice,
         quotedPrice: Number(formData.quotedPrice) || pricingPreview.totalSuggestedPrice,
         createdAt: formData.createdAt || new Date().toISOString(),
+        quoteSentAt: formData.quoteSentAt || '',
+        approvedAt: formData.approvedAt || '',
+        paidAt: formData.paidAt || '',
+        startedAt: formData.startedAt || '',
+        completedAt: formData.completedAt || '',
         updatedAt: new Date().toISOString(),
       };
 
@@ -583,6 +621,63 @@ export function EncomendasOrcamentos() {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Data de criacao</label>
+                <input
+                  type="datetime-local"
+                  value={formatDateTimeInputValue(formData.createdAt)}
+                  onChange={e => setFormData(prev => ({ ...prev, createdAt: e.target.value }))}
+                  className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Envio do orcamento</label>
+                <input
+                  type="datetime-local"
+                  value={formatDateTimeInputValue(formData.quoteSentAt)}
+                  onChange={e => setFormData(prev => ({ ...prev, quoteSentAt: e.target.value }))}
+                  className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Data de aprovacao</label>
+                <input
+                  type="datetime-local"
+                  value={formatDateTimeInputValue(formData.approvedAt)}
+                  onChange={e => setFormData(prev => ({ ...prev, approvedAt: e.target.value }))}
+                  className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Data de pagamento</label>
+                <input
+                  type="datetime-local"
+                  value={formatDateTimeInputValue(formData.paidAt)}
+                  onChange={e => setFormData(prev => ({ ...prev, paidAt: e.target.value }))}
+                  className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Data de inicio</label>
+                <input
+                  type="datetime-local"
+                  value={formatDateTimeInputValue(formData.startedAt)}
+                  onChange={e => setFormData(prev => ({ ...prev, startedAt: e.target.value }))}
+                  className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Data de conclusao</label>
+                <input
+                  type="datetime-local"
+                  value={formatDateTimeInputValue(formData.completedAt)}
+                  onChange={e => setFormData(prev => ({ ...prev, completedAt: e.target.value }))}
+                  className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+                />
+              </div>
+            </div>
+
             <div className="pt-6 border-t border-outline-variant/20 space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -823,6 +918,15 @@ export function EncomendasOrcamentos() {
                       <LinkIcon className="w-3.5 h-3.5" /> Abrir mídia
                     </a>
                   )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-lg bg-surface-container p-3 text-xs text-on-surface-variant">
+                  <div><span className="font-semibold text-on-surface">Criacao:</span> {formatDateLabel(request.createdAt)}</div>
+                  <div><span className="font-semibold text-on-surface">Envio do orcamento:</span> {formatDateLabel(request.quoteSentAt)}</div>
+                  <div><span className="font-semibold text-on-surface">Aprovacao:</span> {formatDateLabel(request.approvedAt)}</div>
+                  <div><span className="font-semibold text-on-surface">Pagamento:</span> {formatDateLabel(request.paidAt)}</div>
+                  <div><span className="font-semibold text-on-surface">Inicio:</span> {formatDateLabel(request.startedAt)}</div>
+                  <div><span className="font-semibold text-on-surface">Conclusao:</span> {formatDateLabel(request.completedAt)}</div>
                 </div>
 
                 {(request.filaments || []).length > 0 && (

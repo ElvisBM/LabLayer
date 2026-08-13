@@ -233,6 +233,11 @@ service cloud.firestore {
         'suggestedUnitPrice',
         'quotedPrice',
         'createdAt',
+        'quoteSentAt',
+        'approvedAt',
+        'paidAt',
+        'startedAt',
+        'completedAt',
         'updatedAt'
       ];
       return hasOnlyAllowedFields(allowedFields) &&
@@ -256,6 +261,11 @@ service cloud.firestore {
              (!('suggestedUnitPrice' in request.resource.data) || isPositiveNumber('suggestedUnitPrice')) &&
              (!('quotedPrice' in request.resource.data) || isPositiveNumber('quotedPrice')) &&
              (!('createdAt' in request.resource.data) || request.resource.data.createdAt is string) &&
+             (!('quoteSentAt' in request.resource.data) || request.resource.data.quoteSentAt is string) &&
+             (!('approvedAt' in request.resource.data) || request.resource.data.approvedAt is string) &&
+             (!('paidAt' in request.resource.data) || request.resource.data.paidAt is string) &&
+             (!('startedAt' in request.resource.data) || request.resource.data.startedAt is string) &&
+             (!('completedAt' in request.resource.data) || request.resource.data.completedAt is string) &&
              request.resource.data.updatedAt is string;
     }
 

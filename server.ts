@@ -163,6 +163,12 @@ const normalizeCustomRequestPayload = (payload: Record<string, unknown>) => {
     estimatedUnitCost: Math.max(0, Number(payload.estimatedUnitCost) || 0),
     suggestedUnitPrice: Math.max(0, Number(payload.suggestedUnitPrice) || 0),
     quotedPrice: Math.max(0, Number(payload.quotedPrice) || 0),
+    createdAt: typeof payload.createdAt === "string" ? payload.createdAt.trim() : undefined,
+    quoteSentAt: typeof payload.quoteSentAt === "string" ? payload.quoteSentAt.trim() : "",
+    approvedAt: typeof payload.approvedAt === "string" ? payload.approvedAt.trim() : "",
+    paidAt: typeof payload.paidAt === "string" ? payload.paidAt.trim() : "",
+    startedAt: typeof payload.startedAt === "string" ? payload.startedAt.trim() : "",
+    completedAt: typeof payload.completedAt === "string" ? payload.completedAt.trim() : "",
   };
 };
 
@@ -829,6 +835,12 @@ async function startServer() {
         quotedPrice,
         referenceImageUrl,
         quoteMediaUrl,
+        createdAt,
+        quoteSentAt,
+        approvedAt,
+        paidAt,
+        startedAt,
+        completedAt,
       } = req.body ?? {};
 
       const safeTitle = typeof title === "string" && title.trim().length > 0
@@ -860,7 +872,12 @@ async function startServer() {
         estimatedUnitCost: 0,
         suggestedUnitPrice: 0,
         quotedPrice: Math.max(0, Number(quotedPrice) || 0),
-        createdAt: new Date().toISOString(),
+        createdAt: typeof createdAt === "string" && createdAt.trim() ? createdAt.trim() : new Date().toISOString(),
+        quoteSentAt: typeof quoteSentAt === "string" ? quoteSentAt.trim() : "",
+        approvedAt: typeof approvedAt === "string" ? approvedAt.trim() : "",
+        paidAt: typeof paidAt === "string" ? paidAt.trim() : "",
+        startedAt: typeof startedAt === "string" ? startedAt.trim() : "",
+        completedAt: typeof completedAt === "string" ? completedAt.trim() : "",
         updatedAt: new Date().toISOString(),
       };
 
