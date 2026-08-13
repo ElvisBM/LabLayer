@@ -168,6 +168,24 @@ const normalizeCustomRequestPayload = (payload: Record<string, unknown>) => {
     ? payload.filaments
     : [];
 
+  const referenceImageInput =
+    typeof payload.referenceImageUrl === "string" && payload.referenceImageUrl.trim()
+      ? payload.referenceImageUrl.trim()
+      : typeof payload.referenceImageBase64 === "string" && payload.referenceImageBase64.trim()
+        ? payload.referenceImageBase64.trim()
+        : typeof payload.referenceImageDataUrl === "string" && payload.referenceImageDataUrl.trim()
+          ? payload.referenceImageDataUrl.trim()
+          : "";
+
+  const quoteMediaImageInput =
+    typeof payload.quoteMediaImageUrl === "string" && payload.quoteMediaImageUrl.trim()
+      ? payload.quoteMediaImageUrl.trim()
+      : typeof payload.quoteMediaImageBase64 === "string" && payload.quoteMediaImageBase64.trim()
+        ? payload.quoteMediaImageBase64.trim()
+        : typeof payload.quoteMediaImageDataUrl === "string" && payload.quoteMediaImageDataUrl.trim()
+          ? payload.quoteMediaImageDataUrl.trim()
+          : "";
+
   return {
     ...payload,
     title,
@@ -182,8 +200,8 @@ const normalizeCustomRequestPayload = (payload: Record<string, unknown>) => {
     productionTimeHours: Math.max(0, Number(payload.productionTimeHours) || 0),
     printerId: typeof payload.printerId === "string" ? payload.printerId.trim() : "",
     filaments,
-    referenceImageUrl: typeof payload.referenceImageUrl === "string" ? payload.referenceImageUrl : "",
-    quoteMediaImageUrl: typeof payload.quoteMediaImageUrl === "string" ? payload.quoteMediaImageUrl : "",
+    referenceImageUrl: referenceImageInput,
+    quoteMediaImageUrl: quoteMediaImageInput,
     quoteMediaUrl: typeof payload.quoteMediaUrl === "string" ? payload.quoteMediaUrl.trim() : "",
     estimatedUnitCost: Math.max(0, Number(payload.estimatedUnitCost) || 0),
     suggestedUnitPrice: Math.max(0, Number(payload.suggestedUnitPrice) || 0),
@@ -323,6 +341,11 @@ const prepareCollectionPayload = async ({
   if (quoteMediaImageUrl !== undefined) {
     preparedPayload.quoteMediaImageUrl = quoteMediaImageUrl;
   }
+
+  delete preparedPayload.referenceImageBase64;
+  delete preparedPayload.referenceImageDataUrl;
+  delete preparedPayload.quoteMediaImageBase64;
+  delete preparedPayload.quoteMediaImageDataUrl;
 
   return preparedPayload;
 };
