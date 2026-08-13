@@ -342,12 +342,13 @@ const prepareCollectionPayload = async ({
     preparedPayload.quoteMediaImageUrl = quoteMediaImageUrl;
   }
 
-  delete preparedPayload.referenceImageBase64;
-  delete preparedPayload.referenceImageDataUrl;
-  delete preparedPayload.quoteMediaImageBase64;
-  delete preparedPayload.quoteMediaImageDataUrl;
+  const mutablePreparedPayload = preparedPayload as Record<string, unknown>;
+  delete mutablePreparedPayload.referenceImageBase64;
+  delete mutablePreparedPayload.referenceImageDataUrl;
+  delete mutablePreparedPayload.quoteMediaImageBase64;
+  delete mutablePreparedPayload.quoteMediaImageDataUrl;
 
-  return preparedPayload;
+  return mutablePreparedPayload;
 };
 
 const formatCurrencyRangeLabel = (values: number[]) => {
