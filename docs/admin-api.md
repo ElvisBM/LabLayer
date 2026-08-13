@@ -129,6 +129,34 @@ curl -X POST "https://app.lablayer.com.br/api/admin/tenants/SEU_TENANT_ID/custom
 
 Também aceita `observacao`, `notes` ou `description`.
 
+### Imagens em `customRequests`
+
+Hoje a API aceita imagem em `customRequests` via JSON usando:
+
+- `referenceImageUrl`
+- `quoteMediaImageUrl`
+- `referenceImageBase64`
+- `quoteMediaImageBase64`
+- `referenceImageDataUrl`
+- `quoteMediaImageDataUrl`
+
+Se o valor vier como `data:image/...;base64,...`, o servidor faz o upload para o Firebase Storage e grava a URL final no documento.
+
+`multipart/form-data` ainda não é suportado nesta API.
+
+Exemplo:
+
+```bash
+curl -X POST "https://app.lablayer.com.br/api/admin/tenants/SEU_TENANT_ID/customRequests" \
+  -H "Content-Type: application/json" \
+  -H "x-lablayer-admin-token: SEU_TOKEN" \
+  -d '{
+    "title": "Chaveiros para SR Pudim",
+    "observation": "Logo azul, 5 cm",
+    "referenceImageBase64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
+  }'
+```
+
 ### Criar com ID fixo
 
 ```bash

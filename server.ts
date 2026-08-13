@@ -2,30 +2,42 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import fs from "fs";
 import path from "path";
+import { randomUUID } from "crypto";
 import WooCommerceRestApiModule from "@woocommerce/woocommerce-rest-api";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 import { DEFAULT_PRICING_SETTINGS, calculateVariationUnitCostBreakdown, normalizePricingSettings } from "./src/utils/pricing";
 
 const WooCommerceRestApi = (WooCommerceRestApiModule as unknown as { default?: typeof WooCommerceRestApiModule }).default || WooCommerceRestApiModule;
 const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "ai-studio-914d19ee-caef-46d9-9cf8-561cc915d716";
 const FIREBASE_SERVICE_ACCOUNT_FILE = process.env.FIREBASE_SERVICE_ACCOUNT_FILE || path.join(process.cwd(), "firebase-service-account.json");
+const FIREBASE_STORAGE_BUCKET = process.env.FIREBASE_STORAGE_BUCKET?.trim() || "";
 const ADMIN_API_DOCS_PATH = path.join(process.cwd(), "docs", "admin-api.md");
 const PRODUCT_SUGGESTED_MARKUP_MULTIPLIER = 2.2;
+let resolvedFirebaseStorageBucket = FIREBASE_STORAGE_BUCKET;
 
 // Inicializa Firebase Admin apenas uma vez
 if (!getApps().length) {
   try {
     if (process.env.FIREBASE_SERVICE_ACCOUNT) {
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      if (!resolvedFirebaseStorageBucket && serviceAccount?.project_id) {
+        resolvedFirebaseStorageBucket = `${serviceAccount.project_id}.firebasestorage.app`;
+      }
       initializeApp({
-        credential: cert(serviceAccount)
+        credential: cert(serviceAccount),
+        storageBucket: resolvedFirebaseStorageBucket || undefined,
       });
       console.log("Firebase Admin inicializado com sucesso.");
     } else if (fs.existsSync(FIREBASE_SERVICE_ACCOUNT_FILE)) {
       const serviceAccount = JSON.parse(fs.readFileSync(FIREBASE_SERVICE_ACCOUNT_FILE, "utf8"));
+      if (!resolvedFirebaseStorageBucket && serviceAccount?.project_id) {
+        resolvedFirebaseStorageBucket = `${serviceAccount.project_id}.firebasestorage.app`;
+      }
       initializeApp({
-        credential: cert(serviceAccount)
+        credential: cert(serviceAccount),
+        storageBucket: resolvedFirebaseStorageBucket || undefined,
       });
       console.log("Firebase Admin inicializado com sucesso via arquivo.");
     } else {
@@ -36,6 +48,9 @@ if (!getApps().length) {
   }
 }
 const db = getApps().length ? getFirestore(getApps()[0], FIRESTORE_DATABASE_ID) : null;
+const storageBucket = getApps().length
+  ? getStorage(getApps()[0]).bucket(resolvedFirebaseStorageBucket || undefined)
+  : null;
 
 // Inicializa API do WooCommerce
 const hasWooCommerceCredentials = Boolean(
@@ -188,6 +203,128 @@ const normalizeCollectionPayload = (collectionName: string, payload: Record<stri
   }
 
   return payload;
+};
+
+const IMAGE_DATA_URL_PATTERN = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/s;
+
+const getImageExtensionFromMimeType = (mimeType: string) => {
+  const subtype = mimeType.split("/")[1] || "png";
+  if (subtype === "jpeg") return "jpg";
+  if (subtype.includes("svg")) return "svg";
+  if (subtype.includes("webp")) return "webp";
+  if (subtype.includes("gif")) return "gif";
+  return subtype.replace(/[^a-z0-9]/gi, "") || "png";
+};
+
+const uploadDataUrlImage = async ({
+  tenantId,
+  docId,
+  fieldName,
+  dataUrl,
+}: {
+  tenantId: string;
+  docId: string;
+  fieldName: "referenceImageUrl" | "quoteMediaImageUrl";
+  dataUrl: string;
+}) => {
+  const trimmedValue = dataUrl.trim();
+  const matches = trimmedValue.match(IMAGE_DATA_URL_PATTERN);
+
+  if (!matches) {
+    return trimmedValue;
+  }
+
+  if (!storageBucket) {
+    return trimmedValue;
+  }
+
+  const [, mimeType, base64Content] = matches;
+  const fileExtension = getImageExtensionFromMimeType(mimeType);
+  const filePath = `tenants/${tenantId}/customRequests/${docId}/${fieldName}-${Date.now()}.${fileExtension}`;
+  const downloadToken = randomUUID();
+
+  await storageBucket.file(filePath).save(Buffer.from(base64Content, "base64"), {
+    resumable: false,
+    metadata: {
+      contentType: mimeType,
+      metadata: {
+        firebaseStorageDownloadTokens: downloadToken,
+      },
+    },
+  });
+
+  return `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(storageBucket.name)}/o/${encodeURIComponent(filePath)}?alt=media&token=${downloadToken}`;
+};
+
+const resolveCustomRequestImageField = async ({
+  tenantId,
+  docId,
+  fieldName,
+  payload,
+}: {
+  tenantId: string;
+  docId: string;
+  fieldName: "referenceImageUrl" | "quoteMediaImageUrl";
+  payload: Record<string, unknown>;
+}) => {
+  const fieldAliases = fieldName === "referenceImageUrl"
+    ? ["referenceImageBase64", "referenceImageDataUrl", "referenceImageUrl"]
+    : ["quoteMediaImageBase64", "quoteMediaImageDataUrl", "quoteMediaImageUrl"];
+
+  const incomingValue = fieldAliases.find((alias) => typeof payload[alias] === "string");
+
+  if (!incomingValue) {
+    return undefined;
+  }
+
+  const value = String(payload[incomingValue] ?? "").trim();
+  if (!value) {
+    return "";
+  }
+
+  return uploadDataUrlImage({
+    tenantId,
+    docId,
+    fieldName,
+    dataUrl: value,
+  });
+};
+
+const prepareCollectionPayload = async ({
+  tenantId,
+  docId,
+  collectionName,
+  payload,
+}: {
+  tenantId: string;
+  docId: string;
+  collectionName: string;
+  payload: Record<string, unknown>;
+}) => {
+  const normalizedPayload = normalizeCollectionPayload(collectionName, payload);
+
+  if (collectionName !== "customRequests") {
+    return normalizedPayload;
+  }
+
+  const preparedPayload = {
+    ...normalizedPayload,
+  };
+
+  const [referenceImageUrl, quoteMediaImageUrl] = await Promise.all([
+    resolveCustomRequestImageField({ tenantId, docId, fieldName: "referenceImageUrl", payload }),
+    resolveCustomRequestImageField({ tenantId, docId, fieldName: "quoteMediaImageUrl", payload }),
+  ]);
+
+  if (referenceImageUrl !== undefined) {
+    preparedPayload.referenceImageUrl = referenceImageUrl;
+  }
+
+  if (quoteMediaImageUrl !== undefined) {
+    preparedPayload.quoteMediaImageUrl = quoteMediaImageUrl;
+  }
+
+  return preparedPayload;
 };
 
 const formatCurrencyRangeLabel = (values: number[]) => {
@@ -715,9 +852,15 @@ async function startServer() {
       }
 
       const { id: _ignoredId, ...payloadWithoutId } = rawPayload;
-      const collectionPayload = normalizeCollectionPayload(collectionName, payloadWithoutId);
-      const normalizedPayload = normalizeAdminPayload(collectionPayload);
       const collectionPath = buildTenantCollectionPath(tenantId, collectionName);
+      const targetDocId = requestedId || db.collection(collectionPath).doc().id;
+      const collectionPayload = await prepareCollectionPayload({
+        tenantId,
+        docId: targetDocId,
+        collectionName,
+        payload: payloadWithoutId,
+      });
+      const normalizedPayload = normalizeAdminPayload(collectionPayload);
 
       if (requestedId) {
         await db.doc(`${collectionPath}/${requestedId}`).set(normalizedPayload, { merge: false });
@@ -741,7 +884,8 @@ async function startServer() {
         });
       }
 
-      const docRef = await db.collection(collectionPath).add(normalizedPayload);
+      const docRef = db.doc(`${collectionPath}/${targetDocId}`);
+      await docRef.set(normalizedPayload, { merge: false });
       await writeAuditLog({
         tenantId,
         actor,
@@ -800,7 +944,13 @@ async function startServer() {
 
       const { id: _ignoredId, ...payloadWithoutId } = rawPayload;
       const currentData = (currentDoc.data() ?? {}) as Record<string, unknown>;
-      const normalizedPayload = normalizeAdminPayload(payloadWithoutId, {
+      const collectionPayload = await prepareCollectionPayload({
+        tenantId,
+        docId,
+        collectionName,
+        payload: payloadWithoutId,
+      });
+      const normalizedPayload = normalizeAdminPayload(collectionPayload, {
         preserveCreatedAt: Boolean(payloadWithoutId.createdAt ?? currentData.createdAt),
       });
 
@@ -868,7 +1018,13 @@ async function startServer() {
 
       const { id: _ignoredId, ...payloadWithoutId } = rawPayload;
       const currentData = (currentDoc.data() ?? {}) as Record<string, unknown>;
-      const mergedPayload = normalizeAdminPayload(payloadWithoutId, {
+      const collectionPayload = await prepareCollectionPayload({
+        tenantId,
+        docId,
+        collectionName,
+        payload: payloadWithoutId,
+      });
+      const mergedPayload = normalizeAdminPayload(collectionPayload, {
         preserveCreatedAt: true,
       });
 
@@ -992,6 +1148,10 @@ async function startServer() {
         paidAt,
         startedAt,
         completedAt,
+        referenceImageBase64,
+        referenceImageDataUrl,
+        quoteMediaImageBase64,
+        quoteMediaImageDataUrl,
       } = req.body ?? {};
 
       const safeTitle = typeof title === "string" && title.trim().length > 0
@@ -1003,6 +1163,8 @@ async function startServer() {
         : typeof sourceMessage === "string"
           ? sourceMessage.trim()
           : "";
+
+      const docRef = db.collection(`tenants/${tenantId}/customRequests`).doc();
 
       const payload = {
         title: safeTitle,
@@ -1032,7 +1194,20 @@ async function startServer() {
         updatedAt: new Date().toISOString(),
       };
 
-      const docRef = await db.collection(`tenants/${tenantId}/customRequests`).add(payload);
+      const preparedPayload = await prepareCollectionPayload({
+        tenantId,
+        docId: docRef.id,
+        collectionName: "customRequests",
+        payload: {
+          ...payload,
+          referenceImageBase64,
+          referenceImageDataUrl,
+          quoteMediaImageBase64,
+          quoteMediaImageDataUrl,
+        },
+      });
+
+      await docRef.set(preparedPayload, { merge: false });
 
       return res.status(201).json({
         success: true,
