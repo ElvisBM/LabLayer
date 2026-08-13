@@ -9,6 +9,7 @@ import { FieldValue, getFirestore } from "firebase-admin/firestore";
 const WooCommerceRestApi = (WooCommerceRestApiModule as unknown as { default?: typeof WooCommerceRestApiModule }).default || WooCommerceRestApiModule;
 const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "ai-studio-914d19ee-caef-46d9-9cf8-561cc915d716";
 const FIREBASE_SERVICE_ACCOUNT_FILE = process.env.FIREBASE_SERVICE_ACCOUNT_FILE || path.join(process.cwd(), "firebase-service-account.json");
+const ADMIN_API_DOCS_PATH = path.join(process.cwd(), "docs", "admin-api.md");
 
 // Inicializa Firebase Admin apenas uma vez
 if (!getApps().length) {
@@ -315,6 +316,28 @@ async function startServer() {
       collections: Array.from(ADMIN_API_COLLECTIONS),
       auditCollection: "auditLogs",
     });
+  });
+
+  app.get("/api/admin/docs", requireAdminApiToken, async (req, res) => {
+    try {
+      const format = typeof req.query.format === "string" ? req.query.format.trim().toLowerCase() : "json";
+      const markdown = fs.readFileSync(ADMIN_API_DOCS_PATH, "utf8");
+
+      if (format === "markdown" || format === "md" || format === "text") {
+        res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+        return res.send(markdown);
+      }
+
+      return res.json({
+        title: "LabLayer Admin API",
+        path: "/api/admin/docs",
+        formats: ["json", "markdown"],
+        content: markdown,
+      });
+    } catch (error) {
+      console.error("Erro ao carregar documentação da API admin:", error);
+      return res.status(500).json({ error: "Erro interno ao carregar documentação." });
+    }
   });
 
   app.get("/api/admin/tenants/:tenantId", requireAdminApiToken, async (req, res) => {

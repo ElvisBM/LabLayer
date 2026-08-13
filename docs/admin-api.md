@@ -40,6 +40,22 @@ curl https://app.lablayer.com.br/api/admin/health \
   -H "x-lablayer-admin-token: SEU_TOKEN"
 ```
 
+### Documentação privada da API
+
+JSON:
+
+```bash
+curl https://app.lablayer.com.br/api/admin/docs \
+  -H "x-lablayer-admin-token: SEU_TOKEN"
+```
+
+Markdown:
+
+```bash
+curl "https://app.lablayer.com.br/api/admin/docs?format=markdown" \
+  -H "x-lablayer-admin-token: SEU_TOKEN"
+```
+
 ### Tenant
 
 ```bash
