@@ -354,6 +354,11 @@ const filterCollectionItems = (
   });
 };
 
+const hasCollectionFilters = (query: express.Request["query"]) => {
+  const supportedFilters = [query.q, query.name, query.color, query.title];
+  return supportedFilters.some((value) => typeof value === "string" && value.trim().length > 0);
+};
+
 const isEqualValue = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
 
 const buildChangedFields = (
@@ -601,6 +606,7 @@ async function startServer() {
     try {
       const { tenantId, collectionName } = req.params;
       const limit = parsePositiveLimit(req.query.limit, 100, 500);
+      const shouldFilterBeforeLimit = hasCollectionFilters(req.query);
 
       if (!tenantId) {
         return res.status(400).json({ error: "tenantId é obrigatório." });
@@ -617,12 +623,15 @@ async function startServer() {
         return res.status(503).json({ error: "Banco de dados não disponível." });
       }
 
-      const snapshot = await db.collection(buildTenantCollectionPath(tenantId, collectionName)).limit(limit).get();
+      const snapshot = await db
+        .collection(buildTenantCollectionPath(tenantId, collectionName))
+        .limit(shouldFilterBeforeLimit ? 5000 : limit)
+        .get();
       const items = snapshot.docs.map((docSnapshot) => ({
         id: docSnapshot.id,
         ...docSnapshot.data(),
       }));
-      const filteredItems = filterCollectionItems(collectionName, items, req.query);
+      const filteredItems = filterCollectionItems(collectionName, items, req.query).slice(0, limit);
       const productPricingContext = collectionName === "products"
         ? await loadProductPricingContext(tenantId)
         : undefined;
