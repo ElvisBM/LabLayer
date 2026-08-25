@@ -2,7 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import fs from "fs";
 import path from "path";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import WooCommerceRestApiModule from "@woocommerce/woocommerce-rest-api";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
@@ -16,6 +16,40 @@ const FIREBASE_STORAGE_BUCKET = process.env.FIREBASE_STORAGE_BUCKET?.trim() || "
 const ADMIN_API_DOCS_PATH = path.join(process.cwd(), "docs", "admin-api.md");
 const PRODUCT_SUGGESTED_MARKUP_MULTIPLIER = 2.2;
 let resolvedFirebaseStorageBucket = FIREBASE_STORAGE_BUCKET;
+
+type ScopedApiKey = {
+  id: string;
+  tokenHash: string;
+  tenantId: string;
+  actor: string;
+  active?: boolean;
+};
+
+const hashApiToken = (token: string) => createHash("sha256").update(token).digest("hex");
+
+const parseScopedApiKeys = (rawValue?: string): ScopedApiKey[] => {
+  if (!rawValue?.trim()) {
+    return [];
+  }
+
+  try {
+    const parsedValue: unknown = JSON.parse(rawValue);
+    if (!Array.isArray(parsedValue)) {
+      return [];
+    }
+
+    return parsedValue.filter((item): item is ScopedApiKey =>
+      isPlainObject(item) &&
+      typeof item.id === "string" &&
+      typeof item.tokenHash === "string" &&
+      typeof item.tenantId === "string" &&
+      typeof item.actor === "string",
+    );
+  } catch (error) {
+    console.error("LABLAYER_API_KEYS_JSON inválido:", error);
+    return [];
+  }
+};
 
 // Inicializa Firebase Admin apenas uma vez
 if (!getApps().length) {
@@ -585,6 +619,7 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3000;
   const whatsappIngestToken = process.env.WHATSAPP_INGEST_TOKEN?.trim();
   const adminApiToken = process.env.ADMIN_API_TOKEN?.trim();
+  const scopedApiKeys = parseScopedApiKeys(process.env.LABLAYER_API_KEYS_JSON);
 
   app.disable("x-powered-by");
   app.use(express.json());
@@ -599,13 +634,27 @@ async function startServer() {
       (typeof req.headers["x-lablayer-admin-token"] === "string" ? req.headers["x-lablayer-admin-token"] : "") ||
       extractBearerToken(typeof req.headers.authorization === "string" ? req.headers.authorization : undefined);
 
-    if (!adminApiToken) {
-      return res.status(503).json({ error: "ADMIN_API_TOKEN não configurado." });
+    if (!adminApiToken && scopedApiKeys.length === 0) {
+      return res.status(503).json({ error: "Nenhuma chave da API administrativa está configurada." });
     }
 
-    if (!providedToken || providedToken !== adminApiToken) {
+    const scopedKey = providedToken
+      ? scopedApiKeys.find((item) => item.active !== false && item.tokenHash === hashApiToken(providedToken))
+      : undefined;
+    const hasTechnicalAccess = Boolean(providedToken && adminApiToken && providedToken === adminApiToken);
+
+    if (!hasTechnicalAccess && !scopedKey) {
       return res.status(401).json({ error: "Token administrativo inválido." });
     }
+
+    const requestedTenantId = req.params.tenantId;
+    if (scopedKey && requestedTenantId && scopedKey.tenantId !== requestedTenantId) {
+      return res.status(403).json({ error: "Esta chave não possui acesso ao tenant solicitado." });
+    }
+
+    res.locals.apiAccess = scopedKey
+      ? { keyId: scopedKey.id, tenantId: scopedKey.tenantId, actor: scopedKey.actor }
+      : { keyId: "technical", tenantId: null, actor: "api-token" };
 
     next();
   };

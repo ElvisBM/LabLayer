@@ -2,8 +2,9 @@
 
 API protegida por token para acessar os dados do tenant sem expor a chave do Firebase.
 
-Hoje o `ADMIN_API_TOKEN` é um token técnico e não fica vinculado sozinho a um usuário específico.
-Para auditoria, envie também o header `x-lablayer-admin-actor` com o nome, email ou identificador da sessão que está fazendo a alteração.
+O `ADMIN_API_TOKEN` é a chave técnica global. Para acessos pessoais, configure
+`LABLAYER_API_KEYS_JSON`: as chaves individuais são vinculadas a um único tenant
+e o servidor armazena somente o hash SHA-256 delas.
 
 ## Autenticação
 
@@ -11,7 +12,19 @@ Configure a variável:
 
 ```env
 ADMIN_API_TOKEN="seu_token_admin_aqui"
+LABLAYER_API_KEYS_JSON='[
+  {
+    "id": "elvis-owner",
+    "tokenHash": "sha256_da_chave_individual",
+    "tenantId": "id_do_tenant",
+    "actor": "elvisbmartins@gmail.com",
+    "active": true
+  }
+]'
 ```
+
+Uma chave individual só pode acessar o `tenantId` configurado. O token técnico
+global continua disponível para integrações administrativas já existentes.
 
 Envie o token em um destes formatos:
 
