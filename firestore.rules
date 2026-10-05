@@ -33,19 +33,19 @@ service cloud.firestore {
     }
 
     function isSuperAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.email == "elvisbmartins@gmail.com" ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin')
-      );
+      return isAuthenticated() && request.auth.token.get('superadmin', false) == true;
     }
 
     function isTenantOwner(tenantId) {
-      return isAuthenticated() && request.auth.uid == tenantId;
+      return isAuthenticated() && request.auth.uid == tenantId &&
+        exists(/databases/$(database)/documents/tenants/$(tenantId)) &&
+        get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerUid == request.auth.uid;
     }
 
     function isTenantMember(tenantId) {
-      return isAuthenticated() && (
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/tenants/$(tenantId)) &&
+        get(/databases/$(database)/documents/tenants/$(tenantId)).data.get('status', 'active') != 'inactive' && (
         isTenantOwner(tenantId) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId)
@@ -135,7 +135,7 @@ service cloud.firestore {
     }
 
     function isValidSupplier() {
-      let allowedFields = ['name', 'phone', 'address', 'notes', 'status', 'createdAt'];
+      let allowedFields = ['name', 'phone', 'address', 'notes', 'status', 'createdAt', 'updatedAt'];
       return hasOnlyAllowedFields(allowedFields) &&
              hasRequiredFields(['name']) &&
              isValidString('name', 1, 100) &&
@@ -180,7 +180,7 @@ service cloud.firestore {
     }
 
     function isValidMarketplace() {
-      let allowedFields = ['name', 'commissionPercent', 'fixedFee', 'averageShipping', 'affiliateCommission', 'payoutDays', 'status', 'createdAt'];
+      let allowedFields = ['name', 'commissionPercent', 'fixedFee', 'averageShipping', 'affiliateCommission', 'payoutDays', 'status', 'createdAt', 'updatedAt'];
       return hasOnlyAllowedFields(allowedFields) &&
              hasRequiredFields(['name', 'createdAt']) &&
              isValidString('name', 1, 50) &&
@@ -317,25 +317,23 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());
-      allow delete: if isSuperAdmin();
+      // Provisioning and membership/privilege changes are server-only.
+      allow write: if false;
     }
 
     match /tenants/{tenantId} {
-      // Members or Super Admin can read
-      allow read: if isTenantMember(tenantId) || isSuperAdmin();
-      
-      // Owner can create
-      allow create: if isTenantOwner(tenantId);
-      
-      // Owner or Super Admin can update
-      allow update: if (isTenantOwner(tenantId) && 
-                        request.resource.data.ownerUid == resource.data.ownerUid &&
-                        request.resource.data.createdAt == resource.data.createdAt) || 
-                       isSuperAdmin();
-      
-      allow delete: if isSuperAdmin();
+      allow read: if isTenantMember(tenantId) || isTenantOwner(tenantId) || isSuperAdmin();
+      allow create, delete: if false;
+      allow update: if (
+        isTenantOwner(tenantId) && isTenantMember(tenantId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['companyName']) &&
+        isValidString('companyName', 1, 100)
+      ) || (
+        isSuperAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['plan', 'status']) &&
+        request.resource.data.plan in ['free', 'pro', 'enterprise'] &&
+        request.resource.data.status in ['active', 'inactive', 'past_due']
+      );
 
       // Subcollections
       match /products/{productId} {

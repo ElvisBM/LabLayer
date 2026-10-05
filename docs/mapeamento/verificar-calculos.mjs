@@ -6,9 +6,13 @@ import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { execFileSync } from 'node:child_process';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../..');
+// Historical characterization is pinned; regression tests live in tests/.
+const baseline = '0fd3cbe51c551036fc58bb60afd8d068ad642620';
+const readSource = file => execFileSync('git', ['show', `${baseline}:${file}`], { cwd: root, encoding: 'utf8' });
 const results = [];
 function check(id, description, run) {
   try {
@@ -22,7 +26,7 @@ function near(actual, expected) {
   assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
 }
 function extract(file, names, bindings = {}) {
-  const source = ts.createSourceFile(file, fs.readFileSync(path.join(root, file), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const source = ts.createSourceFile(file, readSource(file), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const found = new Map();
   function visit(node) {
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && names.includes(node.name.text)) {
@@ -39,7 +43,7 @@ function extract(file, names, bindings = {}) {
   vm.runInContext(js, context, { timeout: 5000 });
   return context.result;
 }
-const pricingSource = fs.readFileSync(path.join(root, 'src/utils/pricing.ts'), 'utf8');
+const pricingSource = readSource('src/utils/pricing.ts');
 const compiled = ts.transpileModule(pricingSource, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
 const context = vm.createContext({ exports: {} });
 vm.runInContext(compiled, context, { timeout: 5000 });
@@ -166,7 +170,7 @@ check('C24', 'API sem variações pode informar preço sugerido mas resolução 
   const n = api.buildProductComputedPricing({ fixedCost: 10, variations: [] }, fixture);
   near(n.calculatedSuggestedSalePrice, 22); near(n.resolvedSalePrice, 0); assert.equal(n.resolvedSalePriceSource, 'unavailable'); return n;
 });
-const report = { finalidade: 'Caracterização do comportamento atual; confirmado não significa regra de negócio correta.', execucao: 'Código puro real extraído por AST, sem montar React ou conectar Firebase.', total: results.length, confirmados: results.filter(r => r.status === 'confirmado').length, casos: results };
+const report = { finalidade: 'Caracterização histórica do commit 0fd3cbe; confirmado não significa regra de negócio correta.', execucao: 'Código puro real extraído por AST, sem montar React ou conectar Firebase.', total: results.length, confirmados: results.filter(r => r.status === 'confirmado').length, casos: results };
 const json = JSON.stringify(report, null, 2) + '\n';
 if (process.argv.includes('--salvar')) fs.writeFileSync(path.join(here, 'resultados-calculos.json'), json);
 console.log(json);

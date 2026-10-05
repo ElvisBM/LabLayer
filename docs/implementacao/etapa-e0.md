@@ -41,3 +41,17 @@ Não ativar somente as rules nem somente a interface. Antes de liberar: conferir
 Essas verificações de produção permanecem pendentes. Não houve acesso a credenciais, dados reais ou implantação. Os testes de `/api/session` usam verificador injetado; integração real Firebase Auth e configuração do serviço precisam de homologação no ambiente de teste da implantação.
 
 Uma auditoria de dependências detectou alertas na árvore instalada. Eles não foram tratados como teste de negócio aprovado; revisão de dependências fica registrada para conclusão da E0, antes de liberação.
+
+## B02: contrato de entrada, concorrência e auditoria
+
+DV28–DV31: normalização separada entre criação e PATCH; aliases removidos; esquema explícito e referências verificadas na mesma empresa. PATCH conserva campos omitidos, inclusive imagens, preço zero e arrays; números inválidos são rejeitados em vez de convertidos silenciosamente. CreatedAt é imutável. POST com ID existente retorna 409, incluindo duas criações concorrentes.
+
+Toda mutação administrativa permitida grava documento e auditoria na mesma transação. Ator vem da chave autenticada. A API mantém leitura dos domínios existentes, mas restringe escrita a solicitações, fornecedores, canais e settings conhecidos. Operações genéricas de estoque/produção/venda e DELETE estão suspensas até os respectivos comandos; não há bypass pelo token técnico. Chaves individuais precisam de escopo explícito para escrita.
+
+WhatsApp exige credencial por empresa e ID estável da mensagem; criação, recibo e auditoria são atômicos. Retransmissão conserva o documento; conflito de conteúdo retorna 409. Só permite solicitação inicial, sem aprovação/pagamento por mensagem. O workflow de referência foi atualizado, sem publicação no n8n. Conectores incompletos retornam 501, eliminando gravação global e sincronização sem autenticação.
+
+DV33: exportação de coleções recebe cursores por ID, sem limite total de 500 quando o cliente percorre as páginas. Continua explicitamente diferente do backup recursivo de B01.
+
+Testes adicionais: contrato puro, workflow n8n executado com dados sintéticos, API HTTP real com emulador, PATCH concorrente, criação concorrente, falha de auditoria sem gravação, referências entre empresas, permissões das chaves, compatibilidade API→rules de cliente, exportação de 505 registros e duplicação concorrente de mensagem.
+
+A caracterização dos 24 casos da auditoria agora lê o commit original por `git show`; é evidência histórica, não aprovação do código novo. C13–C15 têm regressões com a expectativa corrigida em `tests/`. O contrato atualizado está em [API administrativa](../admin-api.md).
