@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Plus, MoreVertical, Box, Calculator, FileText, Layers, FileUp, Settings, Trash2, Save, TrendingUp, AlertTriangle, DollarSign, Target, Edit2, Upload, X, LayoutGrid, List, Search } from 'lucide-react';
-import { collection, onSnapshot, updateDoc, deleteDoc, doc, query, where, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, onSnapshot, doc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { SearchableSelect, SelectOption } from '../components/SearchableSelect';
 import toast from 'react-hot-toast';
+import { archiveProduct } from '../services/product-protection';
 import { DEFAULT_PRICING_SETTINGS, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings } from '../utils/pricing';
 
 function SearchableSelectFilament({ value, onChange, filaments, placeholder = "Buscar..." }: { value: string, onChange: (v: string) => void, filaments: Filament[], placeholder?: string }) {
@@ -1067,68 +1068,12 @@ export function Produtos({
   const handleDelete = async (id: string) => {
     if (!tenantId) return;
     try {
-      const productToDelete = products.find(p => p.id === id);
-      
-      if (productToDelete) {
-        const batch = writeBatch(db);
-
-        // Restaurar estoque de filamentos
-        const usageToReturn = calculateFilamentUsageMap(productToDelete);
-        const supplyUsageToReturn = calculateSupplyUsageMap(productToDelete);
-        for (const [fId, amount] of Object.entries(usageToReturn)) {
-            const filament = filaments.find(f => f.id === fId);
-            if (filament) {
-              batch.update(doc(db, `tenants/${tenantId}/filaments`, filament.id), {
-                stockKg: (filament.stockKg || 0) + amount
-              });
-            }
-        }
-
-        for (const [supplyId, amount] of Object.entries(supplyUsageToReturn)) {
-          const supply = supplies.find(item => item.id === supplyId);
-          if (supply) {
-            batch.update(doc(db, `tenants/${tenantId}/supplies`, supply.id), {
-              quantity: (Number(supply.quantity) || 0) + amount,
-            });
-          }
-        }
-
-        for (const variation of productToDelete.variations) {
-          // Restore print hours
-          if (variation.printerId && variation.printTimeHours) {
-             const printer = printers.find(p => p.id === variation.printerId);
-             if (printer && printer.usedHours) {
-               let totalHoursUsed = 0;
-               if (variation.materials && variation.materials.some(m => m.printTimeHours !== undefined)) {
-                 totalHoursUsed = variation.materials.reduce((sum, mat) => sum + (mat.printTimeHours || 0), 0);
-               } else {
-                 totalHoursUsed = variation.printTimeHours;
-               }
-
-               await updateDoc(doc(db, `tenants/${tenantId}/printers`, printer.id), {
-                 usedHours: Math.max(0, printer.usedHours - totalHoursUsed)
-               });
-             }
-          }
-        }
-
-        // Excluir registros de perdas (purgas) associados a este produto
-        const lossesQuery = query(collection(db, `tenants/${tenantId}/losses`), where("productId", "==", id));
-        const lossesSnapshot = await getDocs(lossesQuery);
-        lossesSnapshot.docs.forEach(lossDoc => {
-          batch.delete(doc(db, `tenants/${tenantId}/losses`, lossDoc.id));
-        });
-
-        batch.delete(doc(db, `tenants/${tenantId}/products`, id));
-        await batch.commit();
-      } else {
-        await deleteDoc(doc(db, `tenants/${tenantId}/products`, id));
-      }
+      await archiveProduct(db, tenantId, id);
       setDeleteTargetId(null);
-      toast.success("Produto excluído com sucesso!");
+      toast.success('Produto arquivado. Histórico e estoque preservados.');
     } catch (error) {
-      console.error("Error deleting product:", error);
-      toast.error("Erro ao excluir produto.");
+      console.error('Error archiving product:', error);
+      toast.error('Erro ao arquivar produto.');
     }
   };
 
@@ -2989,7 +2934,7 @@ export function Produtos({
                         <button type="button" onClick={(e) => { e.stopPropagation(); handleEdit(p); }} className="p-1.5 text-slate-400 hover:text-primary hover:bg-surface-container transition-colors rounded">
                           <Edit2 className="w-4 h-4" />
                         </button>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); requestDelete(p.id); }} className="p-1.5 text-slate-400 hover:text-error hover:bg-error/10 transition-colors rounded">
+                        <button type="button" aria-label={`Arquivar ${p.name}`} onClick={(e) => { e.stopPropagation(); requestDelete(p.id); }} className="p-1.5 text-slate-400 hover:text-error hover:bg-error/10 transition-colors rounded">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
@@ -3017,7 +2962,7 @@ export function Produtos({
                     <button type="button" onClick={(e) => { e.stopPropagation(); handleEdit(p); }} className="p-1.5 text-slate-400 hover:text-primary transition-colors rounded opacity-0 group-hover:opacity-100">
                       <Edit2 className="w-4 h-4" />
                     </button>
-                    <button type="button" onClick={(e) => { e.stopPropagation(); requestDelete(p.id); }} className="p-1.5 text-slate-400 hover:text-error transition-colors rounded opacity-0 group-hover:opacity-100">
+                    <button type="button" aria-label={`Arquivar ${p.name}`} onClick={(e) => { e.stopPropagation(); requestDelete(p.id); }} className="p-1.5 text-slate-400 hover:text-error transition-colors rounded opacity-0 group-hover:opacity-100">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -3105,9 +3050,9 @@ export function Produtos({
           <div className="w-full max-w-md rounded-2xl bg-surface-container-lowest border border-outline-variant/20 shadow-2xl">
             <div className="p-6 space-y-4">
               <div>
-                <h3 className="text-lg font-bold text-on-surface">Excluir Produto</h3>
+                <h3 className="text-lg font-bold text-on-surface">Arquivar Produto</h3>
                 <p className="text-sm text-on-surface-variant mt-1">
-                  Tem certeza que quer excluir este produto permanentemente e devolver o saldo dos materiais?
+                  O produto ficará inativo. A ficha, o histórico e os saldos serão preservados. Você pode reativá-lo alterando o status no cadastro.
                 </p>
               </div>
 
@@ -3128,7 +3073,7 @@ export function Produtos({
                   onClick={() => handleDelete(deleteTargetId)}
                   className="px-4 py-2 bg-error text-on-error rounded-lg text-sm font-bold hover:opacity-90 transition-all"
                 >
-                  Excluir
+                  Arquivar
                 </button>
               </div>
             </div>

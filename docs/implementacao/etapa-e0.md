@@ -55,3 +55,15 @@ DV33: exportação de coleções recebe cursores por ID, sem limite total de 500
 Testes adicionais: contrato puro, workflow n8n executado com dados sintéticos, API HTTP real com emulador, PATCH concorrente, criação concorrente, falha de auditoria sem gravação, referências entre empresas, permissões das chaves, compatibilidade API→rules de cliente, exportação de 505 registros e duplicação concorrente de mensagem.
 
 A caracterização dos 24 casos da auditoria agora lê o commit original por `git show`; é evidência histórica, não aprovação do código novo. C13–C15 têm regressões com a expectativa corrigida em `tests/`. O contrato atualizado está em [API administrativa](../admin-api.md).
+
+## B03: preservação e funcionalidades disponíveis
+
+DV09/DV14: a ação de exclusão de produto passa a arquivar usando status `inativo`. Mantém ID, ficha, histórico, perdas, horas e saldos. A reativação usa o status do cadastro. O cálculo legado de consumo ainda considera essas fichas; não filtrar produtos inativos desse cálculo antes da migração E2/E3.
+
+Rules bloqueiam DELETE de produto e modificação do array histórico `pricingHistory`. Salvar sugestão na calculadora grava uma nova subcoleção `products/{id}/pricingSnapshots` e atualiza o resumo em um batch: registros novos não podem ser editados/apagados e os 50 registros legados não são truncados. `actorUid` é conferido pelas rules e `calculationVersion=legacy-ui` deixa explícito que ainda se trata do motor antigo. O recálculo em massa que alterava preços/histórico foi retirado. E1 ainda precisa conferir o cálculo e tornar a emissão autoritativa no servidor.
+
+Um cliente antigo não pode apagar produto com devolução em batch, nem reduzir separadamente `usedHours` da impressora. Horas existentes ficam preservadas até o comando de execução da E3. Produção concluída não pode ser atualizada, reaberta ou excluída pelo cliente. Repetir o batch de conclusão falha inteiro e não duplica a entrada; isso é uma proteção temporária, não substitui o comando idempotente da E3. Correção de execução concluída precisará de evento compensatório.
+
+DV32: configurações mostram os quatro conectores como em desenvolvimento e deixam de solicitar credenciais sem persistência. Vendas mantém cadastro manual e informa a indisponibilidade de CSV/sincronização; não oferece processamento fictício. Rotas já foram suspensas em B02.
+
+Testes adicionais executam as funções usadas pela interface contra as rules reais: arquivamento repetido, tentativa de batch destrutivo, horas preservadas, nova sugestão com 50 registros antigos, imutabilidade, ator, acesso entre empresas, proteção de execução concluída e repetição de conclusão. Testes de componentes verificam a comunicação e ausência de ações enganosas.

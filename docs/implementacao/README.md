@@ -16,7 +16,7 @@ O CI de branches/PR executa a mesma barreira. O workflow de implantação existe
 |---|---|---|
 | E0.1/E0.2 — B01 | Ambiente isolado, ensaio de backup/restauração, provisionamento e acesso | Implementado; evidências em [E0](./etapa-e0.md) |
 | E0.3/E0.4 — B02 | PATCH, schemas, criação com conflito, auditoria e entradas externas | Implementado e validado: 66 testes acumulados, tipos e build |
-| E0.5/E0.6 — B03 | Histórico, arquivamento e comunicação de recursos incompletos | Pendente |
+| E0.5/E0.6 — B03 | Histórico, arquivamento e comunicação de recursos incompletos | Implementado e validado: 75 testes acumulados, tipos e build |
 | E1–E5 | Motor, produtos, estoque, orçamento e conciliação | Não iniciado |
 
 O diretório `scripts/` já existia como não rastreado e não participa destes commits.

@@ -338,15 +338,35 @@ service cloud.firestore {
       // Subcollections
       match /products/{productId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && isValidProduct();
-        allow update: if isTenantMember(tenantId) && isValidProduct() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
-        allow delete: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId) && isValidProduct() && request.resource.data.get('pricingHistory', []).size() == 0;
+        allow update: if isTenantMember(tenantId) && isValidProduct() &&
+          request.resource.data.get('pricingHistory', []) == resource.data.get('pricingHistory', []) &&
+          (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+        allow delete: if false;
+
+        match /pricingSnapshots/{snapshotId} {
+          allow read: if isTenantMember(tenantId);
+          allow update, delete: if false;
+          allow create: if isTenantMember(tenantId) &&
+            request.resource.data.keys().hasOnly(['id', 'savedAt', 'variationId', 'variationLabel', 'channelId', 'channelName', 'targetType', 'targetValue', 'suggestedPrice', 'cost', 'profit', 'margin', 'actorUid', 'calculationVersion']) &&
+            request.resource.data.keys().hasAll(['id', 'savedAt', 'variationId', 'variationLabel', 'channelId', 'channelName', 'targetType', 'targetValue', 'suggestedPrice', 'cost', 'profit', 'margin', 'actorUid', 'calculationVersion']) &&
+            request.resource.data.id == snapshotId &&
+            request.resource.data.actorUid == request.auth.uid &&
+            request.resource.data.calculationVersion == 'legacy-ui' &&
+            request.resource.data.savedAt is string &&
+            request.resource.data.variationId is string && request.resource.data.variationLabel is string &&
+            request.resource.data.channelId is string && request.resource.data.channelName is string &&
+            request.resource.data.targetType in ['profit', 'margin', 'markup', 'custom'] &&
+            request.resource.data.targetValue is number && request.resource.data.profit is number && request.resource.data.margin is number &&
+            isPositiveNumber('cost') && isPositiveNumber('suggestedPrice') &&
+            getAfter(/databases/$(database)/documents/tenants/$(tenantId)/products/$(productId)).data.latestSuggestedPrice.id == snapshotId;
+        }
       }
 
       match /printers/{printerId} {
         allow read: if isTenantMember(tenantId);
         allow create: if isTenantMember(tenantId) && isValidPrinter();
-        allow update: if isTenantMember(tenantId) && isValidPrinter() && request.resource.data.createdAt == resource.data.createdAt;
+        allow update: if isTenantMember(tenantId) && isValidPrinter() && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.get('usedHours', 0) == resource.data.get('usedHours', 0);
         allow delete: if isTenantMember(tenantId);
       }
 
@@ -402,8 +422,8 @@ service cloud.firestore {
       match /productionOrders/{orderId} {
         allow read: if isTenantMember(tenantId);
         allow create: if isTenantMember(tenantId) && isValidProductionOrder();
-        allow update: if isTenantMember(tenantId) && isValidProductionOrder() && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isTenantMember(tenantId);
+        allow update: if isTenantMember(tenantId) && resource.data.status != 'concluida' && isValidProductionOrder() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantMember(tenantId) && resource.data.status != 'concluida';
       }
 
       match /customRequests/{requestId} {

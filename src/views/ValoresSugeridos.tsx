@@ -115,7 +115,6 @@ export function ValoresSugeridos() {
   const [search, setSearch] = useState('');
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [savingIds, setSavingIds] = useState<string[]>([]);
-  const [isRecalculatingAll, setIsRecalculatingAll] = useState(false);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -188,68 +187,6 @@ export function ValoresSugeridos() {
   };
 
   const calculateSuggestedSalePrice = (unitCost: number) => Number((unitCost * MARKUP_MULTIPLIER).toFixed(2));
-
-  const calculateTargetBasedPrice = (
-    cost: number,
-    fixedFee: number,
-    percentFeeDecimal: number,
-    targetType: 'profit' | 'margin' | 'markup' | 'custom',
-    targetValue: number,
-  ) => {
-    let finalPrice = 0;
-
-    if (targetType === 'profit') {
-      finalPrice = (cost + fixedFee + targetValue) / (1 - percentFeeDecimal);
-    } else if (targetType === 'margin') {
-      const marginDecimal = targetValue / 100;
-      finalPrice = 1 - percentFeeDecimal - marginDecimal > 0
-        ? (cost + fixedFee) / (1 - percentFeeDecimal - marginDecimal)
-        : 0;
-    } else if (targetType === 'markup') {
-      finalPrice = ((cost * targetValue) + fixedFee) / (1 - percentFeeDecimal);
-    } else {
-      finalPrice = targetValue;
-    }
-
-    if (!Number.isFinite(finalPrice) || finalPrice < 0) {
-      return 0;
-    }
-
-    return Number(finalPrice.toFixed(2));
-  };
-
-  const recalculateHistoryEntry = (
-    product: Product,
-    entry: NonNullable<Product['pricingHistory']>[number],
-  ) => {
-    const variation = (product.variations || []).find(item => item.id === entry.variationId) || (product.variations || [])[0];
-    const marketplace = marketplaces.find(item => item.id === entry.channelId)
-      || marketplaces.find(item => item.name === entry.channelName);
-
-    if (!variation || !marketplace) {
-      return entry;
-    }
-
-    const variationUnitCost = calculateVariationCost(product, variation);
-    const cost = variationUnitCost + (Number(marketplace.averageShipping) || 0);
-    const percentFeeDecimal = (Number(marketplace.commissionPercent) || 0) / 100;
-    const fixedFee = Number(marketplace.fixedFee) || 0;
-    const suggestedPrice = calculateTargetBasedPrice(cost, fixedFee, percentFeeDecimal, entry.targetType, Number(entry.targetValue) || 0);
-    const totalFees = (suggestedPrice * percentFeeDecimal) + fixedFee;
-    const netRevenue = suggestedPrice - totalFees;
-    const profit = Number((netRevenue - cost).toFixed(2));
-    const margin = suggestedPrice > 0 ? Number((((profit) / suggestedPrice) * 100).toFixed(2)) : 0;
-
-    return {
-      ...entry,
-      suggestedPrice,
-      cost: Number(cost.toFixed(2)),
-      profit,
-      margin,
-      variationLabel: `${variation.color || 'Padrão'} (${variation.material || 'Material'})`,
-      channelName: marketplace.name || entry.channelName,
-    };
-  };
 
   const productRows = useMemo(() => {
     return products
@@ -336,98 +273,6 @@ export function ValoresSugeridos() {
     }
   };
 
-  const handleRecalculateSavedPrices = async () => {
-    if (!tenantId) return;
-
-    try {
-      setIsRecalculatingAll(true);
-      let updatedCount = 0;
-
-      for (const product of products) {
-        const primaryVariation = (product.variations || [])[0];
-        if (!primaryVariation) continue;
-
-        const unitCost = calculateVariationCost(product, primaryVariation);
-        const suggestedDirectSalePrice = calculateSuggestedSalePrice(unitCost);
-        const currentChannelPrices = primaryVariation.channelPrices || [];
-        const hasDirectSale = currentChannelPrices.some(price => price.channel === 'Venda Direta');
-        const shouldUpdateDirectSale = hasDirectSale || product.latestSuggestedPrice?.channelName === 'Venda Direta';
-
-        const nextVariations = (product.variations || []).map(variation => {
-          if (variation.id !== primaryVariation.id || !shouldUpdateDirectSale) return variation;
-
-          const directSaleExists = (variation.channelPrices || []).some(price => price.channel === 'Venda Direta');
-          return {
-            ...variation,
-            channelPrices: directSaleExists
-              ? (variation.channelPrices || []).map(price => price.channel === 'Venda Direta' ? { ...price, price: suggestedDirectSalePrice } : price)
-              : [...(variation.channelPrices || []), { channel: 'Venda Direta', price: suggestedDirectSalePrice, feePercentage: 0 }],
-          };
-        });
-
-        const nextPricingHistory = Array.isArray(product.pricingHistory)
-          ? product.pricingHistory.map(entry => recalculateHistoryEntry(product, entry))
-          : product.pricingHistory;
-
-        let nextLatestSuggestedPrice = product.latestSuggestedPrice;
-        const latestTargetType = product.latestSuggestedPrice?.targetType;
-
-        if (nextLatestSuggestedPrice?.channelName === 'Venda Direta' || !latestTargetType) {
-          nextLatestSuggestedPrice = {
-            ...nextLatestSuggestedPrice,
-            suggestedPrice: suggestedDirectSalePrice,
-            savedAt: new Date().toISOString(),
-            channelName: 'Venda Direta',
-            variationLabel: `${primaryVariation.color || 'Padrão'} (${primaryVariation.material || 'Material'})`,
-          };
-        } else if (nextLatestSuggestedPrice?.channelId && latestTargetType) {
-          const latestEntry = recalculateHistoryEntry(product, {
-            id: nextLatestSuggestedPrice.savedAt || `${product.id}-latest`,
-            savedAt: nextLatestSuggestedPrice.savedAt || new Date().toISOString(),
-            variationId: nextLatestSuggestedPrice.variationId || primaryVariation.id,
-            variationLabel: nextLatestSuggestedPrice.variationLabel || `${primaryVariation.color || 'Padrão'} (${primaryVariation.material || 'Material'})`,
-            channelId: nextLatestSuggestedPrice.channelId,
-            channelName: nextLatestSuggestedPrice.channelName || '',
-            targetType: latestTargetType,
-            targetValue: Number(nextLatestSuggestedPrice.targetValue) || 0,
-            suggestedPrice: Number(nextLatestSuggestedPrice.suggestedPrice) || 0,
-            cost: Number(nextLatestSuggestedPrice.cost) || 0,
-            profit: Number(nextLatestSuggestedPrice.profit) || 0,
-            margin: Number(nextLatestSuggestedPrice.margin) || 0,
-          });
-
-          nextLatestSuggestedPrice = {
-            ...nextLatestSuggestedPrice,
-            ...latestEntry,
-          };
-        }
-
-        const hasChanges = JSON.stringify(nextVariations) !== JSON.stringify(product.variations || [])
-          || JSON.stringify(nextPricingHistory || []) !== JSON.stringify(product.pricingHistory || [])
-          || JSON.stringify(nextLatestSuggestedPrice || {}) !== JSON.stringify(product.latestSuggestedPrice || {});
-
-        if (!hasChanges) continue;
-
-        await updateDoc(doc(db, `tenants/${tenantId}/products`, product.id), {
-          variations: nextVariations,
-          pricingHistory: nextPricingHistory || [],
-          latestSuggestedPrice: nextLatestSuggestedPrice || null,
-        });
-
-        updatedCount += 1;
-      }
-
-      toast.success(updatedCount > 0
-        ? `${updatedCount} produto(s) com preços salvos recalculados.`
-        : 'Nenhum preço salvo precisava de ajuste.');
-    } catch (error) {
-      console.error('Error recalculating saved prices:', error);
-      toast.error('Erro ao recalcular os preços salvos.');
-    } finally {
-      setIsRecalculatingAll(false);
-    }
-  };
-
   return (
     <div className="space-y-8 pb-12">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4">
@@ -450,17 +295,10 @@ export function ValoresSugeridos() {
         </div>
       </div>
 
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={handleRecalculateSavedPrices}
-          disabled={isRecalculatingAll}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-lg text-sm font-bold hover:opacity-90 disabled:opacity-60"
-        >
-          <Calculator className="w-4 h-4" />
-          {isRecalculatingAll ? 'Recalculando preços...' : 'Recalcular preços salvos'}
-        </button>
-      </div>
+      <p role="note" className="text-sm text-on-surface-variant">
+        As sugestões acompanham os custos atuais. Preços salvos e histórico permanecem preservados;
+        para mudar o valor de venda, revise e salve cada produto individualmente.
+      </p>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm">

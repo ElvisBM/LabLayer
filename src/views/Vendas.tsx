@@ -29,15 +29,12 @@ export function Vendas() {
   
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showManualForm, setShowManualForm] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [showApiModal, setShowApiModal] = useState(false);
   const [manualFormTab, setManualFormTab] = useState<'sale' | 'customer'>('sale');
   
   const [apiKeys, setApiKeys] = useState({
     mercadoLivre: '',
     shopee: ''
   });
-  const [isSyncing, setIsSyncing] = useState(false);
 
   const [formData, setFormData] = useState({
     productId: '',
@@ -135,16 +132,6 @@ export function Vendas() {
     }
   };
 
-  const handleSync = () => {
-    setIsSyncing(true);
-    // Simulate API fetch delay
-    setTimeout(() => {
-      alert('Configure os tokens da API para sincronizar.');
-      setIsSyncing(false);
-      setShowApiModal(false);
-    }, 1500);
-  };
-
   const getStatusBadge = (status: Order['status']) => {
     switch (status) {
       case 'pago':
@@ -169,20 +156,9 @@ export function Vendas() {
           <p className="text-on-surface-variant font-sans text-sm mt-1">Gerencie pedidos, acompanhe o status e analise o lucro real.</p>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-          <button 
-            onClick={() => setShowApiModal(true)}
-            className="flex-1 sm:flex-none px-4 py-2 bg-secondary-container text-on-secondary-container text-sm font-bold rounded-md hover:bg-secondary-container/80 active:scale-95 transition-all flex items-center justify-center gap-2"
-          >
-            <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">Sincronizar</span>
-          </button>
-          <button 
-            onClick={() => setShowImportModal(true)}
-            className="flex-1 sm:flex-none px-4 py-2 bg-surface-container-high text-on-surface text-sm font-bold rounded-md hover:bg-surface-container-highest active:scale-95 transition-all flex items-center justify-center gap-2"
-          >
-            <Upload className="w-4 h-4" />
-            <span className="hidden sm:inline">Importar</span>
-          </button>
+          <span className="self-center text-xs text-on-surface-variant">
+            Importação CSV e sincronização: em desenvolvimento.
+          </span>
           <button 
             onClick={() => setShowManualForm(!showManualForm)}
             className="flex-1 sm:flex-none px-4 py-2 bg-primary text-on-primary text-sm font-bold rounded-md hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2"
@@ -370,108 +346,6 @@ export function Vendas() {
               </button>
             </div>
           </form>
-        </div>
-      )}
-
-      {/* Modal de Importação CSV */}
-      {showImportModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-surface-container-lowest rounded-xl max-w-md w-full p-6 shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-primary-container rounded-full flex items-center justify-center">
-                <FileSpreadsheet className="w-5 h-5 text-on-primary-container" />
-              </div>
-              <div>
-                <h3 className="font-headline font-bold text-lg">Importar Vendas</h3>
-                <p className="text-xs text-on-surface-variant">Faça upload do relatório da plataforma</p>
-              </div>
-            </div>
-            
-            <div className="border-2 border-dashed border-outline-variant/50 rounded-lg p-8 text-center hover:bg-surface-container-low transition-colors cursor-pointer mb-6">
-              <Upload className="w-8 h-8 text-on-surface-variant mx-auto mb-3" />
-              <p className="text-sm font-bold text-primary mb-1">Clique para selecionar o arquivo</p>
-              <p className="text-xs text-on-surface-variant">Suporta CSV da Shopee e Mercado Livre</p>
-            </div>
-
-            <div className="flex justify-end gap-3">
-              <button 
-                onClick={() => setShowImportModal(false)}
-                className="px-4 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded transition-colors"
-              >
-                Cancelar
-              </button>
-              <button 
-                onClick={() => setShowImportModal(false)}
-                className="px-6 py-2 bg-primary text-on-primary rounded font-bold text-sm hover:opacity-90 transition-all"
-              >
-                Processar Arquivo
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Configuração de API */}
-      {showApiModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-surface-container-lowest rounded-xl max-w-md w-full p-6 shadow-2xl">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 bg-secondary-container rounded-full flex items-center justify-center">
-                <Settings className="w-5 h-5 text-on-secondary-container" />
-              </div>
-              <div>
-                <h3 className="font-headline font-bold text-lg">Sincronização via API</h3>
-                <p className="text-xs text-on-surface-variant">Configure seus tokens para importar automaticamente</p>
-              </div>
-            </div>
-            
-            <div className="space-y-4 mb-6">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Token Mercado Livre (Access Token)</label>
-                <input 
-                  type="password" 
-                  value={apiKeys.mercadoLivre}
-                  onChange={(e) => setApiKeys({...apiKeys, mercadoLivre: e.target.value})}
-                  className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" 
-                  placeholder="APP_USR-..." 
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Token Shopee (Partner ID / Key)</label>
-                <input 
-                  type="password" 
-                  value={apiKeys.shopee}
-                  onChange={(e) => setApiKeys({...apiKeys, shopee: e.target.value})}
-                  className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" 
-                  placeholder="Insira o token da Shopee..." 
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3">
-              <button 
-                onClick={() => setShowApiModal(false)}
-                className="px-4 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded transition-colors"
-                disabled={isSyncing}
-              >
-                Cancelar
-              </button>
-              <button 
-                onClick={handleSync}
-                disabled={isSyncing || (!apiKeys.mercadoLivre && !apiKeys.shopee)}
-                className="px-6 py-2 bg-primary text-on-primary rounded font-bold text-sm hover:opacity-90 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSyncing ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    Sincronizando...
-                  </>
-                ) : (
-                  'Sincronizar Pedidos'
-                )}
-              </button>
-            </div>
-          </div>
         </div>
       )}
 

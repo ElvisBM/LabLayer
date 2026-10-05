@@ -4,6 +4,7 @@ import { collection, onSnapshot, updateDoc, doc, setDoc } from 'firebase/firesto
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
+import { appendPriceSnapshot } from '../services/product-protection';
 import { DEFAULT_PRICING_SETTINGS, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings } from '../utils/pricing';
 
 type TargetType = 'profit' | 'margin' | 'markup' | 'custom';
@@ -24,7 +25,7 @@ interface ProductPricingHistoryEntry {
 }
 
 export function Precificacao() {
-  const { tenantId } = useAuth();
+  const { tenantId, user } = useAuth();
   const [products, setProducts] = useState<any[]>([]);
   const [marketplaces, setMarketplaces] = useState<any[]>([]);
   const [filaments, setFilaments] = useState<any[]>([]);
@@ -241,7 +242,7 @@ export function Precificacao() {
   }, [unitCost, marketplaces, targetType, targetValue]);
 
   const handleSaveSuggestedPrice = async () => {
-    if (!tenantId || !product || !variation || !channel || !calculations) return;
+    if (!tenantId || !user || !product || !variation || !channel || !calculations) return;
 
     try {
       setIsSavingPrice(true);
@@ -261,14 +262,7 @@ export function Precificacao() {
         margin: calculations.realMargin,
       };
 
-      const currentHistory = Array.isArray(product.pricingHistory) ? product.pricingHistory : [];
-
-      await updateDoc(doc(db, `tenants/${tenantId}/products`, product.id), {
-        pricingHistory: [newEntry, ...currentHistory].slice(0, 50),
-        latestSuggestedPrice: {
-          ...newEntry,
-        }
-      });
+      await appendPriceSnapshot(db, tenantId, product.id, newEntry, user.uid);
 
       toast.success('Preço sugerido salvo no produto!');
     } catch (error) {
