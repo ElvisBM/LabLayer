@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Upload, Plus, Search, Eye, FileSpreadsheet, CheckCircle2, Package, Clock, RefreshCw, Settings } from 'lucide-react';
+import { ShoppingCart, Plus, Search, Eye, CheckCircle2, Package, Clock } from 'lucide-react';
 import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -31,11 +31,6 @@ export function Vendas() {
   const [showManualForm, setShowManualForm] = useState(false);
   const [manualFormTab, setManualFormTab] = useState<'sale' | 'customer'>('sale');
   
-  const [apiKeys, setApiKeys] = useState({
-    mercadoLivre: '',
-    shopee: ''
-  });
-
   const [formData, setFormData] = useState({
     productId: '',
     channelId: '',

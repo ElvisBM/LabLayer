@@ -2,6 +2,8 @@
 
 Esta documentação descreve o comportamento implementado no código local do LabLayer em 5 de outubro de 2026. Ela serve como base para revisar os números e, depois, planejar a evolução de orçamentos, encomendas, aprovações, produção e integrações.
 
+**Implementação posterior:** este mapeamento preserva a base `0fd3cbe`. As correções e os testes da E0 estão no [registro de implementação](/Users/PCNOTES/Workspace/3D/lablayer/LabLayer/docs/implementacao/README.md). Consulte esse registro para distinguir problemas já tratados de pendências das próximas etapas.
+
 **Conclusão da investigação:** o LabLayer já tem os principais cadastros e telas da operação, mas ainda não possui um fluxo integrado e uma referência única de custo, estoque e resultado financeiro. Há divergências reproduzíveis entre módulos. Portanto, os números atuais não devem ser considerados homologados apenas porque aparecem no sistema.
 
 ## Como consultar

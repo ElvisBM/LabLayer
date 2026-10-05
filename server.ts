@@ -8,9 +8,9 @@ import { FieldPath, getFirestore, type Firestore } from "firebase-admin/firestor
 import { getStorage } from "firebase-admin/storage";
 import { getAuth, type DecodedIdToken } from "firebase-admin/auth";
 import { fileURLToPath } from "node:url";
-import { registerSessionRoute, BusinessError, validId } from "./server/session";
+import { registerSessionRoute, validId } from "./server/session";
 import { normalizeCustomRequest, validateDocument } from "./server/admin-contract";
-import { registerAdminWrites, writeAdminDocument } from "./server/admin-writes";
+import { registerAdminWrites } from "./server/admin-writes";
 import { registerWhatsAppIngress } from "./server/whatsapp";
 import { DEFAULT_PRICING_SETTINGS, calculateVariationUnitCostBreakdown, normalizePricingSettings } from "./src/utils/pricing";
 

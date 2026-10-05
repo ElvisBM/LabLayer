@@ -8,7 +8,7 @@ Superadmin passa a depender da custom claim `superadmin: true` emitida por admin
 
 **Recuperação:** `server/tenant-backup.ts` exporta a árvore da empresa, coleções desconhecidas/subcoleções e perfis vinculados, com páginas por ID. Também visita subcoleções cujos documentos pais estão ausentes. Tipos Timestamp, referência, bytes e GeoPoint têm serialização explícita. A restauração é exclusiva de emulador local com projeto `demo-*`, usa criação sem sobrescrita e exige destino vazio para os documentos. Falha entre lotes exige limpar a cópia local e repetir; não há promessa de restauração atômica de toda a base.
 
-O ensaio usa 515 documentos sintéticos, mais do que o limite antigo de 500, e compara todos os caminhos/valores após restaurar. Outra empresa permanece intocada. A ferramenta não é backup global do Firebase: não inclui arquivos do Storage, Firebase Auth, índices, rules ou coleções globais de integrações. Uma cópia consistente exige pausar todos os escritores durante a exportação.
+O ensaio final usa 516 documentos sintéticos, mais do que o limite antigo de 500, e compara todos os caminhos/valores após restaurar, inclusive subcoleção de perfil. Outra empresa permanece intocada. A ferramenta recusa destino que contenha subcoleções mesmo se o documento pai estiver ausente. Não é backup global do Firebase: não inclui arquivos do Storage, Firebase Auth, índices, rules ou coleções globais de integrações. Uma cópia consistente exige pausar todos os escritores durante a exportação.
 
 Ferramenta operacional, a executar apenas no ambiente escolhido e após pausa de escrita:
 
@@ -31,7 +31,7 @@ npx tsx tools/tenant-backup.ts --mode restore-emulator --project demo-lablayer-t
 | 7 testes unitários de sessão/IDs | Importação sem Firebase; indisponibilidade explícita; IDs inválidos rejeitados |
 | 3 testes de interface de autenticação | Empresa vem do servidor; erro não concede acesso; resposta tardia após logout é descartada |
 | 16 testes de integração de acesso/provisionamento | Isolamento, privilégios, dono/membro, criação concorrente, vínculo legado e sessão autenticada |
-| 1 ensaio de backup | 515 documentos exportados/restaurados com igualdade integral |
+| 2 testes de backup/recuperação após revisão final | 516 documentos exportados/restaurados com igualdade integral; projeto real e destino não vazio rejeitados |
 | TypeScript e build | Compilação sem erro; aviso preexistente sobre tamanho do bundle registrado |
 
 ## Cuidados de implantação obrigatórios
@@ -40,7 +40,7 @@ Não ativar somente as rules nem somente a interface. Antes de liberar: conferir
 
 Essas verificações de produção permanecem pendentes. Não houve acesso a credenciais, dados reais ou implantação. Os testes de `/api/session` usam verificador injetado; integração real Firebase Auth e configuração do serviço precisam de homologação no ambiente de teste da implantação.
 
-Uma auditoria de dependências detectou alertas na árvore instalada. Eles não foram tratados como teste de negócio aprovado; revisão de dependências fica registrada para conclusão da E0, antes de liberação.
+Uma auditoria de dependências detectou alertas na árvore instalada. O tratamento e as pendências estão no fechamento abaixo.
 
 ## B02: contrato de entrada, concorrência e auditoria
 
@@ -67,3 +67,17 @@ Um cliente antigo não pode apagar produto com devolução em batch, nem reduzir
 DV32: configurações mostram os quatro conectores como em desenvolvimento e deixam de solicitar credenciais sem persistência. Vendas mantém cadastro manual e informa a indisponibilidade de CSV/sincronização; não oferece processamento fictício. Rotas já foram suspensas em B02.
 
 Testes adicionais executam as funções usadas pela interface contra as rules reais: arquivamento repetido, tentativa de batch destrutivo, horas preservadas, nova sugestão com 50 registros antigos, imutabilidade, ator, acesso entre empresas, proteção de execução concluída e repetição de conclusão. Testes de componentes verificam a comunicação e ausência de ações enganosas.
+
+## Fechamento local e pendências
+
+Execução final: Node 22.23.3, Java 21, Vitest 4.1.11, Vite 6.4.3, Firestore Emulator 1.22.0. Comando `npm run quality`: **exit 0**, 29 testes unitários/componentes + 47 testes de integração, TypeScript e build sem erros. Nenhum teste foi ignorado. A verificação de diff não encontrou erros de whitespace. A auditoria histórica do commit original permanece com 24 casos confirmados, separada da aprovação das regras corrigidas.
+
+O QA usa o fluxo oficial de [testes de rules com emulador](https://firebase.google.com/docs/rules/unit-tests), com SDK cliente para avaliar as rules e Admin SDK somente para preparar/verificar fixtures sintéticas. Testes de HTTP exercitam a aplicação Express, com banco real emulado; validação do ID token é injetada nesses testes. Não houve teste de credencial real, navegador contra produção, volume de produção ou integração externa.
+
+Atualizações compatíveis do lockfile removeram alertas, incluindo o crítico inicial. Overrides específicos usam `@grpc/grpc-js=1.14.5` no Firestore cliente e `qs=6.16.0`; a suíte de emulador/HTTP foi repetida integralmente com essas versões. Não foi usado `npm audit fix --force` nem downgrade do Firebase. Node 22 foi registrado em `.nvmrc` e engines; CI e deploy usam esse runtime.
+
+O gate adicional `npm run audit:production` falha para severidade alta/crítica. Resultado final: **0 altos/críticos em produção**, mas ainda 8 pacotes com alerta moderado e 1 baixo. A árvore completa contém 7 altos, 10 moderados e 1 baixo; os altos restantes estão na ferramenta Firebase CLI e dependências de desenvolvimento. As contagens incluem propagação de um advisory por vários pacotes. Relatório sanitizado em [dependencias-e0.json](./dependencias-e0.json). Esses avisos não foram classificados como resolvidos; atualizar SDK Admin/CLI exige avaliação própria de compatibilidade. O comando geral `npm audit` ainda retorna 1.
+
+Permanece o aviso de bundle JS acima de 500 kB (aproximadamente 1,05 MB antes de gzip). Otimização de carregamento fica na evolução de desempenho; não altera a aprovação funcional da E0.
+
+**Limite da entrega:** E0 implementada e validada localmente. A liberação em produção continua condicionada ao procedimento acima e à revisão dos alertas remanescentes. E1 ainda não começou; divergências de custos, unidade/lote e modelo de estoque não foram apresentadas como corrigidas por estes testes.

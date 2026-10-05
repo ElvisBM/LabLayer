@@ -77,23 +77,35 @@ export async function restoreTenantToEmulator(backup: TenantBackup, projectId = 
   }
   const db = new Firestore({ projectId, host: process.env.FIRESTORE_EMULATOR_HOST, ssl: false });
   try {
-  if (backup.version !== 1 || !validId(backup.tenantId)) throw new BusinessError(400, 'Backup inválido.');
-  const unique = new Set<string>();
-  const decoded = backup.documents.map(item => {
-    const data = decode(db, item.data);
-    const ownTenant = item.path === `tenants/${backup.tenantId}` || item.path.startsWith(`tenants/${backup.tenantId}/`);
-    const ownProfile = /^users\/[^/]+$/.test(item.path) && (data.tenantId === backup.tenantId || item.path === `users/${backup.tenantId}`);
-    if ((!ownTenant && !ownProfile) || unique.has(item.path)) throw new BusinessError(400, 'Escopo ou duplicação inválida no backup.');
-    unique.add(item.path);
-    return { ref: db.doc(item.path), data };
-  });
-  // Preflight prevents partially overwriting an existing operation.
-  for (const item of decoded) if ((await item.ref.get()).exists) throw new BusinessError(409, 'Destino deve estar vazio.');
-  for (let i = 0; i < decoded.length; i += 200) {
-    const batch = db.batch();
-    for (const item of decoded.slice(i, i + 200)) batch.create(item.ref, item.data);
-    await batch.commit();
-  }
-  return { restoredDocuments: decoded.length };
+    if (backup.version !== 1 || !validId(backup.tenantId) || !Array.isArray(backup.documents)) throw new BusinessError(400, 'Backup inválido.');
+    const unique = new Set<string>();
+    const records = backup.documents.map(item => ({ path: item.path, data: decode(db, item.data) }));
+    const profiles = new Set(records.filter(item => /^users\/[^/]+$/.test(item.path) &&
+      (item.data?.tenantId === backup.tenantId || (item.path === `users/${backup.tenantId}` && !item.data?.tenantId)))
+      .map(item => item.path));
+    const decoded = records.map(item => {
+      const ownTenant = item.path === `tenants/${backup.tenantId}` || item.path.startsWith(`tenants/${backup.tenantId}/`);
+      const profilePath = item.path.split('/').slice(0, 2).join('/');
+      const ownProfile = profiles.has(profilePath);
+      if ((!ownTenant && !ownProfile) || unique.has(item.path) || !item.data || typeof item.data !== 'object' || Array.isArray(item.data)) {
+        throw new BusinessError(400, 'Escopo ou duplicação inválida no backup.');
+      }
+      unique.add(item.path);
+      return { ref: db.doc(item.path), data: item.data };
+    });
+    if (!unique.has(`tenants/${backup.tenantId}`)) throw new BusinessError(400, 'Backup sem documento da empresa.');
+    // A missing parent with existing children is not an empty destination.
+    const root = db.doc(`tenants/${backup.tenantId}`);
+    if ((await root.get()).exists || (await root.listCollections()).length) throw new BusinessError(409, 'Destino deve estar vazio.');
+    for (const profile of profiles) {
+      const ref = db.doc(profile);
+      if ((await ref.get()).exists || (await ref.listCollections()).length) throw new BusinessError(409, 'Perfil de destino deve estar vazio.');
+    }
+    for (let i = 0; i < decoded.length; i += 200) {
+      const batch = db.batch();
+      for (const item of decoded.slice(i, i + 200)) batch.create(item.ref, item.data);
+      await batch.commit();
+    }
+    return { restoredDocuments: decoded.length };
   } finally { await db.terminate(); }
 }

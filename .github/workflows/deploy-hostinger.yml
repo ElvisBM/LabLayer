@@ -34,6 +34,9 @@ jobs:
       - name: Quality and business rules
         run: npm test
 
+      - name: Production dependency audit
+        run: npm run audit:production
+
       - name: Build App
         run: npm run build
 
