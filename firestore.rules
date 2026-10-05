@@ -147,7 +147,7 @@ service cloud.firestore {
     }
 
     function isValidOrder() {
-      let allowedFields = ['orderNumber', 'date', 'productName', 'channelName', 'customerName', 'customerPhone', 'customerNotes', 'status', 'quantity', 'soldPrice', 'fees', 'realCost', 'realProfit', 'createdAt'];
+      let allowedFields = ['orderNumber', 'date', 'productName', 'channelName', 'customerName', 'customerPhone', 'customerNotes', 'status', 'quantity', 'soldPrice', 'fees', 'realCost', 'realProfit', 'costSource', 'createdAt'];
       return hasOnlyAllowedFields(allowedFields) &&
              hasRequiredFields(['orderNumber', 'date', 'productName', 'channelName', 'status', 'quantity', 'soldPrice', 'fees', 'realCost', 'realProfit', 'createdAt']) &&
              isValidString('orderNumber', 1, 50) &&
@@ -162,6 +162,7 @@ service cloud.firestore {
              isPositiveNumber('soldPrice') &&
              isPositiveNumber('fees') &&
              isPositiveNumber('realCost') &&
+             (!('costSource' in request.resource.data) || request.resource.data.costSource == 'manual-confirmed') &&
              request.resource.data.realProfit is number && // Profit can be negative
              request.resource.data.createdAt is string;
     }
@@ -338,28 +339,18 @@ service cloud.firestore {
       // Subcollections
       match /products/{productId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && isValidProduct() && request.resource.data.get('pricingHistory', []).size() == 0;
+        allow create: if isTenantMember(tenantId) && isValidProduct() && request.resource.data.get('pricingHistory', []).size() == 0 && !('latestSuggestedPrice' in request.resource.data);
         allow update: if isTenantMember(tenantId) && isValidProduct() &&
           request.resource.data.get('pricingHistory', []) == resource.data.get('pricingHistory', []) &&
+          request.resource.data.get('latestSuggestedPrice', null) == resource.data.get('latestSuggestedPrice', null) &&
           (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
         allow delete: if false;
 
         match /pricingSnapshots/{snapshotId} {
           allow read: if isTenantMember(tenantId);
           allow update, delete: if false;
-          allow create: if isTenantMember(tenantId) &&
-            request.resource.data.keys().hasOnly(['id', 'savedAt', 'variationId', 'variationLabel', 'channelId', 'channelName', 'targetType', 'targetValue', 'suggestedPrice', 'cost', 'profit', 'margin', 'actorUid', 'calculationVersion']) &&
-            request.resource.data.keys().hasAll(['id', 'savedAt', 'variationId', 'variationLabel', 'channelId', 'channelName', 'targetType', 'targetValue', 'suggestedPrice', 'cost', 'profit', 'margin', 'actorUid', 'calculationVersion']) &&
-            request.resource.data.id == snapshotId &&
-            request.resource.data.actorUid == request.auth.uid &&
-            request.resource.data.calculationVersion == 'legacy-ui' &&
-            request.resource.data.savedAt is string &&
-            request.resource.data.variationId is string && request.resource.data.variationLabel is string &&
-            request.resource.data.channelId is string && request.resource.data.channelName is string &&
-            request.resource.data.targetType in ['profit', 'margin', 'markup', 'custom'] &&
-            request.resource.data.targetValue is number && request.resource.data.profit is number && request.resource.data.margin is number &&
-            isPositiveNumber('cost') && isPositiveNumber('suggestedPrice') &&
-            getAfter(/databases/$(database)/documents/tenants/$(tenantId)/products/$(productId)).data.latestSuggestedPrice.id == snapshotId;
+          // Prices are computed and saved by the authenticated server command.
+          allow create: if false;
         }
       }
 
@@ -386,7 +377,9 @@ service cloud.firestore {
 
       match /orders/{orderId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && isValidOrder();
+        allow create: if isTenantMember(tenantId) && isValidOrder() && request.resource.data.costSource == 'manual-confirmed' &&
+          request.resource.data.quantity is int && request.resource.data.quantity > 0 &&
+          math.abs(request.resource.data.realProfit - (request.resource.data.soldPrice - request.resource.data.fees - request.resource.data.realCost)) < 0.000001;
         allow update: if isTenantMember(tenantId) && isValidOrder() && request.resource.data.createdAt == resource.data.createdAt;
         allow delete: if isTenantMember(tenantId);
       }

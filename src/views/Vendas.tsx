@@ -1,3 +1,4 @@
+import { calculateRecordedSale } from '../utils/sales';
 import React, { useState, useEffect } from 'react';
 import { ShoppingCart, Plus, Search, Eye, CheckCircle2, Package, Clock } from 'lucide-react';
 import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
@@ -37,6 +38,7 @@ export function Vendas() {
     quantity: 1,
     soldPrice: 0,
     fees: 0,
+    totalCost: '',
     status: 'pago' as 'pago' | 'produzindo' | 'enviado',
     customerName: '',
     customerPhone: '',
@@ -85,9 +87,9 @@ export function Vendas() {
       return;
     }
 
-    // Simplified cost calculation for now, just using product base cost or 0
-    const realCost = (product.cost || 0) * formData.quantity;
-    const realProfit = formData.soldPrice - formData.fees - realCost;
+    let costs: ReturnType<typeof calculateRecordedSale>;
+    try { costs = calculateRecordedSale({ ...formData, totalCost: formData.totalCost.replace(',', '.') }); }
+    catch (error) { alert((error as Error).message); return; }
 
     const newOrder = {
       orderNumber: `MANUAL-${Math.floor(Math.random() * 90000) + 10000}`,
@@ -101,8 +103,7 @@ export function Vendas() {
       quantity: formData.quantity,
       soldPrice: formData.soldPrice,
       fees: formData.fees,
-      realCost,
-      realProfit,
+      ...costs,
       createdAt: new Date().toISOString()
     };
 
@@ -116,6 +117,7 @@ export function Vendas() {
         quantity: 1,
         soldPrice: 0,
         fees: 0,
+        totalCost: '',
         status: 'pago',
         customerName: '',
         customerPhone: '',
@@ -148,7 +150,7 @@ export function Vendas() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
           <h2 className="font-headline text-3xl font-bold text-primary tracking-tighter">Vendas e Pedidos</h2>
-          <p className="text-on-surface-variant font-sans text-sm mt-1">Gerencie pedidos, acompanhe o status e analise o lucro real.</p>
+          <p className="text-on-surface-variant font-sans text-sm mt-1">Gerencie pedidos, acompanhe o status e analise o resultado informado.</p>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
           <span className="self-center text-xs text-on-surface-variant">
@@ -164,6 +166,7 @@ export function Vendas() {
         </div>
       </div>
 
+      <p role="note" className="text-sm text-on-surface-variant">Novas vendas exigem custo total confirmado. Vendas antigas podem ter custo ausente registrado como zero e precisam de conferência; seus valores históricos foram preservados.</p>
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm relative overflow-hidden">
@@ -272,6 +275,13 @@ export function Vendas() {
                 placeholder="0.00" 
                 required
               />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="sale-total-cost" className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Custo total confirmado (R$)</label>
+              <input id="sale-total-cost" type="number" min="0" step="0.01" required value={formData.totalCost}
+                onChange={e => setFormData({ ...formData, totalCost: e.target.value })}
+                className="w-full bg-surface-container rounded p-2.5 text-sm" />
+              <p className="text-xs text-on-surface-variant">Informe o custo de todas as unidades. Custo desconhecido não é zero; não use sugestão de preço como custo realizado.</p>
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Status</label>

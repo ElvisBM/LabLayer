@@ -1,34 +1,21 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Calculator, DollarSign, TrendingUp, Percent, Target, AlertCircle, Save, CheckCircle2, ArrowRightLeft } from 'lucide-react';
 import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
-import { appendPriceSnapshot } from '../services/product-protection';
-import { DEFAULT_PRICING_SETTINGS, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings } from '../utils/pricing';
+import { saveCalculatedPrice } from '../services/product-protection';
+import { DEFAULT_PRICING_SETTINGS, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings, calculateChannelPrice } from '../utils/pricing';
 
 type TargetType = 'profit' | 'margin' | 'markup' | 'custom';
-
-interface ProductPricingHistoryEntry {
-  id: string;
-  savedAt: string;
-  variationId: string;
-  variationLabel: string;
-  channelId: string;
-  channelName: string;
-  targetType: TargetType;
-  targetValue: number;
-  suggestedPrice: number;
-  cost: number;
-  profit: number;
-  margin: number;
-}
 
 export function Precificacao() {
   const { tenantId, user } = useAuth();
   const [products, setProducts] = useState<any[]>([]);
   const [marketplaces, setMarketplaces] = useState<any[]>([]);
   const [filaments, setFilaments] = useState<any[]>([]);
+  const [supplies, setSupplies] = useState<any[]>([]);
+  const [includeAffiliate, setIncludeAffiliate] = useState(false);
   const [printers, setPrinters] = useState<any[]>([]);
   const [energyPrice, setEnergyPrice] = useState<number>(0.95);
   const [pricingSettings, setPricingSettings] = useState<PricingSettings>(DEFAULT_PRICING_SETTINGS);
@@ -41,6 +28,7 @@ export function Precificacao() {
   const [targetType, setTargetType] = useState<TargetType>('profit');
   const [targetValue, setTargetValue] = useState<number>(10.00);
   const [isSavingPrice, setIsSavingPrice] = useState(false);
+  const pendingSave = useRef<{ key: string; requestId: string } | null>(null);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -68,13 +56,17 @@ export function Precificacao() {
       setFilaments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    const unsubSupplies = onSnapshot(collection(db, `tenants/${tenantId}/supplies`), snapshot => {
+      setSupplies(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
     const unsubPrinters = onSnapshot(collection(db, `tenants/${tenantId}/printers`), (snapshot) => {
       setPrinters(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
     const unsubPrinterSettings = onSnapshot(doc(db, `tenants/${tenantId}/settings/printer`), (docSnap) => {
       if (docSnap.exists() && docSnap.data().energyPrice !== undefined) {
-        setEnergyPrice(Number(docSnap.data().energyPrice) || 0.95);
+        setEnergyPrice(Number(docSnap.data().energyPrice ?? 0.95));
       }
     });
 
@@ -87,6 +79,7 @@ export function Precificacao() {
       unsubMarketplaces();
       unsubFilaments();
       unsubPrinters();
+      unsubSupplies();
       unsubPrinterSettings();
       unsubPricingSettings();
     };
@@ -108,166 +101,40 @@ export function Precificacao() {
   const variation = product?.variations?.find((v: any) => v.id === variationId);
   const channel = marketplaces.find(c => c.id === channelId);
 
-  const calculateUnitCost = (v: any, fixedCost: number) => {
-    if (!v) return 0;
-    return calculateVariationUnitCostBreakdown({
-      variation: v,
-      fixedCost,
-      filaments,
-      printers,
-      energyPrice,
-      pricingSettings,
-    }).total;
-  };
-
-  const unitBreakdown = variation
-    ? calculateVariationUnitCostBreakdown({
-        variation,
-        fixedCost: product?.fixedCost || 0,
-        filaments,
-        printers,
-        energyPrice,
-        pricingSettings,
-      })
-    : null;
-
-  const unitCost = variation ? calculateUnitCost(variation, product?.fixedCost || 0) : 0;
-
-  const calculations = useMemo(() => {
-    if (!channel) return null;
-
-    const cost = unitCost + (channel.averageShipping || 0);
-    const percentFeeDecimal = (channel.commissionPercent || 0) / 100;
-    const fixedFee = channel.fixedFee || 0;
-
-    let finalPrice = 0;
-
-    try {
-      if (targetType === 'profit') {
-        finalPrice = (cost + fixedFee + targetValue) / (1 - percentFeeDecimal);
-      } else if (targetType === 'margin') {
-        const marginDecimal = targetValue / 100;
-        if (1 - percentFeeDecimal - marginDecimal <= 0) {
-          finalPrice = 0;
-        } else {
-          finalPrice = (cost + fixedFee) / (1 - percentFeeDecimal - marginDecimal);
-        }
-      } else if (targetType === 'markup') {
-        const basePrice = cost * targetValue;
-        finalPrice = (basePrice + fixedFee) / (1 - percentFeeDecimal);
-      } else if (targetType === 'custom') {
-        finalPrice = targetValue;
-      }
-    } catch (e) {
-      finalPrice = 0;
-    }
-
-    if (finalPrice < 0 || !isFinite(finalPrice)) finalPrice = 0;
-
-    const percentFeesAmount = finalPrice * percentFeeDecimal;
-    const totalFees = percentFeesAmount + fixedFee;
-    const netRevenue = finalPrice - totalFees;
-    const netProfit = netRevenue - cost;
-    const realMargin = finalPrice > 0 ? (netProfit / finalPrice) * 100 : 0;
-    const realMarkup = cost > 0 ? (netRevenue / cost) : 0;
-
-    const minPrice = (cost + fixedFee) / (1 - percentFeeDecimal);
-    
-    let aggressivePrice = 0;
-    if (targetType === 'profit') {
-      aggressivePrice = (cost + fixedFee + (targetValue / 2)) / (1 - percentFeeDecimal);
-    } else if (targetType === 'margin') {
-      aggressivePrice = (cost + fixedFee) / (1 - percentFeeDecimal - ((targetValue / 2) / 100));
-    } else if (targetType === 'markup') {
-      aggressivePrice = ((cost * (targetValue > 1 ? targetValue - 0.5 : 1)) + fixedFee) / (1 - percentFeeDecimal);
-    } else {
-      aggressivePrice = (cost + fixedFee) / (1 - percentFeeDecimal - 0.1);
-    }
-
-    return {
-      cost,
-      finalPrice,
-      percentFeesAmount,
-      totalFees,
-      netRevenue,
-      netProfit,
-      realMargin,
-      realMarkup,
-      minPrice,
-      aggressivePrice
-    };
-  }, [unitCost, channel, targetType, targetValue]);
-
-  const channelComparisons = useMemo(() => {
-    return marketplaces.map(ch => {
-      const cost = unitCost + (ch.averageShipping || 0);
-      const percentFeeDecimal = (ch.commissionPercent || 0) / 100;
-      const fixedFee = ch.fixedFee || 0;
-
-      let finalPrice = 0;
-      try {
-        if (targetType === 'profit') {
-          finalPrice = (cost + fixedFee + targetValue) / (1 - percentFeeDecimal);
-        } else if (targetType === 'margin') {
-          const marginDecimal = targetValue / 100;
-          if (1 - percentFeeDecimal - marginDecimal > 0) {
-            finalPrice = (cost + fixedFee) / (1 - percentFeeDecimal - marginDecimal);
-          }
-        } else if (targetType === 'markup') {
-          const basePrice = cost * targetValue;
-          finalPrice = (basePrice + fixedFee) / (1 - percentFeeDecimal);
-        } else if (targetType === 'custom') {
-          finalPrice = targetValue;
-        }
-      } catch (e) {
-        finalPrice = 0;
-      }
-
-      if (finalPrice < 0 || !isFinite(finalPrice)) finalPrice = 0;
-
-      const percentFeesAmount = finalPrice * percentFeeDecimal;
-      const totalFees = percentFeesAmount + fixedFee;
-      const netRevenue = finalPrice - totalFees;
-      const netProfit = netRevenue - cost;
-      const realMargin = finalPrice > 0 ? (netProfit / finalPrice) * 100 : 0;
-
-      return {
-        channel: ch,
-        finalPrice,
-        netProfit,
-        realMargin,
-        totalFees
-      };
-    }).sort((a, b) => b.realMargin - a.realMargin);
-  }, [unitCost, marketplaces, targetType, targetValue]);
+  const unitBreakdown = variation ? calculateVariationUnitCostBreakdown({
+    variation, fixedCost: product?.fixedCost ?? 0, filaments, supplies,
+    supplyUsages: product?.supplyUsages ?? [], wastes: product?.wastes ?? [], printers, energyPrice, pricingSettings,
+  }) : null;
+  const pricingState = useMemo(() => {
+    if (!channel || !unitBreakdown) return { calculation: null, error: 'Selecione produto, variação e canal.' };
+    if (!unitBreakdown.complete) return { calculation: null, error: unitBreakdown.issues.join(' ') };
+    try { return { calculation: calculateChannelPrice(unitBreakdown.totalDecimal, channel, targetType, targetValue, includeAffiliate), error: '' }; }
+    catch (error) { return { calculation: null, error: (error as Error).message }; }
+  }, [unitBreakdown, channel, targetType, targetValue, includeAffiliate]);
+  const calculations = pricingState.calculation;
+  const channelComparisons = useMemo(() => marketplaces.flatMap(ch => {
+    if (!unitBreakdown?.complete) return [];
+    try { return [{ channel: ch, ...calculateChannelPrice(unitBreakdown.totalDecimal, ch, targetType, targetValue, includeAffiliate) }]; }
+    catch { return []; }
+  }).sort((a, b) => (b.realMargin ?? -Infinity) - (a.realMargin ?? -Infinity)), [unitBreakdown, marketplaces, targetType, targetValue, includeAffiliate]);
 
   const handleSaveSuggestedPrice = async () => {
     if (!tenantId || !user || !product || !variation || !channel || !calculations) return;
 
     try {
       setIsSavingPrice(true);
-      const savedAt = new Date().toISOString();
-      const newEntry: ProductPricingHistoryEntry = {
-        id: `${savedAt}-${variation.id}-${channel.id}`,
-        savedAt,
-        variationId: variation.id,
-        variationLabel: `${variation.color} (${variation.material})`,
-        channelId: channel.id,
-        channelName: channel.name,
-        targetType,
-        targetValue,
-        suggestedPrice: calculations.finalPrice,
-        cost: calculations.cost,
-        profit: calculations.netProfit,
-        margin: calculations.realMargin,
-      };
+      const key = JSON.stringify([tenantId, product.id, variation.id, channel.id, targetType, targetValue, includeAffiliate]);
+      if (pendingSave.current?.key !== key) pendingSave.current = { key, requestId: crypto.randomUUID() };
+      const saved = await saveCalculatedPrice(user, tenantId, product.id, {
+        requestId: pendingSave.current.requestId, variationId: variation.id, channelId: channel.id,
+        targetType, targetValue, includeAffiliate,
+      });
 
-      await appendPriceSnapshot(db, tenantId, product.id, newEntry, user.uid);
-
-      toast.success('Preço sugerido salvo no produto!');
+      pendingSave.current = null;
+      toast.success(`Preço recalculado e salvo: R$ ${Number(saved.suggestedPrice).toFixed(2)}`);
     } catch (error) {
       console.error('Error saving suggested price:', error);
-      toast.error('Erro ao salvar preço sugerido no produto.');
+      toast.error(error instanceof Error ? error.message : 'Erro ao salvar preço sugerido.');
     } finally {
       setIsSavingPrice(false);
     }
@@ -277,12 +144,14 @@ export function Precificacao() {
     if (!tenantId) return;
 
     try {
+      const values = [pricingSettings.failureRate, pricingSettings.maintenancePerMonth, pricingSettings.monthlyUsageHours];
+      if (values.some(v => !Number.isFinite(v) || v < 0) || pricingSettings.failureRate > 100 || (pricingSettings.maintenancePerMonth > 0 && pricingSettings.monthlyUsageHours <= 0)) throw new Error('Configurações inválidas: confira reserva, manutenção e horas.');
       setIsSavingSettings(true);
       await setDoc(doc(db, `tenants/${tenantId}/settings/pricing`), pricingSettings, { merge: true });
       toast.success('Configurações avançadas de precificação salvas.');
     } catch (error) {
       console.error('Error saving pricing settings:', error);
-      toast.error('Erro ao salvar configurações avançadas.');
+      toast.error(error instanceof Error ? error.message : 'Erro ao salvar configurações.');
     } finally {
       setIsSavingSettings(false);
     }
@@ -311,10 +180,12 @@ export function Precificacao() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
           <h2 className="font-headline text-3xl font-bold text-primary tracking-tighter">Simulador de Preço</h2>
-          <p className="text-on-surface-variant font-sans text-sm mt-1">Calcule o preço ideal garantindo sua margem em cada canal de venda.</p>
+          <p className="text-on-surface-variant font-sans text-sm mt-1">Calcule o preço ideal conferindo sua margem em cada canal de venda.</p>
         </div>
       </div>
 
+      <p role="note" className="text-sm text-on-surface-variant">Estimativa da ficha legada: fixos e perdas por unidade; reserva sobre o subtotal. Não representa custo realizado. Taxa fixa e frete simulam uma venda de uma unidade.</p>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={includeAffiliate} onChange={e => setIncludeAffiliate(e.target.checked)} />Incluir comissão de afiliados sobre o preço bruto</label>
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
         
         {/* BLOCO ESQUERDO - ENTRADAS */}
@@ -328,11 +199,11 @@ export function Precificacao() {
             <div className="space-y-5">
               <div className="grid grid-cols-2 gap-4 pt-2">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Custo Total (R$)</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Custo coberto (R$)</label>
                   <input 
                     type="text" 
                     disabled
-                    value={calculations?.cost.toFixed(2) || '0.00'}
+                    value={calculations?.cost.toFixed(2) ?? 'Pendente'}
                     className="w-full bg-surface-container-highest border-none rounded p-2.5 text-sm tabular-nums font-bold text-on-surface-variant cursor-not-allowed" 
                   />
                   <p className="text-[9px] text-on-surface-variant/70">Produto + Frete Subs.</p>
@@ -418,7 +289,7 @@ export function Precificacao() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Taxa de Falha (%)</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Reserva adicional (%)</label>
                     <input
                       type="number"
                       step="0.1"
@@ -461,6 +332,7 @@ export function Precificacao() {
         </div>
 
         {/* BLOCO DIREITO - RESULTADOS */}
+        {pricingState.error && <p role="alert" className="text-error p-4">{pricingState.error}</p>}
         {calculations && (
           <div className="xl:col-span-7 space-y-6">
             <div className="sticky top-3 z-20">
@@ -539,18 +411,13 @@ export function Precificacao() {
                   </span>
                 </div>
                 
-                {calculations.finalPrice === 0 && (
-                  <div className="mt-4 inline-flex items-center gap-2 bg-error/20 text-error px-3 py-1.5 rounded text-sm font-bold">
-                    <AlertCircle className="w-4 h-4" />
-                    Margem inviável com as taxas deste canal.
-                  </div>
-                )}
+
 
                 <div className="mt-6 flex flex-wrap items-center gap-3">
                   <button
                     type="button"
                     onClick={handleSaveSuggestedPrice}
-                    disabled={isSavingPrice || calculations.finalPrice <= 0}
+                    disabled={isSavingPrice}
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-on-primary font-bold text-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                   >
                     {isSavingPrice ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4" />}
@@ -571,7 +438,7 @@ export function Precificacao() {
                 {unitBreakdown && (
                   <div className="grid grid-cols-2 gap-3 mb-2">
                     <div className="rounded-lg bg-surface-container p-3">
-                      <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Falha embutida</div>
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Reserva embutida</div>
                       <div className="mt-1 text-base font-bold tabular-nums text-on-surface">R$ {unitBreakdown.failureAdjustmentPerUnit.toFixed(2)}</div>
                     </div>
                     <div className="rounded-lg bg-surface-container p-3">
@@ -612,11 +479,11 @@ export function Precificacao() {
               <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-outline-variant/20">
                 <div className="bg-surface-container p-4 rounded-lg text-center">
                   <span className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Margem Real</span>
-                  <span className="text-2xl font-headline font-bold text-primary tabular-nums">{calculations.realMargin.toFixed(1)}%</span>
+                  <span className="text-2xl font-headline font-bold text-primary tabular-nums">{(calculations.realMargin?.toFixed(1) ?? '—')}%</span>
                 </div>
                 <div className="bg-surface-container p-4 rounded-lg text-center">
                   <span className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Markup Real</span>
-                  <span className="text-2xl font-headline font-bold text-primary tabular-nums">{calculations.realMarkup.toFixed(2)}x</span>
+                  <span className="text-2xl font-headline font-bold text-primary tabular-nums">{(calculations.realMarkup?.toFixed(2) ?? '—')}x</span>
                 </div>
               </div>
             </div>
@@ -666,7 +533,7 @@ export function Precificacao() {
                         <td className="px-4 py-3 text-right tabular-nums text-sm font-bold text-secondary">R$ {comp.netProfit.toFixed(2)}</td>
                         <td className="px-4 py-3 text-right">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold tabular-nums ${comp.realMargin < 0 ? 'bg-error text-on-error' : comp.realMargin < 20 ? 'bg-tertiary-container text-on-tertiary-container' : 'bg-secondary-container text-on-secondary-container'}`}>
-                            {comp.realMargin.toFixed(1)}%
+                            {(comp.realMargin?.toFixed(1) ?? '—')}%
                           </span>
                         </td>
                       </tr>

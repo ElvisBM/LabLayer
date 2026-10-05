@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { SearchableSelect, SelectOption } from '../components/SearchableSelect';
 import toast from 'react-hot-toast';
 import { archiveProduct } from '../services/product-protection';
-import { DEFAULT_PRICING_SETTINGS, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings } from '../utils/pricing';
+import { DEFAULT_PRICING_SETTINGS, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings, suggestedPrice } from '../utils/pricing';
 
 function SearchableSelectFilament({ value, onChange, filaments, placeholder = "Buscar..." }: { value: string, onChange: (v: string) => void, filaments: Filament[], placeholder?: string }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -409,7 +409,6 @@ const PRODUCT_RECORD_TYPE_OPTIONS: Array<{ value: ProductRecordType; label: stri
   { value: 'orcamento', label: 'Orcamento' },
 ];
 
-const PRODUCT_SUGGESTED_MARKUP_MULTIPLIER = 2.2;
 
 const getProductRecordTypeLabel = (type?: string) => {
   const option = PRODUCT_RECORD_TYPE_OPTIONS.find(item => item.value === type);
@@ -1499,19 +1498,8 @@ export function Produtos({
     };
   };
 
-  const getProductPricingVariations = (product: Product | Partial<Product>) => {
-    const baseVariations = product.variations || [];
-    const productionTables = getProductProductionTables(product);
-
-    if (productionTables.length === 0) {
-      return baseVariations;
-    }
-
-    const primaryVariation = buildVariationFromProductionTables(productionTables, baseVariations[0]);
-    return baseVariations.length > 0
-      ? [primaryVariation, ...baseVariations.slice(1)]
-      : [primaryVariation];
-  };
+  // Cost estimates use saved recipe variations only; scheduling/name matches are not recipes.
+  const getProductPricingVariations = (product: Product | Partial<Product>) => product.variations || [];
 
   const getProductProductionTables = (product: Product | Partial<Product>) => {
     if (product.productionTables && product.productionTables.length > 0) {
@@ -1621,6 +1609,7 @@ export function Produtos({
 
   const generateIntelligenceData = () => {
     const alerts: string[] = [];
+    (formData.variations || []).forEach(v => alerts.push(...calculateUnitCostBreakdown(v, formData.fixedCost ?? 0, liveFormProduct).issues));
     let bestMargin = -100;
     let worstMargin = 100;
     let bestChannel = '';
@@ -1629,7 +1618,9 @@ export function Produtos({
     let count = 0;
 
     const variationsData = (formData.variations || []).map(v => {
-      const unitCost = calculateUnitCost(v, formData.fixedCost || 0, liveFormProduct);
+      const breakdown = calculateUnitCostBreakdown(v, formData.fixedCost ?? 0, liveFormProduct);
+      const unitCost = breakdown.total;
+      if (!breakdown.complete) return { ...v, unitCost, channels: [] };
       
       const channels = v.channelPrices.map(cp => {
         const fee = cp.price * (cp.feePercentage / 100);
@@ -1663,10 +1654,12 @@ export function Produtos({
   };
 
   const intel = generateIntelligenceData();
+  const liveCostBreakdown = livePrimaryVariation ? calculateUnitCostBreakdown(livePrimaryVariation, formData.fixedCost ?? 0, liveFormProduct) : null;
 
   const getProductCostRange = (product: Product) => {
     const pricingVariations = getProductPricingVariations(product);
-    if (pricingVariations.length === 0) return 'R$ 0,00';
+    if (pricingVariations.length === 0) return 'Ficha pendente';
+    if (pricingVariations.some(v => !calculateUnitCostBreakdown(v, product.fixedCost ?? 0, product).complete)) return 'Revisar custos';
     const costs = pricingVariations.map(v => calculateUnitCost(v, product.fixedCost || 0, product));
     const minCost = Math.min(...costs);
     const maxCost = Math.max(...costs);
@@ -1684,14 +1677,9 @@ export function Produtos({
 
   const getLiveSuggestedPrices = (product: Product) => {
     const pricingVariations = getProductPricingVariations(product);
-    if (pricingVariations.length === 0) {
-      const fallback = Number(product.fixedCost) || 0;
-      return fallback > 0 ? [Number((fallback * PRODUCT_SUGGESTED_MARKUP_MULTIPLIER).toFixed(2))] : [];
-    }
-
-    return pricingVariations.map(variation => (
-      Number((calculateUnitCost(variation, product.fixedCost || 0, product) * PRODUCT_SUGGESTED_MARKUP_MULTIPLIER).toFixed(2))
-    ));
+    const breakdowns = pricingVariations.map(v => calculateUnitCostBreakdown(v, product.fixedCost ?? 0, product));
+    if (!breakdowns.length || breakdowns.some(b => !b.complete)) return [];
+    return breakdowns.map(b => suggestedPrice(b.totalDecimal));
   };
 
   const getProductPriceRange = (product: Product) => {
@@ -2143,14 +2131,14 @@ export function Produtos({
                       <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
                         <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Custo Total da Impressão</p>
                         <p className="text-xl font-bold text-on-surface">
-                          R$ {(calculateUnitCost(livePrimaryVariation, formData.fixedCost || 0, liveFormProduct) * (livePrimaryVariation.quantityPerPrint || 1)).toFixed(2)}
+                          {liveCostBreakdown?.complete ? `R$ ${(liveCostBreakdown.total * livePrimaryVariation.quantityPerPrint).toFixed(2)}` : 'Revisar custos'}
                         </p>
                       </div>
                       
                       <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
                         <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Custo por Unidade</p>
                         <p className="text-xl font-bold text-primary">
-                          R$ {calculateUnitCost(livePrimaryVariation, formData.fixedCost || 0, liveFormProduct).toFixed(2)}
+                          {liveCostBreakdown?.complete ? `R$ ${liveCostBreakdown.total.toFixed(2)}` : 'Revisar custos'}
                         </p>
                       </div>
 
@@ -2270,6 +2258,7 @@ export function Produtos({
                       const unitCost = costBreakdown.total;
                       return (
                         <div key={v.id} className="flex flex-col gap-3 p-4 bg-surface-container-lowest border border-outline-variant/20 rounded-lg">
+                          {!costBreakdown.complete && <p role="alert" className="text-error text-sm">{costBreakdown.issues.join(' ')}</p>}
                           <div className="flex justify-between items-center border-b border-outline-variant/10 pb-2">
                             <h5 className="font-bold text-sm flex items-center gap-2">
                               <span className="w-3 h-3 rounded-full border border-outline-variant/30" style={{ backgroundColor: v.color === 'Preto' ? '#000' : v.color === 'Branco' ? '#fff' : '#ccc' }}></span>
@@ -2278,7 +2267,7 @@ export function Produtos({
                             <div className="flex items-center gap-4">
                               <div className="text-right">
                                 <span className="text-[10px] uppercase tracking-widest text-on-surface-variant block">Custo Unitário Final</span>
-                                <span className="font-bold text-primary tabular-nums">R$ {unitCost.toFixed(2)}</span>
+                                <span className="font-bold text-primary tabular-nums">{costBreakdown.complete ? `R$ ${unitCost.toFixed(2)}` : 'Revisar custos'}</span>
                               </div>
                               <button onClick={() => removeVariation(v.id)} className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded">
                                 <Trash2 className="w-4 h-4" />

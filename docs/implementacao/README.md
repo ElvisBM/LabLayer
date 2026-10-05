@@ -18,13 +18,13 @@ O CI de branches/PR executa a mesma barreira. O workflow de implantação existe
 | E0.3/E0.4 — B02 | PATCH, schemas, criação com conflito, auditoria e entradas externas | Implementado e validado: 66 testes acumulados, tipos e build |
 | E0.5/E0.6 — B03 | Histórico, arquivamento e comunicação de recursos incompletos | Implementado e validado: 75 testes acumulados, tipos e build |
 | E1/B04 | Motor decimal versionado e contrato comercial | Implementado; 102 testes acumulados e gate completo aprovados; [E1](./etapa-e1.md) |
-| E1/B05 | Integração de consumidores e snapshots | Em implementação |
+| E1/B05 | Cálculos compartilhados, pendências, snapshots no servidor e custo confirmado | Implementado; 123 testes acumulados, tipos/build/auditoria aprovados; [E1](./etapa-e1.md) |
 | E2–E5 | Produtos, estoque, orçamento e conciliação | Pendente |
 
 **Fechamento local da E0:** 76 testes aprovados (29 unitários/componentes e 47 de integração), tipos e build aprovados, 0 alertas altos/críticos na árvore de produção. O ensaio final de restauração cobre 516 documentos e recusa destino com subcoleções órfãs. Ver [evidências e limites](./etapa-e0.md) e [auditoria de dependências](./dependencias-e0.json).
 
 **Antes de implantação:** reconciliar vínculos legados, preparar a claim administrativa e homologar login/provisionamento com Firebase Auth real em ambiente separado; executar backup e liberação coordenada do servidor, cliente e rules. Não executar o fluxo de deploy automático para essa versão sem essas condições. Alertas remanescentes e bundle grande estão registrados, não ocultados por alteração do threshold de testes.
 
-B04 validado com 55 testes unitários/componentes e 47 de integração, tipos, build e auditoria de produção. O próximo bloco B05 conecta consumidores, elimina divergências e preserva a identificação dos dados legados.
+B05 validado com 69 testes unitários/componentes e 54 de integração, tipos, build e auditoria de produção. O motor canônico está implementado e testado; dados existentes usam compatibilidade identificada, sem migração implícita. Próxima etapa: E2/E3, separação de receita e execução, unidades físicas e movimentos transacionais, com abertura de estoque conferida antes de ativação por empresa.
 
 O diretório `scripts/` já existia como não rastreado e não participa destes commits.

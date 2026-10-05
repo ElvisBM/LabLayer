@@ -4,7 +4,7 @@ import { collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
-import { DEFAULT_PRICING_SETTINGS, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings } from '../utils/pricing';
+import { DEFAULT_PRICING_SETTINGS, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings, suggestedPrice as suggestPrice, type PricingWasteLike } from '../utils/pricing';
 
 interface Supply {
   id: string;
@@ -72,6 +72,7 @@ interface Product {
   fixedCost?: number;
   variations?: Variation[];
   supplyUsages?: ProductSupplyUsage[];
+  wastes?: PricingWasteLike[];
   latestSuggestedPrice?: {
     suggestedPrice?: number;
     savedAt?: string;
@@ -101,7 +102,6 @@ interface Product {
   }>;
 }
 
-const MARKUP_MULTIPLIER = 2.2;
 
 export function ValoresSugeridos() {
   const { tenantId } = useAuth();
@@ -141,7 +141,7 @@ export function ValoresSugeridos() {
 
     const unsubPrinterSettings = onSnapshot(doc(db, `tenants/${tenantId}/settings/printer`), (snapshot) => {
       if (snapshot.exists() && snapshot.data().energyPrice !== undefined) {
-        setEnergyPrice(Number(snapshot.data().energyPrice) || 0.95);
+        setEnergyPrice(Number(snapshot.data().energyPrice ?? 0.95));
       }
     });
 
@@ -160,16 +160,9 @@ export function ValoresSugeridos() {
     };
   }, [tenantId]);
 
-  const calculateSupplyCostPerUnit = (product: Product) => {
-    return (product.supplyUsages || []).reduce((sum, usage) => {
-      const supply = supplies.find(item => item.id === usage.supplyId);
-      return sum + ((Number(usage.quantityPerProduct) || 0) * (Number(supply?.costPerUnit) || 0));
-    }, 0);
-  };
-
   const calculateUnitCost = (product: Product) => {
     const variation = (product.variations || [])[0];
-    if (!variation) return Number(product.fixedCost) || 0;
+    if (!variation) return null;
     return calculateVariationCost(product, variation);
   };
 
@@ -180,27 +173,33 @@ export function ValoresSugeridos() {
       filaments,
       supplies,
       supplyUsages: product.supplyUsages || [],
+      wastes: product.wastes || [],
       printers,
       energyPrice,
       pricingSettings,
-    }).total;
+    });
   };
 
-  const calculateSuggestedSalePrice = (unitCost: number) => Number((unitCost * MARKUP_MULTIPLIER).toFixed(2));
+  const calculateSuggestedSalePrice = (cost: string) => suggestPrice(cost);
 
   const productRows = useMemo(() => {
     return products
       .map(product => {
-        const unitCost = calculateUnitCost(product);
-        const suggestedPrice = calculateSuggestedSalePrice(unitCost);
+        const breakdown = calculateUnitCost(product);
+        const complete = breakdown?.complete ?? false;
+        const issues = breakdown?.issues ?? ['Ficha sem variação.'];
+        const unitCost = complete ? breakdown!.total : 0;
+        const suggestedPrice = complete ? calculateSuggestedSalePrice(breakdown!.totalDecimal) : 0;
+        const savedDirect = product.variations?.[0]?.channelPrices?.find(p => p.channel === 'Venda Direta')?.price;
         const currentValue = editedValues[product.id]
+          ?? (savedDirect === undefined ? undefined : savedDirect.toFixed(2))
           ?? (Number(product.latestSuggestedPrice?.suggestedPrice) > 0
             ? Number(product.latestSuggestedPrice?.suggestedPrice).toFixed(2)
-            : suggestedPrice.toFixed(2));
+            : (complete ? suggestedPrice.toFixed(2) : ''));
 
         return {
           product,
-          unitCost,
+          complete, issues, unitCost,
           suggestedPrice,
           currentValue,
         };
@@ -238,7 +237,6 @@ export function ValoresSugeridos() {
 
     try {
       setSavingIds(prev => [...prev, product.id]);
-      const savedAt = new Date().toISOString();
       const currentChannelPrices = primaryVariation.channelPrices || [];
       const hasDirectSale = currentChannelPrices.some(price => price.channel === 'Venda Direta');
 
@@ -255,12 +253,7 @@ export function ValoresSugeridos() {
 
       await updateDoc(doc(db, `tenants/${tenantId}/products`, product.id), {
         variations: nextVariations,
-        latestSuggestedPrice: {
-          suggestedPrice: parsed,
-          savedAt,
-          channelName: 'Venda Direta',
-          variationLabel: `${primaryVariation.color || 'Padrão'} (${primaryVariation.material || 'Material'})`,
-        },
+
       });
 
       setEditedValues(prev => ({ ...prev, [product.id]: parsed.toFixed(2) }));
@@ -297,7 +290,7 @@ export function ValoresSugeridos() {
 
       <p role="note" className="text-sm text-on-surface-variant">
         As sugestões acompanham os custos atuais. Preços salvos e histórico permanecem preservados;
-        para mudar o valor de venda, revise e salve cada produto individualmente.
+        para mudar o valor de venda, revise e salve cada produto individualmente. Fichas legadas usam fixos/perdas por unidade e reserva sobre o subtotal; itens com custos pendentes não entram nos totais.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -351,17 +344,18 @@ export function ValoresSugeridos() {
                 </tr>
               )}
 
-              {productRows.map(({ product, unitCost, suggestedPrice, currentValue }) => (
+              {productRows.map(({ product, complete, issues, unitCost, suggestedPrice, currentValue }) => (
                 <tr key={product.id} className="hover:bg-surface-container-low transition-colors">
                   <td className="px-6 py-4">
                     <div>
                       <p className="text-sm font-bold text-primary">{product.name}</p>
+                      {!complete && <p className="text-xs text-error">{issues.join(' ')}</p>}
                       <p className="text-[10px] text-on-surface-variant uppercase tracking-widest">{product.status || 'sem status'}</p>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-right text-sm font-semibold tabular-nums">{Number(product.stock) || 0}</td>
-                  <td className="px-6 py-4 text-right text-sm font-semibold tabular-nums">R$ {unitCost.toFixed(2)}</td>
-                  <td className="px-6 py-4 text-right text-sm font-bold tabular-nums text-secondary">R$ {suggestedPrice.toFixed(2)}</td>
+                  <td className="px-6 py-4 text-right text-sm font-semibold tabular-nums">{complete ? `R$ ${unitCost.toFixed(2)}` : 'Revisar custos'}</td>
+                  <td className="px-6 py-4 text-right text-sm font-bold tabular-nums text-secondary">{complete ? `R$ ${suggestedPrice.toFixed(2)}` : 'Indisponível'}</td>
                   <td className="px-6 py-4">
                     <div className="flex justify-end">
                       <input

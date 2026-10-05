@@ -4,7 +4,7 @@ import { initializeApp, deleteApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { doc, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { readFileSync } from 'node:fs';
-import { appendPriceSnapshot, archiveProduct } from '../../src/services/product-protection';
+import { archiveProduct } from '../../src/services/product-protection';
 
 let rules: RulesTestEnvironment;
 const app = initializeApp({ projectId: 'demo-lablayer-test' }, 'protection-test');
@@ -47,21 +47,17 @@ it('E0.5 bloqueia exclusão e devolução pelo batch legado, incluindo redução
   await assertFails(updateDoc(doc(client, 'tenants/a/printers/m'), { usedHours: 0 }));
   expect((await db.doc('tenants/a/filaments/f').get()).data()?.stockKg).toBe(1);
 });
-it('E0.5 nova sugestão preserva as 50 anteriores sem truncar e cria registro imutável', async () => {
+it('E1 histórico anterior permanece imutável e cliente não grava cálculo forjado', async () => {
   const client = clientFor('a');
-  await appendPriceSnapshot(client, 'a', 'p', entry, 'a');
-  expect((await db.doc('tenants/a/products/p').get()).data()?.pricingHistory).toEqual(oldHistory);
-  expect((await db.doc('tenants/a/products/p').get()).data()?.latestSuggestedPrice).toEqual(entry);
-  expect((await db.doc('tenants/a/products/p/pricingSnapshots/new-price').get()).data()).toMatchObject({ ...entry, calculationVersion: 'legacy-ui', actorUid: 'a' });
-  await assertFails(updateDoc(doc(client, 'tenants/a/products/p/pricingSnapshots/new-price'), { suggestedPrice: 99 }));
-  await assertFails(deleteDoc(doc(client, 'tenants/a/products/p/pricingSnapshots/new-price')));
+  await db.doc('tenants/a/products/p/pricingSnapshots/old-price').set({ ...entry, calculationVersion: 'legacy-ui', actorUid: 'a' });
+  await assertFails(setDoc(doc(client, 'tenants/a/products/p/pricingSnapshots/new-price'), { ...entry, calculationVersion: 'legacy-ui', actorUid: 'a' }));
+  await assertFails(updateDoc(doc(client, 'tenants/a/products/p/pricingSnapshots/old-price'), { suggestedPrice: 99 }));
+  await assertFails(deleteDoc(doc(client, 'tenants/a/products/p/pricingSnapshots/old-price')));
   await assertFails(updateDoc(doc(client, 'tenants/a/products/p'), { pricingHistory: [] }));
-  await assertFails(updateDoc(doc(client, 'tenants/a/products/p'), { pricingHistory: oldHistory.map(x => ({ ...x, suggestedPrice: 99 })) }));
+  expect((await db.doc('tenants/a/products/p').get()).data()?.pricingHistory).toEqual(oldHistory);
 });
-it('E0.5 impede forjar ator ou gravar histórico para outra empresa', async () => {
-  await expect(appendPriceSnapshot(clientFor('a'), 'a', 'p', entry, 'outro')).rejects.toThrow();
-  await expect(appendPriceSnapshot(clientFor('b'), 'a', 'p', entry, 'b')).rejects.toThrow();
-  expect((await db.doc('tenants/a/products/p').get()).data()).not.toHaveProperty('latestSuggestedPrice');
+it('E1 outro tenant não consegue forjar snapshot', async () => {
+  await assertFails(setDoc(doc(clientFor('b'), 'tenants/a/products/p/pricingSnapshots/new-price'), entry));
 });
 it('E0.5 execução concluída não é apagada por troca de tela', async () => {
   await db.doc('tenants/a/productionOrders/run').set({ productName: 'Peça', status: 'concluida', createdAt: '2026-01-01' });

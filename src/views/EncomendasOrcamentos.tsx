@@ -5,7 +5,7 @@ import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { SearchableSelect, SelectOption } from '../components/SearchableSelect';
 import toast from 'react-hot-toast';
-import { DEFAULT_PRICING_SETTINGS, type PricingPrinterLike, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings } from '../utils/pricing';
+import { DEFAULT_PRICING_SETTINGS, type PricingPrinterLike, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings, suggestedPrice } from '../utils/pricing';
 
 type RequestType = 'orcamento' | 'encomenda';
 type RequestStatus = 'aguardando-orcamento' | 'orcado' | 'fila-producao' | 'produzindo' | 'finalizado';
@@ -75,7 +75,6 @@ const STATUS_OPTIONS: Array<{ value: RequestStatus; label: string }> = [
   { value: 'finalizado', label: 'Finalizado' },
 ];
 
-const SUGGESTED_MARKUP_MULTIPLIER = 2.2;
 
 const createFilamentEntry = (): RequestFilament => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -185,7 +184,7 @@ export function EncomendasOrcamentos() {
 
     const unsubPrinterSettings = onSnapshot(doc(db, `tenants/${tenantId}/settings/printer`), (snapshot) => {
       if (snapshot.exists() && snapshot.data().energyPrice !== undefined) {
-        setEnergyPrice(Number(snapshot.data().energyPrice) || 0.95);
+        setEnergyPrice(Number(snapshot.data().energyPrice ?? 0.95));
       }
     });
 
@@ -229,6 +228,7 @@ export function EncomendasOrcamentos() {
 
     if (materials.length === 0 || Number(formData.productionTimeHours) <= 0) {
       return {
+        complete: false, issues: ['Informe material e tempo por unidade.'],
         estimatedUnitCost: 0,
         suggestedUnitPrice: 0,
         totalSuggestedPrice: 0,
@@ -249,11 +249,14 @@ export function EncomendasOrcamentos() {
       pricingSettings,
     });
 
-    const estimatedUnitCost = Number(breakdown.total.toFixed(2));
-    const suggestedUnitPrice = Number((estimatedUnitCost * SUGGESTED_MARKUP_MULTIPLIER).toFixed(2));
-    const totalSuggestedPrice = Number((suggestedUnitPrice * Math.max(1, Number(formData.requestedQuantity) || 1)).toFixed(2));
+    const quantity = Number(formData.requestedQuantity);
+    const complete = breakdown.complete && Number.isSafeInteger(quantity) && quantity > 0;
+    const estimatedUnitCost = complete ? breakdown.total : 0;
+    const suggestedUnitPrice = complete ? suggestedPrice(breakdown.totalDecimal) : 0;
+    const totalSuggestedPrice = complete ? suggestedPrice(breakdown.totalDecimal, quantity) : 0;
 
     return {
+      complete, issues: complete ? [] : [...breakdown.issues, ...(!Number.isSafeInteger(quantity) || quantity <= 0 ? ['Quantidade deve ser inteira e positiva.'] : [])],
       estimatedUnitCost,
       suggestedUnitPrice,
       totalSuggestedPrice,
@@ -344,6 +347,8 @@ export function EncomendasOrcamentos() {
     if (!tenantId) return;
 
     try {
+      if (!Number.isSafeInteger(Number(formData.requestedQuantity)) || Number(formData.requestedQuantity) <= 0) throw new Error('Quantidade deve ser inteira e positiva.');
+      if (!Number.isFinite(Number(formData.quotedPrice)) || Number(formData.quotedPrice) < 0) throw new Error('Preço inválido.');
       const payload = {
         title: formData.title.trim(),
         type: formData.type,
@@ -367,7 +372,7 @@ export function EncomendasOrcamentos() {
         quoteMediaUrl: formData.quoteMediaUrl?.trim() || '',
         estimatedUnitCost: pricingPreview.estimatedUnitCost,
         suggestedUnitPrice: pricingPreview.suggestedUnitPrice,
-        quotedPrice: Number(formData.quotedPrice) || pricingPreview.totalSuggestedPrice,
+        quotedPrice: Number(formData.quotedPrice ?? pricingPreview.totalSuggestedPrice),
         createdAt: formData.createdAt || new Date().toISOString(),
         quoteSentAt: formData.quoteSentAt || '',
         approvedAt: formData.approvedAt || '',
@@ -400,7 +405,7 @@ export function EncomendasOrcamentos() {
       ...request,
       filaments: request.filaments && request.filaments.length > 0 ? request.filaments : [createFilamentEntry()],
     });
-    setIsQuotePriceManual(Number(request.quotedPrice) > 0 && Number(request.quotedPrice) !== Number((request.suggestedUnitPrice || 0) * Math.max(1, request.requestedQuantity || 1)));
+    setIsQuotePriceManual(true); // Stored quote totals are never automatically repriced on edit.
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -693,6 +698,8 @@ export function EncomendasOrcamentos() {
                 </button>
               </div>
 
+              <p role="note" className="text-sm text-on-surface-variant">Estimativa preliminar: pesos e tempo abaixo são por unidade. Não inclui insumos, embalagem, trabalho manual ou taxas do canal. Para lotes, confirme a ficha de produção antes de emitir proposta.</p>
+              {!pricingPreview.complete && <p role="alert" className="text-error text-sm">{pricingPreview.issues.join(' ')}</p>}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Impressora</label>
@@ -704,7 +711,7 @@ export function EncomendasOrcamentos() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Tempo de Produção (h)</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Tempo por unidade (h)</label>
                   <input
                     type="number"
                     min="0"
@@ -777,15 +784,15 @@ export function EncomendasOrcamentos() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
                   <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Custo Unitário</div>
-                  <div className="text-2xl font-headline font-bold text-on-surface">{formatCurrency(pricingPreview.estimatedUnitCost)}</div>
+                  <div className="text-2xl font-headline font-bold text-on-surface">{pricingPreview.complete ? formatCurrency(pricingPreview.estimatedUnitCost) : 'Pendente'}</div>
                 </div>
                 <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
                   <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Sugestão por Unidade</div>
-                  <div className="text-2xl font-headline font-bold text-primary">{formatCurrency(pricingPreview.suggestedUnitPrice)}</div>
+                  <div className="text-2xl font-headline font-bold text-primary">{pricingPreview.complete ? formatCurrency(pricingPreview.suggestedUnitPrice) : 'Pendente'}</div>
                 </div>
                 <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
                   <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Sugestão Total</div>
-                  <div className="text-2xl font-headline font-bold text-on-surface">{formatCurrency(pricingPreview.totalSuggestedPrice)}</div>
+                  <div className="text-2xl font-headline font-bold text-on-surface">{pricingPreview.complete ? formatCurrency(pricingPreview.totalSuggestedPrice) : 'Pendente'}</div>
                 </div>
               </div>
             </div>

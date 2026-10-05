@@ -96,3 +96,8 @@ describe('E1 contrato comercial', () => {
     }
   });
 });
+it('soma materiais multicoloridos a preços distintos sem arredondar por material', () => {
+  const input = goldenCost();
+  input.runs[0].materials = [{ materialId: 'a', totalMg: 400, pricePerKg: '100', source: 'manual' }, { materialId: 'b', totalMg: 600, pricePerKg: '150', source: 'manual' }];
+  expect(calculateCost(input).runs[0].parts.material).toBe('0.13');
+});

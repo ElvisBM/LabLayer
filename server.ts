@@ -1,3 +1,4 @@
+import { registerPricingRoutes } from './server/pricing';
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import fs from "fs";
@@ -12,7 +13,7 @@ import { registerSessionRoute, validId } from "./server/session";
 import { normalizeCustomRequest, validateDocument } from "./server/admin-contract";
 import { registerAdminWrites } from "./server/admin-writes";
 import { registerWhatsAppIngress } from "./server/whatsapp";
-import { DEFAULT_PRICING_SETTINGS, calculateVariationUnitCostBreakdown, normalizePricingSettings } from "./src/utils/pricing";
+import { DEFAULT_PRICING_SETTINGS, calculateVariationUnitCostBreakdown, normalizePricingSettings, suggestedPrice } from "./src/utils/pricing";
 
 export type AppOptions = {
   database?: Firestore | null;
@@ -28,7 +29,6 @@ const FIRESTORE_DATABASE_ID = env.FIRESTORE_DATABASE_ID || "ai-studio-914d19ee-c
 const FIREBASE_SERVICE_ACCOUNT_FILE = env.FIREBASE_SERVICE_ACCOUNT_FILE || path.join(process.cwd(), "firebase-service-account.json");
 const FIREBASE_STORAGE_BUCKET = env.FIREBASE_STORAGE_BUCKET?.trim() || "";
 const ADMIN_API_DOCS_PATH = path.join(process.cwd(), "docs", "admin-api.md");
-const PRODUCT_SUGGESTED_MARKUP_MULTIPLIER = 2.2;
 let resolvedFirebaseStorageBucket = FIREBASE_STORAGE_BUCKET;
 
 type ScopedApiKey = {
@@ -336,7 +336,7 @@ const calculateProductVariationCost = (
     printers: context.printers,
     energyPrice: context.energyPrice,
     pricingSettings: context.pricingSettings,
-  }).total;
+  });
 };
 
 const buildProductComputedPricing = (
@@ -346,8 +346,11 @@ const buildProductComputedPricing = (
   const variations = (Array.isArray(product.variations) ? product.variations : [])
     .filter((variation): variation is Record<string, unknown> => isPlainObject(variation));
 
-  const unitCosts = variations.map((variation) => Number(calculateProductVariationCost(product, variation, context).toFixed(2)));
-  const suggestedSalePrices = unitCosts.map((unitCost) => Number((unitCost * PRODUCT_SUGGESTED_MARKUP_MULTIPLIER).toFixed(2)));
+  const breakdowns = variations.map(variation => calculateProductVariationCost(product, variation, context));
+  const complete = breakdowns.length > 0 && breakdowns.every(b => b.complete);
+  const issues = breakdowns.length ? breakdowns.flatMap(b => b.issues) : ['Ficha sem variação.'];
+  const unitCosts = complete ? breakdowns.map(b => Number(b.totalDecimal)) : [];
+  const suggestedSalePrices = complete ? breakdowns.map(b => suggestedPrice(b.totalDecimal)) : [];
   const savedSalePrices = getSavedProductSalePrices(product);
   const latestSuggestedPrice = isPlainObject(product.latestSuggestedPrice)
     ? Number(product.latestSuggestedPrice.suggestedPrice) || 0
@@ -362,12 +365,13 @@ const buildProductComputedPricing = (
     : (suggestedSalePrices.length > 0 ? "automatic_suggestion" : (latestSuggestedPrice > 0 ? "latest_suggested_price" : "unavailable"));
 
   return {
-    calculatedUnitCost: unitCosts[0] ?? (Number(product.fixedCost) || 0),
+    calculationVersion: 'legacy-compatible-v2',
+    pricingComplete: complete,
+    pricingIssues: issues,
+    calculatedUnitCost: unitCosts[0] ?? null,
     calculatedUnitCostRange: unitCosts,
     calculatedUnitCostLabel: formatCurrencyRangeLabel(unitCosts),
-    calculatedSuggestedSalePrice: suggestedSalePrices[0] ?? (Number(product.fixedCost) > 0
-      ? Number((Number(product.fixedCost) * PRODUCT_SUGGESTED_MARKUP_MULTIPLIER).toFixed(2))
-      : 0),
+    calculatedSuggestedSalePrice: suggestedSalePrices[0] ?? null,
     calculatedSuggestedSalePriceRange: suggestedSalePrices,
     calculatedSuggestedSalePriceLabel: formatCurrencyRangeLabel(suggestedSalePrices),
     resolvedSalePrice: resolvedSalePrices[0] ?? 0,
@@ -401,7 +405,7 @@ const loadProductPricingContext = async (tenantId: string): Promise<ProductPrici
     filaments: filamentsSnapshot.docs.map((docSnapshot) => ({ id: docSnapshot.id, ...docSnapshot.data() })),
     supplies: suppliesSnapshot.docs.map((docSnapshot) => ({ id: docSnapshot.id, ...docSnapshot.data() })),
     printers: printersSnapshot.docs.map((docSnapshot) => ({ id: docSnapshot.id, ...docSnapshot.data() })),
-    energyPrice: printerSettingsSnapshot.exists ? Number(printerSettingsSnapshot.data()?.energyPrice) || 0.95 : 0.95,
+    energyPrice: printerSettingsSnapshot.exists ? Number(printerSettingsSnapshot.data()?.energyPrice ?? 0.95) : 0.95,
     pricingSettings: normalizePricingSettings(pricingSettingsSnapshot.exists ? pricingSettingsSnapshot.data() : null),
   };
 };
@@ -476,6 +480,7 @@ const hasCollectionFilters = (query: express.Request["query"]) => {
   app.use(express.json());
 
   registerSessionRoute(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
+  registerPricingRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
 
   // API routes FIRST
   app.get("/api/health", (req, res) => {
