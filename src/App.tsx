@@ -19,6 +19,7 @@ import { Financeiro } from './views/Financeiro';
 import { Configuracoes } from './views/Configuracoes';
 import { SuperAdmin } from './views/SuperAdmin';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { logout } from './firebase';
 import { Login } from './views/Login';
 
 import { Toaster } from 'react-hot-toast';
@@ -31,7 +32,7 @@ function MainApp() {
     mode: 'new',
     productId: null,
   });
-  const { user, loading } = useAuth();
+  const { user, loading, initializationError } = useAuth();
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-surface text-primary font-bold">Carregando...</div>;
@@ -39,6 +40,14 @@ function MainApp() {
 
   if (!user) {
     return <Login />;
+  }
+
+  if (initializationError) {
+    return <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-8 bg-surface">
+      <p role="alert">{initializationError}</p>
+      <button onClick={() => window.location.reload()}>Tentar novamente</button>
+      <button onClick={() => logout()}>Sair</button>
+    </div>;
   }
 
   const renderView = () => {

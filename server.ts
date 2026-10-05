@@ -5,14 +5,27 @@ import path from "path";
 import { createHash, randomUUID } from "crypto";
 import WooCommerceRestApiModule from "@woocommerce/woocommerce-rest-api";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
-import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { FieldValue, getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
+import { getAuth, type DecodedIdToken } from "firebase-admin/auth";
+import { fileURLToPath } from "node:url";
+import { registerSessionRoute } from "./server/session";
 import { DEFAULT_PRICING_SETTINGS, calculateVariationUnitCostBreakdown, normalizePricingSettings } from "./src/utils/pricing";
 
+export type AppOptions = {
+  database?: Firestore | null;
+  verifyIdToken?: (token: string) => Promise<DecodedIdToken>;
+  env?: NodeJS.ProcessEnv;
+  serveFrontend?: boolean;
+};
+
+// Importing the module never reads credentials, starts a server or opens a database.
+export async function createApp(options: AppOptions = {}) {
+const env = options.env ?? process.env;
 const WooCommerceRestApi = (WooCommerceRestApiModule as unknown as { default?: typeof WooCommerceRestApiModule }).default || WooCommerceRestApiModule;
-const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || "ai-studio-914d19ee-caef-46d9-9cf8-561cc915d716";
-const FIREBASE_SERVICE_ACCOUNT_FILE = process.env.FIREBASE_SERVICE_ACCOUNT_FILE || path.join(process.cwd(), "firebase-service-account.json");
-const FIREBASE_STORAGE_BUCKET = process.env.FIREBASE_STORAGE_BUCKET?.trim() || "";
+const FIRESTORE_DATABASE_ID = env.FIRESTORE_DATABASE_ID || "ai-studio-914d19ee-caef-46d9-9cf8-561cc915d716";
+const FIREBASE_SERVICE_ACCOUNT_FILE = env.FIREBASE_SERVICE_ACCOUNT_FILE || path.join(process.cwd(), "firebase-service-account.json");
+const FIREBASE_STORAGE_BUCKET = env.FIREBASE_STORAGE_BUCKET?.trim() || "";
 const ADMIN_API_DOCS_PATH = path.join(process.cwd(), "docs", "admin-api.md");
 const PRODUCT_SUGGESTED_MARKUP_MULTIPLIER = 2.2;
 let resolvedFirebaseStorageBucket = FIREBASE_STORAGE_BUCKET;
@@ -52,10 +65,10 @@ const parseScopedApiKeys = (rawValue?: string): ScopedApiKey[] => {
 };
 
 // Inicializa Firebase Admin apenas uma vez
-if (!getApps().length) {
+if (options.database === undefined && !getApps().length) {
   try {
-    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    if (env.FIREBASE_SERVICE_ACCOUNT) {
+      const serviceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
       if (!resolvedFirebaseStorageBucket && serviceAccount?.project_id) {
         resolvedFirebaseStorageBucket = `${serviceAccount.project_id}.firebasestorage.app`;
       }
@@ -81,23 +94,23 @@ if (!getApps().length) {
     console.error("Erro ao inicializar Firebase Admin:", err);
   }
 }
-const db = getApps().length ? getFirestore(getApps()[0], FIRESTORE_DATABASE_ID) : null;
-const storageBucket = getApps().length
+const db = options.database !== undefined ? options.database : (getApps().length ? getFirestore(getApps()[0], FIRESTORE_DATABASE_ID) : null);
+const storageBucket = options.database === undefined && getApps().length
   ? getStorage(getApps()[0]).bucket(resolvedFirebaseStorageBucket || undefined)
   : null;
 
 // Inicializa API do WooCommerce
 const hasWooCommerceCredentials = Boolean(
-  process.env.WOOCOMMERCE_URL &&
-  process.env.WOOCOMMERCE_CONSUMER_KEY &&
-  process.env.WOOCOMMERCE_CONSUMER_SECRET,
+  env.WOOCOMMERCE_URL &&
+  env.WOOCOMMERCE_CONSUMER_KEY &&
+  env.WOOCOMMERCE_CONSUMER_SECRET,
 );
 
 const wooCommerce = hasWooCommerceCredentials
   ? new WooCommerceRestApi({
-      url: process.env.WOOCOMMERCE_URL,
-      consumerKey: process.env.WOOCOMMERCE_CONSUMER_KEY,
-      consumerSecret: process.env.WOOCOMMERCE_CONSUMER_SECRET,
+      url: env.WOOCOMMERCE_URL,
+      consumerKey: env.WOOCOMMERCE_CONSUMER_KEY,
+      consumerSecret: env.WOOCOMMERCE_CONSUMER_SECRET,
       version: 'wc/v3',
       queryStringAuth: true
     })
@@ -614,15 +627,15 @@ const writeAuditLog = async ({
   });
 };
 
-async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
-  const whatsappIngestToken = process.env.WHATSAPP_INGEST_TOKEN?.trim();
-  const adminApiToken = process.env.ADMIN_API_TOKEN?.trim();
-  const scopedApiKeys = parseScopedApiKeys(process.env.LABLAYER_API_KEYS_JSON);
+  const whatsappIngestToken = env.WHATSAPP_INGEST_TOKEN?.trim();
+  const adminApiToken = env.ADMIN_API_TOKEN?.trim();
+  const scopedApiKeys = parseScopedApiKeys(env.LABLAYER_API_KEYS_JSON);
 
   app.disable("x-powered-by");
   app.use(express.json());
+
+  registerSessionRoute(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
 
   // API routes FIRST
   app.get("/api/health", (req, res) => {
@@ -1293,8 +1306,8 @@ async function startServer() {
   // MERCADO LIVRE OAUTH & API
   // ==========================================
   app.get("/api/integrations/mercadolivre/auth", (req, res) => {
-    const clientId = process.env.ML_CLIENT_ID;
-    const redirectUri = `${process.env.APP_URL}/api/integrations/mercadolivre/callback`;
+    const clientId = env.ML_CLIENT_ID;
+    const redirectUri = `${env.APP_URL}/api/integrations/mercadolivre/callback`;
     
     if (!clientId) {
       return res.status(500).send("ML_CLIENT_ID não configurado no .env. Configure para iniciar o OAuth.");
@@ -1316,8 +1329,8 @@ async function startServer() {
   // SHOPEE OAUTH & API
   // ==========================================
   app.get("/api/integrations/shopee/auth", (req, res) => {
-    const partnerId = process.env.SHOPEE_PARTNER_ID;
-    const partnerKey = process.env.SHOPEE_PARTNER_KEY;
+    const partnerId = env.SHOPEE_PARTNER_ID;
+    const partnerKey = env.SHOPEE_PARTNER_KEY;
     
     if (!partnerId || !partnerKey) {
       return res.status(500).send("SHOPEE_PARTNER_ID ou SHOPEE_PARTNER_KEY não configurados no .env.");
@@ -1325,7 +1338,7 @@ async function startServer() {
 
     // A Shopee exige geração de assinatura (HMAC-SHA256) com timestamp
     // Redirecionamento para a página de autorização da Shopee Open Platform
-    const redirectUrl = `${process.env.APP_URL}/api/integrations/shopee/callback`;
+    const redirectUrl = `${env.APP_URL}/api/integrations/shopee/callback`;
     res.send(`Redirecionando para Shopee Auth (Simulação). Callback: ${redirectUrl}`);
   });
 
@@ -1411,13 +1424,13 @@ async function startServer() {
   });
 
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  if (options.serveFrontend && env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (options.serveFrontend) {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
@@ -1425,9 +1438,12 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  return app;
 }
 
-startServer();
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  createApp({ serveFrontend: true }).then(app => {
+    const port = Number(process.env.PORT) || 3000;
+    app.listen(port, "0.0.0.0", () => console.log(`Server running on http://localhost:${port}`));
+  }).catch(error => { console.error("Falha ao iniciar servidor:", error); process.exitCode = 1; });
+}

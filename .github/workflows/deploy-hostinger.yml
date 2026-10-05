@@ -22,8 +22,17 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Setup Java for isolated Firestore tests
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
       - name: Validate Types
         run: npm run lint
+
+      - name: Quality and business rules
+        run: npm test
 
       - name: Build App
         run: npm run build
