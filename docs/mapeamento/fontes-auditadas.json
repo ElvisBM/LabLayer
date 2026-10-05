@@ -1,0 +1,176 @@
+{
+  "data": "2026-10-05",
+  "commitAplicacao": "0fd3cbe51c551036fc58bb60afd8d068ad642620",
+  "commitSite": "d7e83448d4120c9ca0f542b738081e8d9554b5c2",
+  "nota": "Hashes da base local examinada; não atestam implantação em produção. Credenciais e ambiente excluídos.",
+  "fontes": [
+    {
+      "arquivo": "LabLayer/README.md",
+      "sha256": "23defed7744f8e8b651c807b7281ae62fe8fd42343b688164f24df8810be5c1d"
+    },
+    {
+      "arquivo": "LabLayer/docs/admin-api.md",
+      "sha256": "5bea149b2e9fecd9cc5e1a9cc14dad90dd9c27d1acb35b8a3af269c798453b51"
+    },
+    {
+      "arquivo": "LabLayer/docs/n8n/whatsapp-orcamentos.workflow.json",
+      "sha256": "a19a7bcc06eebed75e79a4a983588efc529538ce3cd7a33177fdd881e31dede8"
+    },
+    {
+      "arquivo": "LabLayer/firebase-blueprint.json",
+      "sha256": "119d8a52bf7fed4c67b110fb1ecffa598e62459e9b1a58ece3e7bc47c4c098e5"
+    },
+    {
+      "arquivo": "LabLayer/firestore.rules",
+      "sha256": "b55e92d34f74d3c070812f95667d067fc09aa6fcb1fd4d3057cf83e017e04efb"
+    },
+    {
+      "arquivo": "LabLayer/metadata.json",
+      "sha256": "5469094737bf1ebec2c1c3a1a836a4fdb7fa21641e8255c31a707700848e8f57"
+    },
+    {
+      "arquivo": "LabLayer/package.json",
+      "sha256": "d9e40761cd3e5d90edff2d78b70e488be0ba36e9e84626b263f0ed8c71bc99f3"
+    },
+    {
+      "arquivo": "LabLayer/server.ts",
+      "sha256": "b622747591821f6b98e76dc8e54b58774bc18be307cee873afda857d66fcee2a"
+    },
+    {
+      "arquivo": "LabLayer/src/App.tsx",
+      "sha256": "cd1e06b6ab4ead30f394c6311e651e7520a033bcd9e195034d88750ab6ebdb5f"
+    },
+    {
+      "arquivo": "LabLayer/src/components/SearchableSelect.tsx",
+      "sha256": "ceef684997a09a9a8911195afe591481ec2bc3a4cabd0a4c3fbe15b7e07cf5cf"
+    },
+    {
+      "arquivo": "LabLayer/src/components/Sidebar.tsx",
+      "sha256": "0dbd757515948f15e2c49e4b31b95a66fcce56779110d5dae1264d294d0136be"
+    },
+    {
+      "arquivo": "LabLayer/src/components/TopBar.tsx",
+      "sha256": "d9cabe380b357b81e0d4b4ebf6709940799c8fb3b6038f15fc9ad6a0af339c8b"
+    },
+    {
+      "arquivo": "LabLayer/src/contexts/AuthContext.tsx",
+      "sha256": "4b10933afbb82fdb879d23527c18de541f8558f0c817694448d371b27d480b4c"
+    },
+    {
+      "arquivo": "LabLayer/src/firebase.ts",
+      "sha256": "34fdd6b74ed479dd4e6bd99b52c0cd40e8bf6237dbb8226ce43cedb5e50eb912"
+    },
+    {
+      "arquivo": "LabLayer/src/index.css",
+      "sha256": "ac9408caacd88af8fc692c71eca842919069cb44841a2aaa81e89219a01e0268"
+    },
+    {
+      "arquivo": "LabLayer/src/main.tsx",
+      "sha256": "5580d48b0fec68698a113d45a640b88d479dc35eb1f4b87c51f67c6cc81cee9b"
+    },
+    {
+      "arquivo": "LabLayer/src/setupTests.ts",
+      "sha256": "a46d66851af2c056e805fdd574bf5ec3adb1181c43c5e41f0a1c592e338afe64"
+    },
+    {
+      "arquivo": "LabLayer/src/utils/pricing.ts",
+      "sha256": "3babd3d4e3c557abaf8f014791004e726bfd3269b116d6640ff82b3e605ad265"
+    },
+    {
+      "arquivo": "LabLayer/src/views/AgendaProducao.tsx",
+      "sha256": "e9d5229ab9c0663667f88a08c6eb2372e3762c37cc7cbaf01d1fa204d0936c30"
+    },
+    {
+      "arquivo": "LabLayer/src/views/Configuracoes.tsx",
+      "sha256": "98c9cab97ee65445f46b56dde2c0e47a556d66a9e8e1c40c7c80457687c91fe7"
+    },
+    {
+      "arquivo": "LabLayer/src/views/ControlePerdas.tsx",
+      "sha256": "5179c6b4c99e0b405222d98f6387220df732f10a889c7d7467dfe1c84e5c8466"
+    },
+    {
+      "arquivo": "LabLayer/src/views/Dashboard.tsx",
+      "sha256": "75d273fd88d60cd42e362a8157780f91b2086a4b828bc141b4321f3d69d4b7d1"
+    },
+    {
+      "arquivo": "LabLayer/src/views/EncomendasOrcamentos.tsx",
+      "sha256": "8e0c9d533bc290718322826714c21040faf22d71a1e4fbe44df33d6886b2e855"
+    },
+    {
+      "arquivo": "LabLayer/src/views/EstoqueInteligente.tsx",
+      "sha256": "a24997d792677158bd8062cba6814ca37f697004207a8396735f757400bb3c21"
+    },
+    {
+      "arquivo": "LabLayer/src/views/Filamentos.tsx",
+      "sha256": "a9756545edbecf0a681d53aa650b1212a53108772e55f88e9439233b4b67d873"
+    },
+    {
+      "arquivo": "LabLayer/src/views/Financeiro.tsx",
+      "sha256": "264962e668f3a5637a3d998e07b16063805c8c296a91e0f145c3c700ad18ce76"
+    },
+    {
+      "arquivo": "LabLayer/src/views/Fornecedores.tsx",
+      "sha256": "04bce05c0f21e4c6e4fd4787956e3a3fca97894386349e0069f90de1e955b719"
+    },
+    {
+      "arquivo": "LabLayer/src/views/Impressoras.tsx",
+      "sha256": "0ffb45d2def4cc309b35d02cb14341b901c0fde23f9c071e83ed2f2e8b181bd5"
+    },
+    {
+      "arquivo": "LabLayer/src/views/Insumos.tsx",
+      "sha256": "a6605c8c36f1a3c94205c05315a1bcd3d380debb56e605b0b792b03a458ea216"
+    },
+    {
+      "arquivo": "LabLayer/src/views/Login.tsx",
+      "sha256": "d764a94f752e7798b91bbdba89d8f29a78a86d10d4594062c5794468cd19bf9c"
+    },
+    {
+      "arquivo": "LabLayer/src/views/Marketplaces.tsx",
+      "sha256": "149788f10c8a3bc78aa48b0ac6037f103a2abe054c32c08eab9d0385ff81af6d"
+    },
+    {
+      "arquivo": "LabLayer/src/views/Precificacao.tsx",
+      "sha256": "7a0800d6c06d411fd348f100452275325920114834377f75b01ca000ffaf8964"
+    },
+    {
+      "arquivo": "LabLayer/src/views/Produtos.tsx",
+      "sha256": "cce4b1f6dfc60eb609ad75463ce1363fbf64eb671af1f19d6127561dc73581a0"
+    },
+    {
+      "arquivo": "LabLayer/src/views/SuperAdmin.tsx",
+      "sha256": "dec067e9c27a62bd6991efeecc0da5bfa1988f0f3892f67436277ae54f0f2a2d"
+    },
+    {
+      "arquivo": "LabLayer/src/views/ValoresSugeridos.tsx",
+      "sha256": "d14feccedc3b64922be3439444e6a8d3f50bf34649b5890ad4b3eaa6fae51b68"
+    },
+    {
+      "arquivo": "LabLayer/src/views/Vendas.tsx",
+      "sha256": "7063c1e82897c3326f92996362b2db67d6ca35f191215dc424dd884758c814d7"
+    },
+    {
+      "arquivo": "LabLayer/tsconfig.json",
+      "sha256": "e93e15c3794e43a117964ea191ae985cbedea70c41d3d82b2e20aa8d07374fe4"
+    },
+    {
+      "arquivo": "LabLayer/vite.config.ts",
+      "sha256": "667fc22c53cdddabd9a2d4768083c1a8790b3e1daaeb5aa65fc707bb47374d8f"
+    },
+    {
+      "arquivo": "SiteLabLayer/README.md",
+      "sha256": "8eb6aa814af9187d061729aae70a8e739a87778c2f600e465f7c879c3a3cc9e1"
+    },
+    {
+      "arquivo": "SiteLabLayer/google-apps-script/waitlist.gs",
+      "sha256": "677f40f515f915f94ef897a03de80e50bc9beb052cd11d784ece3c755d45c7bb"
+    },
+    {
+      "arquivo": "SiteLabLayer/package.json",
+      "sha256": "653323791dfd208c7cdede8e9497a0f300521ff1cf178a5b5deb253a58cd7feb"
+    },
+    {
+      "arquivo": "SiteLabLayer/src/App.tsx",
+      "sha256": "0969df20b203a82c682f8443cbc23b66c5362e7a17a53edeb11ac8f1a53e3d67"
+    }
+  ]
+}
