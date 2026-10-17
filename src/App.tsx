@@ -1,3 +1,5 @@
+import { InventoryPage } from './features/inventory/InventoryPage';
+import { useInventoryPhase } from './features/inventory/useInventoryPhase';
 import { CatalogPage } from './features/catalog/CatalogPage';
 import { useState } from 'react';
 import { Sidebar } from './components/Sidebar';
@@ -33,7 +35,8 @@ function MainApp() {
     mode: 'new',
     productId: null,
   });
-  const { user, loading, initializationError } = useAuth();
+  const { user, tenantId, loading, initializationError } = useAuth();
+  const inventory = useInventoryPhase(tenantId);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-surface text-primary font-bold">Carregando...</div>;
@@ -52,6 +55,14 @@ function MainApp() {
   }
 
   const renderView = () => {
+    if (inventory.phase === 'loading') return <p>Conferindo estado do estoque...</p>;
+    if (inventory.phase === 'error') return <p role="alert">Não foi possível conferir o estado do estoque. Recarregue antes de operar.</p>;
+    if (currentView === 'estoque-operacoes') return <InventoryPage onCatalog={() => setCurrentView('catalogo-fichas')} />;
+    if (inventory.phase !== 'legacy') {
+      if (['produtos', 'produto-editor', 'catalogo-fichas'].includes(currentView)) return <CatalogPage operational onBack={() => setCurrentView('estoque-operacoes')} />;
+      if (['dashboard', 'filamentos', 'insumos', 'estoque', 'agenda', 'perdas'].includes(currentView)) return <InventoryPage onCatalog={() => setCurrentView('catalogo-fichas')} />;
+      if (['vendas', 'financeiro', 'encomendas', 'precificacao', 'valores-sugeridos'].includes(currentView)) return <div role="note"><p>O estoque desta empresa já iniciou a migração. Esta tela antiga permanece bloqueada para não gravar ou apresentar valores incompatíveis. Novas propostas, vendas e fechamento financeiro ainda não estão disponíveis neste modelo.</p><button onClick={() => setCurrentView('estoque-operacoes')}>Abrir estoque e produção</button></div>;
+    }
     switch (currentView) {
       case 'dashboard':
         return <Dashboard />;
@@ -103,7 +114,7 @@ function MainApp() {
       case 'fornecedores':
         return <Fornecedores />;
       case 'impressoras':
-        return <Impressoras />;
+        return <Impressoras inventoryActive={inventory.phase !== 'legacy'} />;
       case 'insumos':
         return <Insumos />;
       case 'configuracoes':
@@ -116,6 +127,7 @@ function MainApp() {
   };
 
   const getTitle = () => {
+    if (currentView === 'estoque-operacoes' || (inventory.phase !== 'legacy' && ['dashboard', 'filamentos', 'insumos', 'estoque', 'agenda', 'perdas'].includes(currentView))) return 'Estoque e produção';
     switch (currentView) {
       case 'dashboard': return 'Painel Financeiro';
       case 'vendas': return 'Gestão de Vendas';
@@ -174,6 +186,7 @@ function MainApp() {
           }}
         />
         <div className="p-4 lg:p-8 flex-1 overflow-x-hidden">
+          <button className="mb-4 rounded border p-2" onClick={() => setCurrentView('estoque-operacoes')}>Estoque e produção — operações e migração</button>
           {renderView()}
         </div>
       </main>

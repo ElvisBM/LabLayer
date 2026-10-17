@@ -1,4 +1,5 @@
 import type { Express } from 'express';
+import { requireLegacyInventory } from './inventory';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import type { Firestore } from 'firebase-admin/firestore';
 import { createHash } from 'node:crypto';
@@ -36,6 +37,7 @@ export function registerPricingRoutes(app: Express, db: Firestore | null, verify
           return { repeated: true, snapshot: existing.data() };
         }
         const productDoc = await tx.get(productRef);
+        await requireLegacyInventory(db, tx, tenantId);
         if (!productDoc.exists) throw new BusinessError(404, 'Produto não encontrado.');
         const product = productDoc.data()!;
         if (product.status === 'inativo') throw new BusinessError(409, 'Produto arquivado.');

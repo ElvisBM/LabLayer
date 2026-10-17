@@ -1,4 +1,5 @@
 import type { Express, RequestHandler } from 'express';
+import { requireLegacyInventory } from './inventory';
 import type { Firestore } from 'firebase-admin/firestore';
 import { BusinessError, validId } from './session';
 import { isRecord, normalizeCustomRequest, validateDocument, WRITABLE_COLLECTIONS } from './admin-contract';
@@ -20,6 +21,7 @@ export async function writeAdminDocument(db: Firestore, input: {
     const tenant = await tx.get(db.doc(`tenants/${tenantId}`));
     if (!tenant.exists) throw new BusinessError(404, 'Empresa não encontrada.');
     if (tenant.data()?.status === 'inactive') throw new BusinessError(403, 'Empresa inativa.');
+    if (collection === 'customRequests') await requireLegacyInventory(db, tx, tenantId);
     const current = await tx.get(ref);
     const receiptRef = input.receipt ? db.doc(`tenants/${tenantId}/webhookReceipts/${input.receipt.id}`) : null;
     if (receiptRef) {

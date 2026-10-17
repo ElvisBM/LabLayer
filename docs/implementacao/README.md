@@ -20,7 +20,8 @@ O CI de branches/PR executa a mesma barreira. O workflow de implantação existe
 | E1/B04 | Motor decimal versionado e contrato comercial | Implementado; 102 testes acumulados e gate completo aprovados; [E1](./etapa-e1.md) |
 | E1/B05 | Cálculos compartilhados, pendências, snapshots no servidor e custo confirmado | Implementado; 123 testes acumulados, tipos/build/auditoria aprovados; [E1](./etapa-e1.md) |
 | E2/B06 — preparação | Catálogo, variações, fichas versionadas, componentes e revisão do legado | Implementado; 158 testes acumulados e gate completo aprovados em 17/10/2026; [E2](./etapa-e2.md). Ativação operacional depende da E3 |
-| E3–E5 | Estoque/execução, orçamento/pedido e conciliação | Pendente |
+| E3/B07–B08 | Movimentos, custo médio, reservas, execução, montagem, expedição, conciliação e corte dos escritores antigos | Implementado localmente; 198 testes acumulados e gate completo aprovados; [E3](./etapa-e3.md). Ativação real pendente de homologação |
+| E4–E5 | Orçamento/pedido, conciliação financeira e liberação do piloto | Pendente |
 
 **Fechamento local da E0:** 76 testes aprovados (29 unitários/componentes e 47 de integração), tipos e build aprovados, 0 alertas altos/críticos na árvore de produção. O ensaio final de restauração cobre 516 documentos e recusa destino com subcoleções órfãs. Ver [evidências e limites](./etapa-e0.md) e [auditoria de dependências](./dependencias-e0.json).
 
@@ -28,6 +29,10 @@ O CI de branches/PR executa a mesma barreira. O workflow de implantação existe
 
 B05 validado com 69 testes unitários/componentes e 54 de integração, tipos, build e auditoria de produção. O motor canônico está implementado e testado; dados existentes usam compatibilidade identificada, sem migração implícita.
 
-**Fechamento local da preparação E2:** 158 testes aprovados (89 unitários/interface e 69 de integração), tipos e build aprovados, auditoria de produção sem alertas altos/críticos; permanecem 1 baixo e 8 moderados. O novo caminho aparece em Produtos → Catálogo e fichas e não movimenta estoque. O editor operacional antigo permanece até o corte conjunto E2/E3. Próxima etapa: E3, movimentos, reservas, execução e abertura conciliada, incluindo substituição das leituras/escritas legadas. Ver [escopo entregue, limites e evidências](./etapa-e2.md).
+**Fechamento local da preparação E2:** 158 testes aprovados (89 unitários/interface e 69 de integração), tipos e build aprovados, auditoria de produção sem alertas altos/críticos; permanecem 1 baixo e 8 moderados. O novo caminho aparece em Produtos → Catálogo e fichas e não movimenta estoque. O editor operacional antigo permanece até o corte conjunto E2/E3. Ver [escopo entregue, limites e evidências](./etapa-e2.md).
+
+**Fechamento local da E3 — 17/10/2026:** 198 testes aprovados (106 unitários/interface e 92 de integração), tipos/build/auditoria aprovados; nenhum teste E0/E1/E2 foi alterado ou removido nesta etapa. Movimentos, reservas e execução são transacionais, com custo médio, idempotência e conciliação. O acesso aparece em **Estoque e produção — operações e migração**. O mecanismo de congelamento/abertura/ativação por empresa está implementado e testado, sem ativar empresas reais. Custos de conversão realizados exigem confirmação do operador; a interface não os presume a partir da estimativa. Ver [regras, limites, corte e evidências E3](./etapa-e3.md).
+
+Próxima etapa: **E4**, propostas versionadas, aprovação e pedido vinculado aos comandos E3. O corte bloqueia telas comerciais/financeiras antigas; não liberar em produção para uma empresa dependente desses fluxos antes da integração E4/E5 e do piloto homologado. A auditoria ainda registra 1 alerta baixo e 8 moderados na árvore de produção e o build mantém aviso de bundle grande.
 
 O diretório `scripts/` já existia como não rastreado e não participa destes commits.

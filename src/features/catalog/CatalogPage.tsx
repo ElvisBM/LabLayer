@@ -34,19 +34,35 @@ const resourcesEmpty: Record<string, any[]> = {
   supplies: [],
   customRequests: [],
 };
-export function CatalogPage({ onBack }: { onBack(): void }) {
+export function CatalogPage({
+  onBack,
+  operational = false,
+}: {
+  onBack(): void;
+  operational?: boolean;
+}) {
   const { tenantId, user } = useAuth();
   if (!tenantId || !user) return null;
-  return <CatalogWorkspace key={tenantId} tenantId={tenantId} user={user} onBack={onBack} />;
+  return (
+    <CatalogWorkspace
+      key={tenantId}
+      tenantId={tenantId}
+      user={user}
+      onBack={onBack}
+      operational={operational}
+    />
+  );
 }
 function CatalogWorkspace({
   tenantId,
   user,
   onBack,
+  operational,
 }: {
   tenantId: string;
   user: any;
   onBack(): void;
+  operational: boolean;
 }) {
   const [resources, setResources] = useState(resourcesEmpty);
   const [selectedId, setSelectedId] = useState('');
@@ -254,9 +270,16 @@ function CatalogWorkspace({
         </button>
       </div>
       <p role="note" className="rounded border border-outline-variant/30 p-4 text-sm">
-        Estas fichas estão em preparação. O estoque e a precificação operacional continuam usando os
-        registros anteriores até a migração conjunta de produção e estoque. Salvar aqui não altera
-        saldos, preços aprovados ou propostas antigas.
+        {operational ? (
+          'Fichas versionadas para planejar a fabricação. Editar ou arquivar não altera saldos; use os comandos de estoque e produção.'
+        ) : (
+          <>
+            {' '}
+            Estas fichas estão em preparação. O estoque e a precificação operacional continuam
+            usando os registros anteriores até a migração conjunta de produção e estoque. Salvar
+            aqui não altera saldos, preços aprovados ou propostas antigas.
+          </>
+        )}
       </p>
       {error && (
         <p role="alert" className="text-error">

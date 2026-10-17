@@ -52,6 +52,11 @@ service cloud.firestore {
       );
     }
 
+    function legacyInventory(tenantId) {
+      return !exists(/databases/$(database)/documents/tenants/$(tenantId)/inventoryControl/state) ||
+        get(/databases/$(database)/documents/tenants/$(tenantId)/inventoryControl/state).data.phase == 'legacy';
+    }
+
     function hasOnlyAllowedFields(allowedFields) {
       return request.resource.data.keys().hasOnly(allowedFields);
     }
@@ -336,6 +341,53 @@ service cloud.firestore {
         request.resource.data.status in ['active', 'inactive', 'past_due']
       );
 
+      // E3: only authenticated server commands write stock and immutable events.
+      match /inventoryControl/{id} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if false;
+      }
+      match /stockBalances/{id} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if false;
+      }
+      match /stockEvents/{id} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if false;
+      }
+      match /stockReservations/{id} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if false;
+      }
+      match /stockPlans/{id} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if false;
+      }
+      match /stockRuns/{id} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if false;
+      }
+      match /stockShipments/{id} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if false;
+      }
+      match /stockFulfillments/{id} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if false;
+      }
+      match /stockPurchases/{id} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if false;
+      }
+      match /stockPrinterUsage/{id} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if false;
+      }
+      match /stockReversals/{id} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if false;
+      }
+      match /inventoryCommands/{id} { allow read, write: if false; }
+
       // E2 preparation: no client mutation, and no operational inventory side effects.
       match /catalogItems/{itemId} {
         allow read: if isTenantMember(tenantId);
@@ -356,8 +408,8 @@ service cloud.firestore {
       // Subcollections
       match /products/{productId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && isValidProduct() && request.resource.data.get('pricingHistory', []).size() == 0 && !('latestSuggestedPrice' in request.resource.data);
-        allow update: if isTenantMember(tenantId) && isValidProduct() &&
+        allow create: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidProduct() && request.resource.data.get('pricingHistory', []).size() == 0 && !('latestSuggestedPrice' in request.resource.data);
+        allow update: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidProduct() &&
           request.resource.data.get('pricingHistory', []) == resource.data.get('pricingHistory', []) &&
           request.resource.data.get('latestSuggestedPrice', null) == resource.data.get('latestSuggestedPrice', null) &&
           (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
@@ -375,14 +427,14 @@ service cloud.firestore {
         allow read: if isTenantMember(tenantId);
         allow create: if isTenantMember(tenantId) && isValidPrinter();
         allow update: if isTenantMember(tenantId) && isValidPrinter() && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.get('usedHours', 0) == resource.data.get('usedHours', 0);
-        allow delete: if isTenantMember(tenantId);
+        allow delete: if legacyInventory(tenantId) && isTenantMember(tenantId);
       }
 
       match /filaments/{filamentId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && isValidFilament();
-        allow update: if isTenantMember(tenantId) && isValidFilament() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
-        allow delete: if isTenantMember(tenantId);
+        allow create: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidFilament();
+        allow update: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidFilament() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+        allow delete: if legacyInventory(tenantId) && isTenantMember(tenantId);
       }
 
       match /suppliers/{supplierId} {
@@ -394,32 +446,32 @@ service cloud.firestore {
 
       match /orders/{orderId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && isValidOrder() && request.resource.data.costSource == 'manual-confirmed' &&
+        allow create: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidOrder() && request.resource.data.costSource == 'manual-confirmed' &&
           request.resource.data.quantity is int && request.resource.data.quantity > 0 &&
           math.abs(request.resource.data.realProfit - (request.resource.data.soldPrice - request.resource.data.fees - request.resource.data.realCost)) < 0.000001;
-        allow update: if isTenantMember(tenantId) && isValidOrder() && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isTenantMember(tenantId);
+        allow update: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidOrder() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if legacyInventory(tenantId) && isTenantMember(tenantId);
       }
 
       match /transactions/{transactionId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && isValidTransaction();
-        allow update: if isTenantMember(tenantId) && isValidTransaction() && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isTenantMember(tenantId);
+        allow create: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidTransaction();
+        allow update: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidTransaction() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if legacyInventory(tenantId) && isTenantMember(tenantId);
       }
 
       match /losses/{lossId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && isValidLoss();
-        allow update: if isTenantMember(tenantId) && isValidLoss();
-        allow delete: if isTenantMember(tenantId);
+        allow create: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidLoss();
+        allow update: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidLoss();
+        allow delete: if legacyInventory(tenantId) && isTenantMember(tenantId);
       }
 
       match /supplies/{supplyId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && isValidSupply();
-        allow update: if isTenantMember(tenantId) && isValidSupply() && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isTenantMember(tenantId);
+        allow create: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidSupply();
+        allow update: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidSupply() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if legacyInventory(tenantId) && isTenantMember(tenantId);
       }
 
       match /marketplaces/{marketplaceId} {
@@ -431,30 +483,30 @@ service cloud.firestore {
 
       match /productionOrders/{orderId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && isValidProductionOrder();
-        allow update: if isTenantMember(tenantId) && resource.data.status != 'concluida' && isValidProductionOrder() && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isTenantMember(tenantId) && resource.data.status != 'concluida';
+        allow create: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidProductionOrder();
+        allow update: if legacyInventory(tenantId) && isTenantMember(tenantId) && resource.data.status != 'concluida' && isValidProductionOrder() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if legacyInventory(tenantId) && isTenantMember(tenantId) && resource.data.status != 'concluida';
       }
 
       match /customRequests/{requestId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && isValidCustomRequest();
-        allow update: if isTenantMember(tenantId) && isValidCustomRequest() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
-        allow delete: if isTenantMember(tenantId);
+        allow create: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidCustomRequest();
+        allow update: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidCustomRequest() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+        allow delete: if legacyInventory(tenantId) && isTenantMember(tenantId);
       }
 
       match /inventoryMovements/{movementId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && isValidInventoryMovement();
-        allow update: if isTenantMember(tenantId) && isValidInventoryMovement() && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isTenantMember(tenantId);
+        allow create: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidInventoryMovement();
+        allow update: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidInventoryMovement() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if legacyInventory(tenantId) && isTenantMember(tenantId);
       }
 
       match /failures/{failureId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && isValidFailureRecord();
-        allow update: if isTenantMember(tenantId) && isValidFailureRecord() && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isTenantMember(tenantId);
+        allow create: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidFailureRecord();
+        allow update: if legacyInventory(tenantId) && isTenantMember(tenantId) && isValidFailureRecord() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if legacyInventory(tenantId) && isTenantMember(tenantId);
       }
 
       match /settings/{settingId} {
