@@ -3,6 +3,7 @@ import type { DecodedIdToken } from 'firebase-admin/auth';
 import type { Firestore, Transaction, DocumentReference } from 'firebase-admin/firestore';
 import { createHash } from 'node:crypto';
 import { BusinessError, validId } from './session';
+import { orderTarget } from './order-target';
 import {
   CatalogError,
   record,
@@ -282,7 +283,7 @@ async function checkLedger(ctx: Context, balances: any[]) {
       !held.eq(f.reserved) ||
       !sent.eq(f.shipped) ||
       held.plus(sent).gt(f.target) ||
-      !(await ctx.get(`orders/${f.orderId}`))
+      !(await orderTarget((path) => ctx.get(path), f.orderId, false))
     )
       result.discrepancies.push(
         `${f.orderId}: atendimento diverge das reservas/expedições ou perdeu o pedido.`,
@@ -512,7 +513,7 @@ export function registerInventoryRoutes(
         } else if (type === 'plan') {
           const p = record(
             body.payload,
-            ['productId', 'variationId', 'recipeVersion', 'runs', 'reason', 'reprintOf'],
+            ['productId', 'variationId', 'recipeVersion', 'runs', 'reason', 'reprintOf', 'orderId'],
             'Plano',
           );
           if (expected !== 0) throw new BusinessError(409, 'Novo plano exige versão zero.');
@@ -527,6 +528,42 @@ export function registerInventoryRoutes(
             throw new CatalogError('Versão de receita não encontrada.');
           const recipe = validateRecipe(snapshot.recipe),
             needed = requirements(recipe, runs);
+          const orderId = p.orderId ? id(p.orderId) : '';
+          if (orderId) {
+            const target = await orderTarget((path) => ctx.get(path), orderId);
+            if (
+              !target?.salesOrderId ||
+              target.item.id !== productId ||
+              target.item.variationId !== variationId ||
+              target.recipeVersion !== recipeVersion
+            )
+              throw new CatalogError(
+                'Plano deve usar o produto e a versão de ficha do pedido aprovado.',
+              );
+            const prior = await tx.get(
+              db!.collection(`${ctx.root}/stockPlans`).where('orderId', '==', orderId).limit(501),
+            );
+            if (prior.size > 500) throw new CatalogError('Histórico excede limite de conferência.');
+            const fulfillment = await ctx.get(`stockFulfillments/${orderId}`);
+            const delivered =
+              Number(fulfillment?.reserved ?? 0) + Number(fulfillment?.shipped ?? 0);
+            const made = prior.docs.reduce((n, d) => n + d.data().goodUnits, 0);
+            const pending = prior.docs.reduce(
+              (n, d) =>
+                n +
+                (d.data().status === 'active'
+                  ? d.data().remainingRuns * d.data().recipe.goodUnits
+                  : 0),
+              0,
+            );
+            const missing = Math.max(0, target.quantity - Math.max(delivered, made) - pending);
+            if (runs > Math.ceil(missing / recipe.goodUnits))
+              throw new CatalogError(
+                'Plano excede a falta do pedido, considerando produção e reservas existentes.',
+              );
+            // Serialize competing plans for the same target, including empty-query races.
+            ctx.put(`orderTargets/${orderId}`, { ...target, version: target.version + 1 });
+          }
           for (const c of recipe.components) {
             await ctx.describe(
               { kind: 'product', id: c.productId, variationId: c.variationId },
@@ -572,6 +609,7 @@ export function registerInventoryRoutes(
             variationId,
             recipeVersion,
             recipe,
+            orderId,
             runs,
             remainingRuns: runs,
             goodUnits: 0,
@@ -610,6 +648,7 @@ export function registerInventoryRoutes(
             reservation = await ctx.get(`stockReservations/${planId}`);
           if (!plan || plan.status !== 'active' || reservation?.status !== 'active')
             throw new BusinessError(409, 'Plano sem reserva ativa.');
+          if (plan.orderId) await orderTarget((path) => ctx.get(path), plan.orderId);
           if (
             canonical(reservation.lines) !==
             canonical(requirements(plan.recipe, plan.remainingRuns))
@@ -698,6 +737,7 @@ export function registerInventoryRoutes(
               productId: plan.productId,
               variationId: plan.variationId,
               recipeVersion: plan.recipeVersion,
+              orderId: plan.orderId ?? '',
               runs,
               goodUnits: good,
               rejectedUnits: rejected,
@@ -728,8 +768,10 @@ export function registerInventoryRoutes(
             q = quantity(p.quantity, i, true);
           if (i.kind !== 'product') throw new CatalogError('Pedido reserva produto acabado.');
           await ctx.describe(i, true);
-          const order = await ctx.get(`orders/${orderId}`);
+          const order = await orderTarget((path) => ctx.get(path), orderId);
           if (!order) throw new CatalogError('Pedido/venda de origem não encontrado.');
+          if (order.salesOrderId && itemKey(order.item) !== itemKey(i))
+            throw new CatalogError('Produto/variação diverge do pedido aprovado.');
           const target = integer(order.quantity, 'Quantidade do pedido', 1),
             fulfillment = await ctx.get(`stockFulfillments/${orderId}`);
           version(fulfillment, expected);
@@ -777,6 +819,7 @@ export function registerInventoryRoutes(
           textValue(p.reason, 'Motivo', 500);
           if (type === 'ship') {
             if (r.kind !== 'order') throw new CatalogError('Expedição exige reserva de pedido.');
+            await orderTarget((path) => ctx.get(path), r.orderId);
             const l = r.lines[0],
               q = quantity(p.quantity, l.item, true);
             if (new D(q).gt(l.quantity)) throw new CatalogError('Expedição excede a reserva.');

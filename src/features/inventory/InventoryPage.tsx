@@ -17,6 +17,8 @@ const resourceNames = [
   'supplies',
   'catalogItems',
   'orders',
+  'orderTargets',
+  'salesOrders',
   'stockRuns',
   'stockShipments',
 ] as const;
@@ -357,8 +359,8 @@ export function InventoryWorkspace({
               : 'Carregando o estado da operação. Não grave por outra tela enquanto o estado estiver indisponível.'}
       </p>
       <p>
-        Novas propostas e fechamento financeiro ainda não estão disponíveis neste modelo. As
-        expedições atendem pedidos/vendas já existentes, com produto conferido por ID.
+        Novas propostas estão em Orçamentos e pedidos. As expedições atendem seus itens aprovados e
+        os pedidos históricos. O fechamento financeiro será integrado na E5.
       </p>
       {error && <p role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
@@ -571,9 +573,18 @@ export function InventoryWorkspace({
               select(
                 'orderId',
                 'Pedido/venda existente',
-                list('orders').map((o) => ({
+                [
+                  ...list('orders'),
+                  ...list('orderTargets').filter(
+                    (t) =>
+                      t.item &&
+                      list('salesOrders').some(
+                        (o) => o.id === t.salesOrderId && o.status === 'active',
+                      ),
+                  ),
+                ].map((o) => ({
                   id: o.id,
-                  label: `${o.orderNumber ?? o.id} — ${o.productName ?? ''} (${o.quantity})`,
+                  label: `${o.salesOrderId ?? o.orderNumber ?? o.id} — ${o.description ?? o.productName ?? ''} (${o.quantity})`,
                 })),
                 (value) => {
                   set('orderId', value);

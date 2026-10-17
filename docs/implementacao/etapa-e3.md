@@ -2,6 +2,8 @@
 
 Base: `63f8f74` (E2 e evidências de regressão E0/E1). Implementação local em 17/10/2026. Esta etapa implementa o núcleo de estoque/produção e o mecanismo de corte conjunto E2/E3 por empresa. Não executa migração em dados reais, implantação, aprovação comercial E4 nem fechamento financeiro E5.
 
+Atualização posterior: a [E4](./etapa-e4.md) integrou novas propostas/pedidos a estes comandos e revalidou toda a suíte E0–E3. As referências abaixo ao bloqueio de telas comerciais descrevem o estado ao fechar a E3; o financeiro continua pendente da E5. O atendimento agora aceita também alvos canônicos E4 e os planos/execuções podem carregar vínculo explícito ao pedido, preservando a compatibilidade histórica.
+
 ## Fluxo disponível na interface
 
 Abrir **Estoque e produção — operações e migração**, no topo da aplicação. Antes do corte, as telas anteriores continuam funcionando. Depois do congelamento, a navegação de estoque, filamentos, insumos, agenda, perdas e painel usa o novo módulo; produtos usa o catálogo E2. Recarregar ou manter um navegador antigo não contorna as rules.

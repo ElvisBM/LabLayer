@@ -21,7 +21,8 @@ O CI de branches/PR executa a mesma barreira. O workflow de implantação existe
 | E1/B05 | Cálculos compartilhados, pendências, snapshots no servidor e custo confirmado | Implementado; 123 testes acumulados, tipos/build/auditoria aprovados; [E1](./etapa-e1.md) |
 | E2/B06 — preparação | Catálogo, variações, fichas versionadas, componentes e revisão do legado | Implementado; 158 testes acumulados e gate completo aprovados em 17/10/2026; [E2](./etapa-e2.md). Ativação operacional depende da E3 |
 | E3/B07–B08 | Movimentos, custo médio, reservas, execução, montagem, expedição, conciliação e corte dos escritores antigos | Implementado localmente; 198 testes acumulados e gate completo aprovados; [E3](./etapa-e3.md). Ativação real pendente de homologação |
-| E4–E5 | Orçamento/pedido, conciliação financeira e liberação do piloto | Pendente |
+| E4/B09 | Propostas imutáveis, cálculo conferido, aprovação informada, pedido e atendimento E3 | Implementado localmente; 240 testes acumulados e gate completo aprovados; [E4](./etapa-e4.md). Homologação real pendente |
+| E5 | Recebimentos, conciliação financeira e liberação do piloto | Pendente |
 
 **Fechamento local da E0:** 76 testes aprovados (29 unitários/componentes e 47 de integração), tipos e build aprovados, 0 alertas altos/críticos na árvore de produção. O ensaio final de restauração cobre 516 documentos e recusa destino com subcoleções órfãs. Ver [evidências e limites](./etapa-e0.md) e [auditoria de dependências](./dependencias-e0.json).
 
@@ -33,6 +34,8 @@ B05 validado com 69 testes unitários/componentes e 54 de integração, tipos, b
 
 **Fechamento local da E3 — 17/10/2026:** 198 testes aprovados (106 unitários/interface e 92 de integração), tipos/build/auditoria aprovados; nenhum teste E0/E1/E2 foi alterado ou removido nesta etapa. Movimentos, reservas e execução são transacionais, com custo médio, idempotência e conciliação. O acesso aparece em **Estoque e produção — operações e migração**. O mecanismo de congelamento/abertura/ativação por empresa está implementado e testado, sem ativar empresas reais. Custos de conversão realizados exigem confirmação do operador; a interface não os presume a partir da estimativa. Ver [regras, limites, corte e evidências E3](./etapa-e3.md).
 
-Próxima etapa: **E4**, propostas versionadas, aprovação e pedido vinculado aos comandos E3. O corte bloqueia telas comerciais/financeiras antigas; não liberar em produção para uma empresa dependente desses fluxos antes da integração E4/E5 e do piloto homologado. A auditoria ainda registra 1 alerta baixo e 8 moderados na árvore de produção e o build mantém aviso de bundle grande.
+**Fechamento local da E4 — 17/10/2026:** 240 testes aprovados (129 unitários/interface e 111 de integração), tipos/build/auditoria aprovados. Os 198 testes E0–E3 foram preservados sem alteração; 42 casos foram adicionados (23 unitários/interface e 19 de integração). A jornada permite orçamento avulso ou por ficha, prévia no servidor, emissão congelada, aprovação interna rastreável, pedido único e atendimento por estoque/fabricação E3. O acesso aparece em **Orçamentos e pedidos**. Propostas não movimentam estoque; pedidos não inventam pagamentos. Ver [contratos, cálculos, limites e evidências E4](./etapa-e4.md).
+
+Próxima etapa: **E5**, recebimentos e reconciliação financeira, tratamento dos impactos após consumo/expedição e liberação do piloto. O corte substitui as telas comerciais antigas pela E4; o financeiro antigo permanece bloqueado. Não liberar o núcleo em produção antes da homologação coordenada e da reconciliação E5. A auditoria ainda registra 1 alerta baixo e 8 moderados na árvore de produção, sem altos/críticos; o build mantém aviso de bundle grande.
 
 O diretório `scripts/` já existia como não rastreado e não participa destes commits.

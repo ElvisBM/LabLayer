@@ -341,6 +341,29 @@ service cloud.firestore {
         request.resource.data.status in ['active', 'inactive', 'past_due']
       );
 
+      // E4: immutable proposal versions, reported approvals and canonical orders.
+      match /quotes/{id} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if false;
+        match /versions/{versionId} {
+          allow read: if isTenantMember(tenantId);
+          allow write: if false;
+        }
+      }
+      match /quoteEvents/{id} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if false;
+      }
+      match /salesOrders/{id} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if false;
+      }
+      match /orderTargets/{id} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if false;
+      }
+      match /quoteCommands/{id} { allow read, write: if false; }
+
       // E3: only authenticated server commands write stock and immutable events.
       match /inventoryControl/{id} {
         allow read: if isTenantMember(tenantId);
