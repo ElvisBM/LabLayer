@@ -363,6 +363,7 @@ const normalizeProductionOrderFallback = (order: ProductionOrderFallback): Produ
 };
 
 interface Product {
+  createdAt?: string;
   id: string;
   name: string;
   baseSku: string;
@@ -463,6 +464,7 @@ const mockProducts: Product[] = [
 ];
 
 interface ProdutosProps {
+  onOpenCatalog?: () => void;
   mode?: 'list' | 'editor';
   editorMode?: 'new' | 'edit';
   editorProductId?: string | null;
@@ -471,6 +473,7 @@ interface ProdutosProps {
 }
 
 export function Produtos({
+  onOpenCatalog,
   mode = 'list',
   editorMode = 'new',
   editorProductId = null,
@@ -1724,6 +1727,7 @@ export function Produtos({
 
   return (
     <div className="space-y-8">
+      {mode === 'list' && onOpenCatalog && <div className="flex items-center justify-between gap-4 rounded border border-outline-variant/30 p-4"><p className="text-sm">Prepare fichas versionadas sem alterar o estoque atual.</p><button type="button" className="bg-primary text-on-primary rounded p-2" onClick={onOpenCatalog}>Catálogo e fichas</button></div>}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
           <h2 className="font-headline text-3xl font-bold text-primary tracking-tighter">

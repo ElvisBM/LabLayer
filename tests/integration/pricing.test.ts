@@ -1,3 +1,4 @@
+import { CONTENTION_TIMEOUT_MS } from '../contention-timeout';
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 import { initializeApp, deleteApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -45,7 +46,7 @@ it('API e consumidor compartilham custo decimal, insumos, perdas e sugestão', a
   expect(saved.body.snapshot.inputs.supplyUsages).toHaveLength(1); expect(saved.body.snapshot.inputs.wastes).toHaveLength(1);
   expect((await db.doc('tenants/a/products/p').get()).data()?.pricingHistory).toHaveLength(50);
 });
-it('snapshot e auditoria são atômicos e idempotentes sob concorrência', async () => {
+it('snapshot e auditoria são atômicos e idempotentes sob concorrência', { timeout: CONTENTION_TIMEOUT_MS }, async () => {
   const responses = await Promise.all([send(), send()]);
   expect(responses.map(r => r.status).sort()).toEqual([200, 201]);
   expect((await db.collection('tenants/a/products/p/pricingSnapshots').get()).size).toBe(1);

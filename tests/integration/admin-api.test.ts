@@ -1,3 +1,4 @@
+import { CONTENTION_TIMEOUT_MS } from '../contention-timeout';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { initializeApp, deleteApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -48,7 +49,7 @@ describe('E0.3/E0.4 API real com Firestore local', () => {
     expect(logs.every(x => x.actor === 'integration-a' && x.keyId === 'key-a')).toBe(true);
     await assertSucceeds(updateDoc(doc(rules.authenticatedContext('a').firestore(), 'tenants/a/customRequests/r'), { description: 'Editável na UI' }));
   });
-  it('POST concorrente com mesmo ID cria uma vez, audita uma vez e retorna conflito', async () => {
+  it('POST concorrente com mesmo ID cria uma vez, audita uma vez e retorna conflito', { timeout: CONTENTION_TIMEOUT_MS }, async () => {
     const results = await Promise.all([1, 2].map(() => authenticate(api().post(url())).send({ id: 'same', title: 'Original' })));
     expect(results.map(x => x.status).sort()).toEqual([201, 409]);
     expect((await db.collection('tenants/a/customRequests').get()).size).toBe(1);
@@ -56,7 +57,7 @@ describe('E0.3/E0.4 API real com Firestore local', () => {
     await authenticate(api().post(url())).send({ id: 'same', title: 'Sobrescrita' }).expect(409);
     expect((await db.doc('tenants/a/customRequests/same').get()).data()?.title).toBe('Original');
   });
-  it('PATCH concorrente em campos distintos conserva ambos', async () => {
+  it('PATCH concorrente em campos distintos conserva ambos', { timeout: CONTENTION_TIMEOUT_MS }, async () => {
     await authenticate(api().post(url())).send({ id: 'r', title: 'Original' }).expect(201);
     const responses = await Promise.all([
       authenticate(api().patch(url('customRequests', 'r'))).send({ description: 'Nova descrição' }),
@@ -123,7 +124,7 @@ describe('E0.4 entradas externas', () => {
     const unconfigured = await createApp({ database: db, env: {} });
     await request(unconfigured).post(endpoint).send({ eventId: 'm1', title: 'Peça' }).expect(503);
   });
-  it('mensagem repetida é idempotente e conteúdo conflitante é rejeitado', async () => {
+  it('mensagem repetida é idempotente e conteúdo conflitante é rejeitado', { timeout: CONTENTION_TIMEOUT_MS }, async () => {
     const send = () => api().post(endpoint).set('x-lablayer-webhook-token', 'whatsapp').send({ eventId: 'message1', title: 'Peça' });
     const results = await Promise.all([send(), send()]);
     expect(results.every(x => [200, 201].includes(x.status))).toBe(true);

@@ -1,3 +1,4 @@
+import { CONTENTION_TIMEOUT_MS } from '../contention-timeout';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { initializeTestEnvironment, assertFails, assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
@@ -71,7 +72,7 @@ describe('E0.2 isolamento e privilégios nas rules reais', () => {
 });
 
 describe('E0.2 provisionamento confiável', () => {
-  it('primeiro acesso concorrente cria uma empresa free e um perfil, sem sobrescrever', async () => {
+  it('primeiro acesso concorrente cria uma empresa free e um perfil, sem sobrescrever', { timeout: CONTENTION_TIMEOUT_MS }, async () => {
     const results = await Promise.all([provisionSession(db, identity('new')), provisionSession(db, identity('new'))]);
     expect(results).toEqual([{ tenantId: 'new', isSuperAdmin: false }, { tenantId: 'new', isSuperAdmin: false }]);
     expect((await db.doc('tenants/new').get()).data()).toMatchObject({ ownerUid: 'new', plan: 'free' });

@@ -336,6 +336,23 @@ service cloud.firestore {
         request.resource.data.status in ['active', 'inactive', 'past_due']
       );
 
+      // E2 preparation: no client mutation, and no operational inventory side effects.
+      match /catalogItems/{itemId} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if false;
+        match /versions/{versionId} {
+          allow read: if isTenantMember(tenantId);
+          allow write: if false;
+        }
+        match /recipes/{versionId} {
+          allow read: if isTenantMember(tenantId);
+          allow write: if false;
+        }
+      }
+      match /catalogCommands/{commandId} {
+        allow read, write: if false;
+      }
+
       // Subcollections
       match /products/{productId} {
         allow read: if isTenantMember(tenantId);

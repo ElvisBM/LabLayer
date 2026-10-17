@@ -1,3 +1,4 @@
+import { CatalogPage } from './features/catalog/CatalogPage';
 import { useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
@@ -58,10 +59,13 @@ function MainApp() {
         return <Vendas />;
       case 'financeiro':
         return <Financeiro />;
+      case 'catalogo-fichas':
+        return <CatalogPage onBack={() => setCurrentView('produtos')} />;
       case 'produtos':
         return (
           <Produtos
             mode="list"
+            onOpenCatalog={() => setCurrentView('catalogo-fichas')}
             onOpenEditor={(mode, productId) => {
               setProductEditorState({ mode, productId: productId || null });
               setCurrentView('produto-editor');
@@ -117,6 +121,7 @@ function MainApp() {
       case 'vendas': return 'Gestão de Vendas';
       case 'financeiro': return 'Controle Financeiro';
       case 'produtos': return 'Catálogo de Produtos';
+      case 'catalogo-fichas': return 'Catálogo e Fichas';
       case 'produto-editor': return productEditorState.mode === 'edit' ? 'Editar Produto' : 'Novo Produto';
       case 'precificacao': return 'Simulador de Precificação';
       case 'valores-sugeridos': return 'Valores Sugeridos';
