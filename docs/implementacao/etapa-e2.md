@@ -92,3 +92,20 @@ Comando: `PATH="/opt/homebrew/opt/openjdk@21/bin:$PATH" caffeinate -i npx --yes 
 | Conferência do diff | Sem erros de whitespace; alterações limitadas à preparação E2, testes, tipos React e correção pontual de dependência |
 
 O resultado fecha o pacote local de preparação E2. Não equivale à migração operacional E2/E3, à homologação no Firebase real ou a uma auditoria sem alertas. A árvore completa de desenvolvimento ainda apresenta 7 alertas altos; o critério de bloqueio de dependências permanece restrito à árvore de produção, conforme E0.
+
+### Conferência de regressão E0/E1 após o commit E2
+
+Referência conferida: `ef153cc822dfda617ebadcce595f2bd268218087`. Comparação com o fechamento E1 (`2e6bde6`): nenhum teste anterior foi removido e nenhuma asserção foi alterada. As únicas mudanças nos testes anteriores foram a importação e o limite de tempo explícito em cinco casos concorrentes, já justificados acima. Não há testes marcados como `skip`, `only` ou `todo` na suíte.
+
+| Origem da cobertura | Unitários/interface | Integração | Total |
+|---|---:|---:|---:|
+| E0 — acesso, contratos, backup, preservação e entradas externas | 29 | 47 | 76 |
+| E1 — motor decimal, consumidores, interface e snapshots de preço | 40 | 7 | 47 |
+| E2 — catálogo, fichas, unidades, componentes e transações | 20 | 15 | 35 |
+| Suíte acumulada | 89 | 69 | 158 |
+
+A distribuição usa os fechamentos registrados em E0/E1 e os testes acrescentados em E2. `npm run quality` inclui todos os arquivos unitários e de integração; não aplica filtro para executar apenas E2. O CI em `.github/workflows/quality.yml` usa o mesmo comando com Node 22 e Java 21. Testes de integração exigem o projeto demo e o emulador local, e removem credenciais de serviço do processo.
+
+**Resultado da nova execução em 17/10/2026, às 11:56–11:57 (America/Sao_Paulo): aprovado, código 0.** Foram aprovados os 89 testes unitários/interface (2,86 s), os 69 de integração (45,03 s), TypeScript, build e auditoria de produção. Nenhuma mudança de código, teste ou dependência foi necessária nesta reconferência. Permanecem o aviso de tamanho do bundle e os 9 alertas de dependências de produção (1 baixo e 8 moderados); nenhum alto/crítico. [Saída integral da execução](./evidencias-e2-regressao.txt).
+
+Esta evidência confirma ausência de regressões nos cenários automatizados de E0/E1 cobertos pela suíte. Não garante ausência de defeitos fora desses cenários. A ativação operacional continua dependente da E3 e da homologação; não houve push ou deploy.
