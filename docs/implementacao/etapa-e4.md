@@ -2,6 +2,8 @@
 
 Base: `7e14251` (E3). Implementação local em 17/10/2026. O plano original permanece em `docs/mapeamento/07-plano-de-correcao.md`; este documento registra os contratos implementados. Nenhuma migração, implantação, push ou escrita em dados reais faz parte desta etapa.
 
+Atualização de 20/10/2026: a [E5](./etapa-e5.md) acrescenta recebimentos, pagamentos, reembolsos e conferência gerencial. O pedido E4 passa a exibir a situação financeira projetada desses eventos; cancelamento consulta recebimentos pendentes de devolução. As descrições abaixo de financeiro ainda pendente registram o escopo original da E4. A homologação real continua pendente; devolução física após expedição não é simulada por reembolso financeiro.
+
 ## Jornada entregue
 
 Abrir **Orçamentos e pedidos**, no topo da aplicação. Após o corte E3, os atalhos de encomendas, vendas e precificação passam a abrir este módulo. O financeiro continua reservado à E5. Antes do corte é possível preparar propostas; aprovação requer estoque E3 ativo.

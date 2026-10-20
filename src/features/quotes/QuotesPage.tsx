@@ -929,7 +929,19 @@ export function QuotesWorkspace({
               <h3>
                 Pedido {order.id} — {order.status === 'active' ? 'ativo' : 'cancelado'}
               </h3>
-              <p>Pagamento: sem recebimento registrado. Não há sinal obrigatório automático.</p>
+              <p>
+                Pagamento:{' '}
+                {(
+                  {
+                    unrecorded: 'sem recebimento registrado',
+                    partial: 'recebimento parcial',
+                    paid: 'recebido integralmente',
+                    refunded: 'reembolsado',
+                  } as Record<string, string>
+                )[order.paymentStatus] ?? order.paymentStatus}
+                . Consulte os eventos em Financeiro e conciliação. Não há sinal obrigatório
+                automático.
+              </p>
               <p>
                 Aceite informado por {order.approval.reportedBy}, via {order.approval.channel},
                 registrado em {new Date(order.approval.recordedAt).toLocaleString('pt-BR')}.

@@ -1,5 +1,6 @@
 import { registerInventoryRoutes } from './server/inventory';
 import { registerQuoteRoutes } from './server/quotes';
+import { registerFinanceRoutes } from './server/finance';
 import { registerCatalogRoutes } from './server/catalog';
 import { registerPricingRoutes } from './server/pricing';
 import express from "express";
@@ -487,6 +488,7 @@ const hasCollectionFilters = (query: express.Request["query"]) => {
   registerCatalogRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
   registerInventoryRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
   registerQuoteRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
+  registerFinanceRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
 
   // API routes FIRST
   app.get("/api/health", (req, res) => {

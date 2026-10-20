@@ -5,6 +5,7 @@ import { BusinessError, validId } from './session';
 import { CatalogError, id, integer, record, textValue } from '../shared/catalog/model';
 import { PricingError } from '../shared/pricing/engine';
 import { validateQuote } from '../shared/quotes/model';
+import { netReceived } from '../shared/finance/model';
 import { catalogRecipe, fingerprint, quoteCost } from './quote-cost';
 
 export const targetId = (quoteId: string, lineId: string) =>
@@ -291,6 +292,12 @@ export function registerQuoteRoutes(
           const order = await get(`salesOrders/${quoteId}`);
           if (!order || order.status !== 'active')
             throw new BusinessError(409, 'Pedido não está ativo.');
+          const account = await get(`financeAccounts/${quoteId}`);
+          if (account && (netReceived(account as any) !== 0 || account.status === 'closed'))
+            throw new BusinessError(
+              409,
+              'Reabra a conferência e reembolse/estorne recebimentos antes de cancelar o pedido.',
+            );
           for (const t of order.targetIds) {
             const f = await get(`stockFulfillments/${t}`);
             if (f && (Number(f.reserved) > 0 || Number(f.shipped) > 0))

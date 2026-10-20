@@ -360,7 +360,8 @@ export function InventoryWorkspace({
       </p>
       <p>
         Novas propostas estão em Orçamentos e pedidos. As expedições atendem seus itens aprovados e
-        os pedidos históricos. O fechamento financeiro será integrado na E5.
+        os pedidos históricos. Recebimentos, pagamentos e conferência estão em Financeiro e
+        conciliação.
       </p>
       {error && <p role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}

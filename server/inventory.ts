@@ -304,6 +304,17 @@ async function checkLedger(ctx: Context, balances: any[]) {
   return result;
 }
 
+export async function reconcileInventory(db: Firestore, tx: Transaction, tenantId: string) {
+  const ctx = new Context(db, tx, `tenants/${tenantId}`);
+  const opening = await openingIssues(ctx);
+  const result = await checkLedger(ctx, opening.balances);
+  return {
+    ...opening,
+    ...result,
+    control: (await ctx.get('inventoryControl/state')) ?? { phase: 'legacy', version: 0 },
+  };
+}
+
 export function registerInventoryRoutes(
   app: Express,
   db: Firestore | null,
@@ -347,14 +358,7 @@ export function registerInventoryRoutes(
     handler(async (req, uid) =>
       db!.runTransaction(async (tx) => {
         await authorize(tx, req.params.tenantId, uid);
-        const ctx = new Context(db!, tx, `tenants/${req.params.tenantId}`);
-        const opening = await openingIssues(ctx);
-        const result = await checkLedger(ctx, opening.balances);
-        return {
-          ...opening,
-          ...result,
-          control: (await ctx.get('inventoryControl/state')) ?? { phase: 'legacy', version: 0 },
-        };
+        return reconcileInventory(db!, tx, req.params.tenantId);
       }),
     ),
   );
@@ -532,6 +536,14 @@ export function registerInventoryRoutes(
           if (orderId) {
             const target = await orderTarget((path) => ctx.get(path), orderId);
             if (
+              target?.salesOrderId &&
+              (await ctx.get(`financeAccounts/${target.salesOrderId}`))?.status === 'closed'
+            )
+              throw new BusinessError(
+                409,
+                'Reabra a conferência financeira antes de planejar produção para este pedido.',
+              );
+            if (
               !target?.salesOrderId ||
               target.item.id !== productId ||
               target.item.variationId !== variationId ||
@@ -581,7 +593,7 @@ export function registerInventoryRoutes(
           }
           if (recipe.kind === 'print') {
             const printer = await ctx.get(`printers/${recipe.printerId}`);
-            if (!printer || ['inativa', 'manutenção'].includes(printer.status))
+            if (!printer || printer.status !== 'operacional')
               throw new CatalogError('Impressora indisponível.');
           }
           if (p.reprintOf !== '') {
@@ -890,6 +902,22 @@ export function registerInventoryRoutes(
             );
           if (await ctx.get(`stockReversals/${eventId}`))
             throw new BusinessError(409, 'Movimento já estornado.');
+          if (e.type === 'purchase') {
+            const purchases = await tx.get(
+              db!
+                .collection(`${ctx.root}/stockPurchases`)
+                .where('commandId', '==', eventId)
+                .limit(2),
+            );
+            if (purchases.size !== 1)
+              throw new BusinessError(409, 'Compra sem origem única para conferência financeira.');
+            const link = await ctx.get(`financePurchaseLinks/${purchases.docs[0].id}`);
+            if (link && (await ctx.get(`payables/${link.payableId}`))?.status !== 'cancelled')
+              throw new BusinessError(
+                409,
+                'Cancele a conta vinculada e estorne seus pagamentos antes de estornar a compra.',
+              );
+          }
           textValue(p.reason, 'Motivo do estorno', 500);
           for (const d of e.deltas) {
             const b = await ctx.balance(d.item);

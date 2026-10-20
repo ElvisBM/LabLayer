@@ -1,5 +1,6 @@
 import { InventoryPage } from './features/inventory/InventoryPage';
 import { QuotesPage } from './features/quotes/QuotesPage';
+import { FinancePage } from './features/finance/FinancePage';
 import { useInventoryPhase } from './features/inventory/useInventoryPhase';
 import { CatalogPage } from './features/catalog/CatalogPage';
 import { useState } from 'react';
@@ -59,11 +60,11 @@ function MainApp() {
     if (inventory.phase === 'loading') return <p>Conferindo estado do estoque...</p>;
     if (inventory.phase === 'error') return <p role="alert">Não foi possível conferir o estado do estoque. Recarregue antes de operar.</p>;
     if (currentView === 'estoque-operacoes') return <InventoryPage onCatalog={() => setCurrentView('catalogo-fichas')} />;
+    if (currentView === 'financeiro-conciliacao' || (inventory.phase !== 'legacy' && ['dashboard', 'financeiro'].includes(currentView))) return <FinancePage onOrders={() => setCurrentView('orcamentos-pedidos')} onInventory={() => setCurrentView('estoque-operacoes')} />;
     if (currentView === 'orcamentos-pedidos' || (inventory.phase !== 'legacy' && ['vendas', 'encomendas', 'precificacao', 'valores-sugeridos'].includes(currentView))) return <QuotesPage onInventory={() => setCurrentView('estoque-operacoes')} onCatalog={() => setCurrentView('catalogo-fichas')} />;
     if (inventory.phase !== 'legacy') {
       if (['produtos', 'produto-editor', 'catalogo-fichas'].includes(currentView)) return <CatalogPage operational onBack={() => setCurrentView('estoque-operacoes')} />;
-      if (['dashboard', 'filamentos', 'insumos', 'estoque', 'agenda', 'perdas'].includes(currentView)) return <InventoryPage onCatalog={() => setCurrentView('catalogo-fichas')} />;
-      if (currentView === 'financeiro') return <div role="note"><p>O fechamento financeiro e os recebimentos serão integrados na E5. Consulte os pedidos aprovados e os eventos de estoque nas telas operacionais.</p><button onClick={() => setCurrentView('orcamentos-pedidos')}>Abrir orçamentos e pedidos</button></div>;
+      if (['filamentos', 'insumos', 'estoque', 'agenda', 'perdas'].includes(currentView)) return <InventoryPage onCatalog={() => setCurrentView('catalogo-fichas')} />;
     }
     switch (currentView) {
       case 'dashboard':
@@ -129,6 +130,7 @@ function MainApp() {
   };
 
   const getTitle = () => {
+    if (currentView === 'financeiro-conciliacao' || (inventory.phase !== 'legacy' && ['dashboard', 'financeiro'].includes(currentView))) return 'Financeiro e conciliação';
     if (currentView === 'orcamentos-pedidos' || (inventory.phase !== 'legacy' && ['vendas', 'encomendas', 'precificacao', 'valores-sugeridos'].includes(currentView))) return 'Orçamentos e pedidos';
     if (currentView === 'estoque-operacoes' || (inventory.phase !== 'legacy' && ['dashboard', 'filamentos', 'insumos', 'estoque', 'agenda', 'perdas'].includes(currentView))) return 'Estoque e produção';
     switch (currentView) {
@@ -191,6 +193,7 @@ function MainApp() {
         <div className="p-4 lg:p-8 flex-1 overflow-x-hidden">
           <button className="mb-4 rounded border p-2" onClick={() => setCurrentView('estoque-operacoes')}>Estoque e produção — operações e migração</button>
           <button className="mb-4 ml-3 rounded border p-2" onClick={() => setCurrentView('orcamentos-pedidos')}>Orçamentos e pedidos</button>
+          <button className="mb-4 ml-3 rounded border p-2" onClick={() => setCurrentView('financeiro-conciliacao')}>Financeiro e conciliação</button>
           {renderView()}
         </div>
       </main>
