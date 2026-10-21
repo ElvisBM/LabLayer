@@ -228,6 +228,7 @@ service cloud.firestore {
         'customerPhone',
         'sourceMessage',
         'description',
+        'observation',
         'requestedQuantity',
         'productionTimeHours',
         'printerId',
@@ -256,6 +257,7 @@ service cloud.firestore {
              (!('customerPhone' in request.resource.data) || isValidString('customerPhone', 0, 50)) &&
              (!('sourceMessage' in request.resource.data) || isValidString('sourceMessage', 0, 10000)) &&
              (!('description' in request.resource.data) || isValidString('description', 0, 5000)) &&
+             (!('observation' in request.resource.data) || isValidString('observation', 0, 5000)) &&
              isPositiveNumber('requestedQuantity') &&
              isPositiveNumber('productionTimeHours') &&
              (!('printerId' in request.resource.data) || isValidString('printerId', 0, 100)) &&

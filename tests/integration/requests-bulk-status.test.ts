@@ -34,3 +34,18 @@ it('rejeita status inválido, ids duplicados e lote excessivo antes de escrever'
    await expect(changeRequestStatuses(db as any,'a',ids,status)).rejects.toThrow('Selecione');
  expect((await getDoc(doc(db,'tenants/a/customRequests/one'))).data()).toEqual(quote);
 });
+it('finaliza lote misto de pedidos antigos com observation preservando a observação',async()=>{
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'tenants/a/customRequests/legacy'),{...quote,observation:'Observação histórica do cliente'}));
+ const db=env.authenticatedContext('a').firestore();
+ await assertSucceeds(changeRequestStatuses(db as any,'a',['one','legacy'],'finalizado'));
+ expect((await getDoc(doc(db,'tenants/a/customRequests/one'))).data()?.status).toBe('finalizado');
+ expect((await getDoc(doc(db,'tenants/a/customRequests/legacy'))).data()).toMatchObject({status:'finalizado',observation:'Observação histórica do cliente',requestedQuantity:10,quotedPrice:80});
+});
+it('compatibilidade não aceita observação inválida nem campos desconhecidos',async()=>{
+ const db=env.authenticatedContext('a').firestore();
+ for(const extra of [{observation:42},{observation:'x'.repeat(5001)},{unknownField:'não permitido'}]){
+  await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'tenants/a/customRequests/invalid'),{...quote,...extra}));
+  await assertFails(changeRequestStatuses(db as any,'a',['one','invalid'],'finalizado'));
+  expect((await getDoc(doc(db,'tenants/a/customRequests/one'))).data()).toEqual(quote);
+ }
+});
