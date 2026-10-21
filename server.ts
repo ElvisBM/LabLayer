@@ -20,6 +20,7 @@ import { registerWhatsAppIngress } from "./server/whatsapp";
 import { DEFAULT_PRICING_SETTINGS, calculateVariationUnitCostBreakdown, normalizePricingSettings, suggestedPrice } from "./src/utils/pricing";
 
 import { registerAssetRoutes, type AssetStore } from './server/assets';
+import { checkHomologation, loadDeploymentEnvironment } from './server/deployment-environment';
 
 export type AppOptions = {
   assetStore?: AssetStore | null;
@@ -32,6 +33,14 @@ export type AppOptions = {
 // Importing the module never reads credentials, starts a server or opens a database.
 export async function createApp(options: AppOptions = {}) {
 const env = options.env ?? process.env;
+const deployment = options.database === undefined && (env.LABLAYER_ENV || env.LABLAYER_FIREBASE_CONFIG_FILE)
+  ? loadDeploymentEnvironment(env) : null;
+if (deployment?.environment === 'homologation') {
+  checkHomologation(env, process.cwd(), env.NODE_ENV === 'production');
+  if (getApps().some(app => app.options.projectId !== deployment.config.projectId)) {
+    throw new Error('Firebase Admin já inicializado para outro projeto; use um processo separado para homologação.');
+  }
+}
 const FIRESTORE_DATABASE_ID = env.FIRESTORE_DATABASE_ID || "ai-studio-914d19ee-caef-46d9-9cf8-561cc915d716";
 const FIREBASE_SERVICE_ACCOUNT_FILE = env.FIREBASE_SERVICE_ACCOUNT_FILE || path.join(process.cwd(), "firebase-service-account.json");
 const FIREBASE_STORAGE_BUCKET = env.FIREBASE_STORAGE_BUCKET?.trim() || "";
@@ -84,6 +93,7 @@ if (options.database === undefined && !getApps().length) {
         resolvedFirebaseStorageBucket = `${serviceAccount.project_id}.firebasestorage.app`;
       }
       initializeApp({
+        projectId: deployment?.environment === 'homologation' ? deployment.config.projectId : undefined,
         credential: cert(serviceAccount),
         storageBucket: resolvedFirebaseStorageBucket || undefined,
       });
@@ -94,6 +104,7 @@ if (options.database === undefined && !getApps().length) {
         resolvedFirebaseStorageBucket = `${serviceAccount.project_id}.firebasestorage.app`;
       }
       initializeApp({
+        projectId: deployment?.environment === 'homologation' ? deployment.config.projectId : undefined,
         credential: cert(serviceAccount),
         storageBucket: resolvedFirebaseStorageBucket || undefined,
       });
@@ -102,6 +113,7 @@ if (options.database === undefined && !getApps().length) {
       console.warn("Aviso: credenciais Firebase Admin não encontradas no ambiente ou arquivo.");
     }
   } catch (err) {
+    if (deployment?.environment === 'homologation') throw new Error('Não foi possível inicializar Firebase Admin para homologação. Confira a conta de serviço configurada.');
     console.error("Erro ao inicializar Firebase Admin:", err);
   }
 }

@@ -3,13 +3,20 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig } from 'vitest/config';
 import { loadEnv } from 'vite';
+import { deploymentManifest, loadDeploymentEnvironment } from './server/deployment-environment';
 
 export default defineConfig(({mode}) => {
-  const env = loadEnv(mode, '.', '');
+  const env = { ...loadEnv(mode, '.', ''), ...process.env };
+  const deployment = loadDeploymentEnvironment(env);
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), {
+      name: 'lablayer-environment-manifest',
+      generateBundle() {
+        this.emitFile({ type: 'asset', fileName: 'lablayer-environment.json', source: JSON.stringify(deploymentManifest(deployment), null, 2) });
+      },
+    }],
     define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      '__LABLAYER_FIREBASE_CONFIG__': JSON.stringify(deployment.config),
     },
     resolve: {
       alias: {

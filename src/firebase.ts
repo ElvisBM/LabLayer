@@ -1,7 +1,8 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, type FirebaseOptions } from 'firebase/app';
 import { getAuth, signOut, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+declare const __LABLAYER_FIREBASE_CONFIG__: FirebaseOptions & { firestoreDatabaseId: string };
+const firebaseConfig = __LABLAYER_FIREBASE_CONFIG__;
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);

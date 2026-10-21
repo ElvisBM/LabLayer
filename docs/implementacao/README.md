@@ -53,3 +53,5 @@ B14 implementado localmente: registro de envio de versão emitida, evidência e 
 B15 validado em 21/10/2026: **296 testes preservados**, SDK/Admin e ferramentas atualizados. Auditoria de produção agora **zero alertas**; árvore completa ainda registra sete. Esta evidência substitui a contagem histórica de nove alertas de produção acima. Ver [dependências B15](./dependencias-b15.md).
 
 B16 validado em 21/10/2026: **301 testes**, navegação carregada sob demanda e recuperação de falhas de tela. JS inicial reduzido de 1.190,36 para 714,69 kB (cerca de 40%), sem arquivos acima de 500 kB. Ver [desempenho B16](./desempenho-b16.md).
+
+B17 validado em 21/10/2026: **314 testes**. Configuração alternativa explícita de homologação, manifesto de build e conferência offline de cliente/servidor/conta/banco/bucket. Piloto real não executado: faltam empresa e ambiente identificados. Ver [preparação e comandos B17](./homologacao-b17.md).

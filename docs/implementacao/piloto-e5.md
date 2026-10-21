@@ -31,6 +31,8 @@ Outro caso executa falha total, registra perda R$ 17,50, reimprime e expede. O c
 
 ## Roteiro para empresa real — pendente
 
+A [preparação B17](./homologacao-b17.md) agora permite build separado e conferência offline de identidades. Ela foi testada somente com fixtures; todos os passos reais abaixo continuam pendentes.
+
 | Passo | Evidência necessária | Estado |
 |---|---|---|
 | Selecionar empresa, responsável e pedido representativo | Identificação do piloto e do operador | Pendente |

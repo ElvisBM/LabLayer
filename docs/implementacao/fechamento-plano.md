@@ -68,9 +68,17 @@ Barreira integral do LabLayer aprovada: **296 testes** (153 unitários/interface
 | Upload próprio e migração de mídia incorporada | Implementados B13; homologar bucket, IAM, rules e backup dos objetos |
 | Registro de envio de proposta | Implementado B14; envio externo continua manual |
 | DV35 — confirmação da lista de espera | Corrigida localmente no SiteLabLayer; publicação do Apps Script/site e ensaio real pendentes |
-| B11 — piloto, legado, abertura e implantação | Pendente; precisa de empresa/ambiente, documentos e aceite operacional |
+| B11 — piloto, legado, abertura e implantação | Pendente; precisa de empresa/ambiente, documentos e aceite operacional. B17 entrega [configuração isolada e conferência local](./homologacao-b17.md), sem executar o piloto |
 | Escala além dos limites publicados | Paginação/agregações maiores continuam no backlog; relatórios rejeitam truncamento |
 | Dependências e desempenho | B15: produção sem alertas; sete na árvore de desenvolvimento. B16 reduz JS inicial em cerca de 40%, sem arquivos acima de 500 kB; [dependências](./dependencias-b15.md) e [desempenho](./desempenho-b16.md) |
 | Agentes, CSV assistido, marketplaces, portal e PDF | Evolução posterior ao piloto reconciliado |
 
 Os totais de testes certificam os cenários automatizados cobertos. Não equivalem a dados reais conciliados, storage publicado, integração Google Sheets homologada ou produção liberada.
+
+## Atualização técnica — 21/10/2026
+
+- B15: dependências atualizadas, 296 testes preservados; commit `3441164`. SiteLabLayer validado com seis testes no commit `3335f85`. Produção sem alertas nos dois projetos; cada árvore completa mantém sete alertas de desenvolvimento.
+- B16: carregamento por tela e recuperação manual de falhas, 301 testes; commit `b39e3a9`. JS inicial cerca de 40% menor, maior arquivo abaixo de 500 kB, sem elevar limite de aviso.
+- B17: configuração explícita de homologação e conferência offline, 314 testes. Evidências em [homologação B17](./homologacao-b17.md).
+
+Nenhuma etapa técnica substitui o aceite operacional. Permanecem o piloto real e validações de Auth/Storage/rules/IAM, backup completo, legado/abertura, publicação do site/Apps Script, alertas de desenvolvimento sem correção compatível validada e dimensionamento com volume real. Agentes e novas integrações continuam como evolução posterior.
