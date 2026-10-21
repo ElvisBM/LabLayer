@@ -1,3 +1,4 @@
+import { assistantAiFromEnvironment, AI_MAX_BYTES, type AssistantAi, type AiFile } from "./assistant-ai";
 import express, { type Express, type Request, type Response } from "express";
 import { createHash, randomBytes } from "node:crypto";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
@@ -88,6 +89,7 @@ export function registerAssistantRoutes(
   db: Firestore | null,
   verify: (t: string) => Promise<DecodedIdToken>,
   store: AssetStore | null,
+  ai: AssistantAi | null = assistantAiFromEnvironment(app),
 ) {
   app.get("/assistente", (_req, res, next) => {
     res.set({
@@ -98,6 +100,7 @@ export function registerAssistantRoutes(
     next();
   });
   const ref = (p: string) => db!.doc(p);
+  const aiEnabled = (tenantId: string) => !!ai && (!process.env.LABLAYER_ASSISTANT_AI_TENANTS || process.env.LABLAYER_ASSISTANT_AI_TENANTS.split(",").includes(tenantId));
   async function owner(
     tx: Transaction,
     tenant: string,
@@ -348,7 +351,7 @@ export function registerAssistantRoutes(
         return {
           seller: link.name,
           company: link.companyName,
-          mode: "guided",
+          mode: aiEnabled(link.tenantId) ? "ai" : "guided",
           requests: mappings.docs.flatMap((d, i) =>
             rows[i].exists
               ? [
@@ -368,15 +371,63 @@ export function registerAssistantRoutes(
       res.json(result);
     }),
   );
+  const aiBusy = new Set<string>();
   app.post(
     "/api/assistant/draft",
-    publicRoute(async (req, res, _key) => {
-      const message = text(fields(req.body, ["message"]).message, 4000);
-      res.json({
-        draft: suggestIntake(message),
-        message:
-          "Confira o título, o cliente e a quantidade antes de cadastrar. O texto completo será preservado. Áudios e imagens ficam anexados para análise da equipe.",
-      });
+    publicRoute(async (req, res, key) => {
+      const body = fields(req.body, ["message", "attachments", "guided"]);
+      const message = text(body.message, 4000);
+      const ids = attachments(body.attachments ?? []);
+      if (body.guided !== undefined && typeof body.guided !== "boolean") fail(422, "Modo inválido.");
+      const fallback = (notice: string) => res.json({ draft: suggestIntake(message), mode: "guided", transcript: "", message: notice });
+      // Check ownership even when the fallback is selected.
+      const enabled = await db!.runTransaction(async tx => { const link = await access(tx, key); await ownedFiles(tx, key, ids); return aiEnabled(link.tenantId); });
+      if (!enabled || body.guided) return fallback("Confira título, cliente e quantidade. Modo guiado: imagens e áudios ficam anexados para análise da equipe.");
+      if (aiBusy.has(key)) fail(429, "Já existe uma interpretação em andamento neste acesso.");
+      aiBusy.add(key);
+      try {
+        const context = await db!.runTransaction(async tx => {
+          const link = await access(tx, key);
+          const metas = [];
+          for (const id of ids) metas.push((await tx.get(ref(`tenants/${link.tenantId}/assets/${id}`))).data());
+          return { link, metas };
+        });
+        if (context.metas.some(m => !m) || context.metas.reduce((n, m) => n + m!.size, 0) > AI_MAX_BYTES)
+          return fallback("IA não utilizada: os anexos excedem 8 MiB no total. Preencha a conferência manualmente; os anexos serão preservados.");
+        const audios = context.metas.filter(m => m!.mime.startsWith("audio/"));
+        if (audios.length > 1 || audios.some(m => m!.mime === "audio/ogg"))
+          return fallback("IA não utilizada: envie um áudio MP3, M4A, WAV ou WebM por pedido. OGG e áudios adicionais ficam disponíveis para a equipe ouvir.");
+        const aiFiles: AiFile[] = [];
+        for (const meta of context.metas) {
+          if (!store) fail(503, "Armazenamento indisponível.");
+          const bytes = await store!.get(meta!.path);
+          if (bytes.length !== meta!.size || hash(bytes) !== meta!.sha256) fail(503, "Anexo não confirmado.");
+          aiFiles.push({ name: meta!.name, mime: meta!.mime, data: bytes.toString("base64") });
+        }
+        const day = new Date().toISOString().slice(0, 10);
+        await db!.runTransaction(async tx => {
+          const link = await access(tx, key), quotaRef = ref(`assistantAiQuotas/${hash(link.tenantId)}`);
+          const tenantQuota = (await tx.get(quotaRef)).data();
+          const linkCount = link.aiDay === day ? link.aiCount || 0 : 0;
+          const tenantCount = tenantQuota?.day === day ? tenantQuota.count || 0 : 0;
+          if (linkCount >= 30 || tenantCount >= 300) fail(429, "Limite diário de IA atingido. Use o preenchimento manual.");
+          tx.update(ref(`assistantLinks/${key}`), { aiDay: day, aiCount: linkCount + 1 });
+          tx.set(quotaRef, { day, count: tenantCount + 1 });
+        });
+        let result;
+        try {
+          result = await ai.interpret({ message, attachments: aiFiles }, async () => {
+            await db!.runTransaction(tx => access(tx, key));
+          });
+        } catch {
+          // Revocation must never turn into a successful fallback response.
+          await db!.runTransaction(tx => access(tx, key));
+          return fallback("A IA não concluiu a interpretação. Confira manualmente; seu texto e anexos continuam disponíveis. Nenhum pedido foi cadastrado.");
+        }
+        // Revalidate access independently of the adapter, including test/alternate adapters.
+        await db!.runTransaction(tx => access(tx, key));
+        res.json({ ...result, mode: "ai", message: "Sugestão da IA: confira todos os dados antes de cadastrar. " + result.warnings.join(" ") });
+      } finally { aiBusy.delete(key); }
     }),
   );
   async function ownedFiles(tx: Transaction, key: string, ids: string[]) {
