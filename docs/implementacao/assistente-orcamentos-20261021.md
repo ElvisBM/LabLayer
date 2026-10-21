@@ -54,3 +54,7 @@ Publicação utiliza o worktree de release compatível com produção, preservan
 - Navegador: menu Assistente com link ativo, chat acessível, rascunho com 10 unidades + medida 12 cm interpretado como quantidade 10, largura de 390 px sem rolagem horizontal. Rascunho de teste descartado sem cadastro. Ajustado também o título da barra superior; lint, testes de UI/unidade e build repetidos para esse ajuste visual.
 - Evidências: [chat mobile](evidencias/assistente-mobile-20261021.png), [conferência mobile](evidencias/assistente-conferencia-mobile-20261021.png).
 - Backup: `/home/lablayer/deploy-backups/assistant-a9c8b82-before.tar.gz`; pacote e verificação em `/home/lablayer/releases/assistant-a9c8b82/`. Não houve alteração de regras Firestore, credenciais n8n ou configurações financeiras.
+
+### Atualização: acesso ao n8n recuperado
+
+Login confirmado em 21/10/2026 após o usuário recuperar o acesso. Versão 2.26.4, um workflow de WhatsApp publicado e nenhuma credencial de provedor cadastrada visível. O bloqueio de login foi resolvido; escolha e configuração da API de IA continuam pendentes. Conferência e desenho da integração: [contrato do assistente IA](../n8n/assistente-ia-contrato.md). Nenhuma alteração na automação de WhatsApp ou no modo guiado publicado.
