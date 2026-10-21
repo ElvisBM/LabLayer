@@ -4,7 +4,7 @@
 
 A conexão `OpenAI — LabLayer Bot` foi conferida no n8n com `Connection tested successfully`. A chave permanece no gerenciador de credenciais do n8n. Nenhuma chave do provedor é necessária no ambiente do LabLayer, no código, no workflow exportado ou no navegador do vendedor.
 
-Workflow separado: **LabLayer — Assistente IA v1**, ID `qcfswpWqCsxJUtCd`. O workflow preexistente **Whatsapp Encomendas e Orcamentos LabLayer** (`IgH0E3hD739uBBWE`) foi preservado. A ativação do assistente por empresa é controlada no servidor; publicação do workflow, isoladamente, não habilita os vendedores.
+Workflow separado: **LabLayer — Assistente IA v1**, ID `qcfswpWqCsxJUtCd`. O workflow preexistente **Whatsapp Encomendas e Orcamentos LabLayer** (`IgH0E3hD739uBBWE`) foi preservado. A ativação do assistente por empresa é controlada no servidor; publicação do workflow, isoladamente, não habilita os vendedores. **Estado final: workflow despublicado e IA desabilitada no LabLayer por ausência de créditos na OpenAI. Modo guiado disponível.**
 
 ## Responsabilidades e autenticação
 
