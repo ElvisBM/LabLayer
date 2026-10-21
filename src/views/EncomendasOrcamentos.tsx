@@ -1,3 +1,4 @@
+import { compareRequests, REQUEST_SORT_OPTIONS, type RequestSortField, type RequestSortDirection } from "../features/requests/sort";
 import { changeRequestStatuses, MAX_BULK_REQUESTS } from "../features/requests/bulk-status";
 import { AssistantRequestNotes } from '../features/assistant/Assistant';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -165,6 +166,8 @@ export function EncomendasOrcamentos() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [displayMode, setDisplayMode] = useState<'list' | 'cards-2' | 'cards-3'>('list');
+  const [sortField, setSortField] = useState<RequestSortField>('updatedAt');
+  const [sortDirection, setSortDirection] = useState<RequestSortDirection>('desc');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkStatus, setBulkStatus] = useState<RequestStatus>('orcado');
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -307,8 +310,13 @@ export function EncomendasOrcamentos() {
         const haystack = `${item.title} ${item.description} ${item.customerName || ''}`.toLowerCase();
         return haystack.includes(search.trim().toLowerCase());
       })
-      .sort((a, b) => (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || ''));
-  }, [requests, search, statusFilter]);
+      .sort((a, b) => compareRequests(a, b, sortField, sortDirection));
+  }, [requests, search, statusFilter, sortField, sortDirection]);
+
+  const sortBy = (field: RequestSortField) => {
+    setSortDirection(sortField === field ? (sortDirection === 'asc' ? 'desc' : 'asc') : field === 'updatedAt' || field === 'createdAt' ? 'desc' : 'asc');
+    setSortField(field);
+  };
 
   // Only currently visible records are eligible; filtering cannot silently change hidden rows.
   const visibleSelected = selectedIds.filter(id => filteredRequests.some(row => row.id === id));
@@ -907,6 +915,15 @@ export function EncomendasOrcamentos() {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <label className="flex items-center gap-2">Ordenar por
+          <select aria-label="Ordenar orçamentos por" value={sortField} onChange={e => sortBy(e.target.value as RequestSortField)} className="rounded bg-surface-container p-2">
+            {REQUEST_SORT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <button type="button" aria-label="Inverter direção da ordenação" onClick={() => setSortDirection(current => current === 'asc' ? 'desc' : 'asc')} className="rounded border border-outline-variant/30 px-3 py-2">{sortDirection === 'asc' ? 'Crescente ↑' : 'Decrescente ↓'}</button>
+        <span className="text-on-surface-variant">Finalizados sempre por último.</span>
+      </div>
       <p className="text-sm text-on-surface-variant" role="status">{filteredRequests.length} de {requests.length} solicitações</p>
 
       <section aria-label="Alterar status em lote" className="flex flex-wrap items-center gap-3 rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4">
@@ -932,7 +949,15 @@ export function EncomendasOrcamentos() {
           <table className="w-full min-w-[760px] text-sm text-left">
             <caption className="sr-only">Lista simplificada de encomendas e orçamentos</caption>
             <thead className="bg-surface-container text-on-surface-variant">
-              <tr>{['Selecionar', 'Solicitação', 'Cliente', 'Quantidade', 'Status', 'Orçamento', 'Ações'].map(label => <th key={label} scope="col" className="p-3 font-semibold">{label}</th>)}</tr>
+              <tr>
+                <th scope="col" className="p-3 font-semibold">Selecionar</th>
+                {REQUEST_SORT_OPTIONS.filter(option => !['updatedAt', 'createdAt'].includes(option.value)).map(option => <th key={option.value} scope="col" aria-sort={sortField === option.value ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'} className="p-3 font-semibold">
+                  <button type="button" onClick={() => sortBy(option.value)} aria-label={`Ordenar por ${option.label}`} className="inline-flex min-h-11 items-center gap-1 rounded text-left hover:underline focus-visible:ring-2 focus-visible:ring-primary">
+                    {option.label} <span aria-hidden="true">{sortField === option.value ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}</span>
+                  </button>
+                </th>)}
+                <th scope="col" className="p-3 font-semibold">Ações</th>
+              </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/20">
               {filteredRequests.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-on-surface-variant">Nenhuma encomenda ou orçamento encontrado com os filtros atuais.</td></tr>}

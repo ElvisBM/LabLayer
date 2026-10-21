@@ -149,3 +149,22 @@ it('erro mantém seleção para repetir e bloqueia duplo envio durante salvament
   expect(state.commit).toHaveBeenCalledTimes(1);
   expect(screen.getByText('2 selecionado(s)')).toBeTruthy();
 });
+it('cabeçalhos ordenam sem salvar, preservam seleção e mantêm finalizados no fim em ambos sentidos',()=>{
+ state.requests.push({...state.requests[0],id:'done',title:'A finalizado',status:'finalizado',requestedQuantity:100,updatedAt:'2030-01-01T00:00:00Z'});
+ render(<EncomendasOrcamentos/>);
+ const titles=()=>within(screen.getByRole('table')).getAllByRole('row').slice(1).map(row=>within(row).getByRole('rowheader').textContent);
+ expect(titles().at(-1)).toContain('A finalizado');
+ fireEvent.click(screen.getByRole('checkbox',{name:'Selecionar Chaveiro NFC'}));
+ fireEvent.click(screen.getByRole('button',{name:'Ordenar por Quantidade'}));
+ expect(titles()[0]).toContain('Chaveiro');expect(titles().at(-1)).toContain('A finalizado');
+ fireEvent.click(screen.getByRole('button',{name:'Ordenar por Quantidade'}));
+ expect(titles()[0]).toContain('Organizador');expect(titles().at(-1)).toContain('A finalizado');
+ expect(screen.getByRole('columnheader',{name:/Quantidade/}).getAttribute('aria-sort')).toBe('descending');
+ expect((screen.getByRole('checkbox',{name:'Selecionar Chaveiro NFC'}) as HTMLInputElement).checked).toBe(true);
+ fireEvent.click(screen.getByRole('button',{name:'2 caixas'}));
+ expect(screen.getAllByRole('heading',{level:3}).map(x=>x.textContent)).toEqual(['Organizador','Chaveiro NFC','A finalizado']);
+ fireEvent.click(screen.getByRole('button',{name:/^Organizador$/}));
+ fireEvent.click(screen.getByRole('button',{name:'Voltar para orçamentos'}));
+ expect((screen.getByRole('combobox',{name:'Ordenar orçamentos por'}) as HTMLSelectElement).value).toBe('requestedQuantity');
+ expect(state.commit).not.toHaveBeenCalled();expect(state.writes).not.toHaveBeenCalled();
+});
