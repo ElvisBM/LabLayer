@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { Calculator, CheckCircle2, Clock3, Edit2, FileText, ImagePlus, LayoutGrid, List, Link as LinkIcon, Package, Plus, Printer, Trash2 } from 'lucide-react';
+import { ArrowLeft, Calculator, CheckCircle2, Clock3, Edit2, FileText, ImagePlus, LayoutGrid, List, Link as LinkIcon, Package, Plus, Printer, Trash2 } from 'lucide-react';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { SearchableSelect, SelectOption } from '../components/SearchableSelect';
@@ -165,6 +165,21 @@ export function EncomendasOrcamentos() {
   const [statusFilter, setStatusFilter] = useState<'all' | RequestStatus>('all');
   const [formData, setFormData] = useState<Omit<CustomRequest, 'id'>>(getDefaultFormData());
   const [isQuotePriceManual, setIsQuotePriceManual] = useState(false);
+  const detailHeading = useRef<HTMLHeadingElement>(null);
+  const returnPosition = useRef({ top: 0, titleId: '' });
+  const wasShowingForm = useRef(false);
+
+  useLayoutEffect(() => {
+    if (showForm) {
+      detailHeading.current?.focus({ preventScroll: true });
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    } else if (wasShowingForm.current) {
+      document.getElementById(returnPosition.current.titleId)?.focus({ preventScroll: true });
+      window.scrollTo({ top: returnPosition.current.top, behavior: 'instant' });
+    }
+    wasShowingForm.current = showForm;
+  }, [showForm]);
+
 
   useEffect(() => {
     if (!tenantId) return;
@@ -395,6 +410,7 @@ export function EncomendasOrcamentos() {
   };
 
   const handleEdit = (request: CustomRequest) => {
+    returnPosition.current = { top: window.scrollY, titleId: `request-title-${request.id}` };
     setEditingId(request.id);
     setFormData({
       ...getDefaultFormData(),
@@ -403,7 +419,6 @@ export function EncomendasOrcamentos() {
     });
     setIsQuotePriceManual(Number(request.quotedPrice) > 0 && Number(request.quotedPrice) !== Number((request.suggestedUnitPrice || 0) * Math.max(1, request.requestedQuantity || 1)));
     setShowForm(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDelete = async (requestId: string) => {
@@ -427,17 +442,16 @@ export function EncomendasOrcamentos() {
 
   return (
     <div className="space-y-8">
+      {!showForm && <>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
           <h2 className="font-headline text-3xl font-bold text-primary tracking-tighter">Encomendas e Orçamentos</h2>
           <p className="text-on-surface-variant font-sans text-sm mt-1">Suba a solicitação, anexe referência, calcule o orçamento e acompanhe a fila de produção em um lugar só.</p>
         </div>
         <button
+          id="new-request"
           onClick={() => {
-            if (showForm && !editingId) {
-              setShowForm(false);
-              return;
-            }
+            returnPosition.current = { top: window.scrollY, titleId: 'new-request' };
             resetForm();
             setShowForm(true);
           }}
@@ -461,11 +475,16 @@ export function EncomendasOrcamentos() {
         ))}
       </div>
 
+      </>}
       {showForm && (
-        <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm space-y-6">
+        <section aria-label="Detalhes da solicitação" className="space-y-4">
+          <button type="button" onClick={() => { setShowForm(false); resetForm(); }} className="inline-flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm font-bold text-primary hover:bg-surface-container focus-visible:ring-2 focus-visible:ring-primary">
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Voltar para orçamentos
+          </button>
+        <div className="bg-surface-container-lowest p-4 sm:p-6 rounded-xl border border-outline-variant/20 shadow-sm space-y-6">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-primary" />
-            <h3 className="font-headline font-bold text-lg">{editingId ? 'Editar Solicitação' : 'Nova Solicitação'}</h3>
+            <h2 ref={detailHeading} tabIndex={-1} className="font-headline font-bold text-lg break-words">{editingId ? 'Editar Solicitação' : 'Nova Solicitação'}</h2>
           </div>
 
           <form onSubmit={handleSave} className="space-y-6">
@@ -811,8 +830,10 @@ export function EncomendasOrcamentos() {
             </div>
           </form>
         </div>
+        </section>
       )}
 
+      {!showForm && <>
       <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/10">
         <div className="relative w-full lg:max-w-sm">
           <input
@@ -857,7 +878,7 @@ export function EncomendasOrcamentos() {
               {filteredRequests.map(request => (
                 <tr key={request.id} className="hover:bg-surface-container/50 align-top">
                   <th scope="row" className="p-3 max-w-sm font-normal">
-                    <span className="block font-semibold text-on-surface break-words">{request.title}</span>
+                    <button id={`request-title-${request.id}`} type="button" onClick={() => handleEdit(request)} className="block min-h-11 text-left font-semibold text-primary break-words hover:underline focus-visible:ring-2 focus-visible:ring-primary rounded">{request.title}</button>
                     <span className="text-xs text-on-surface-variant">{REQUEST_TYPE_OPTIONS.find(option => option.value === request.type)?.label || 'Solicitação'}</span>
                   </th>
                   <td className="p-3 text-on-surface-variant">{request.customerName || 'Não informado'}</td>
@@ -895,7 +916,7 @@ export function EncomendasOrcamentos() {
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700">WhatsApp</span>
                       )}
                     </div>
-                    <h3 className="text-lg font-bold text-on-surface leading-tight break-words">{request.title}</h3>
+                    <h3 className="text-lg font-bold leading-tight break-words"><button id={`request-title-${request.id}`} type="button" onClick={() => handleEdit(request)} className="min-h-11 text-left text-primary hover:underline focus-visible:ring-2 focus-visible:ring-primary rounded">{request.title}</button></h3>
                     {request.description && <p className="text-sm text-on-surface-variant mt-2 leading-relaxed break-words">{request.description}</p>}
                     {(request.customerName || request.customerPhone) && (
                       <div className="mt-3 flex flex-wrap gap-3 text-xs text-on-surface-variant">
@@ -905,7 +926,7 @@ export function EncomendasOrcamentos() {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => handleEdit(request)} className="p-2 text-slate-400 hover:text-primary hover:bg-surface-container rounded">
+                    <button type="button" aria-label={`Abrir detalhes de ${request.title}`} onClick={() => handleEdit(request)} className="p-2 text-slate-400 hover:text-primary hover:bg-surface-container rounded">
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button type="button" onClick={() => handleDelete(request.id)} className="p-2 text-slate-400 hover:text-error hover:bg-surface-container rounded">
@@ -988,6 +1009,7 @@ export function EncomendasOrcamentos() {
         })}
       </div>
       )}
+      </>}
     </div>
   );
 }
