@@ -1,33 +1,35 @@
-import { InventoryPage } from './features/inventory/InventoryPage';
-import { QuotesPage } from './features/quotes/QuotesPage';
-import { FinancePage } from './features/finance/FinancePage';
 import { useInventoryPhase } from './features/inventory/useInventoryPhase';
-import { CatalogPage } from './features/catalog/CatalogPage';
-import { useState } from 'react';
+import { lazy, useState } from 'react';
+import { ViewBoundary } from './components/ViewBoundary';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
-import { Dashboard } from './views/Dashboard';
-import { Filamentos } from './views/Filamentos';
-import { AgendaProducao } from './views/AgendaProducao';
-import { EncomendasOrcamentos } from './views/EncomendasOrcamentos';
-import { Fornecedores } from './views/Fornecedores';
-import { Impressoras } from './views/Impressoras';
-import { Insumos } from './views/Insumos';
-import { Produtos } from './views/Produtos';
-import { Marketplaces } from './views/Marketplaces';
-import { Precificacao } from './views/Precificacao';
-import { ValoresSugeridos } from './views/ValoresSugeridos';
-import { Vendas } from './views/Vendas';
-import { ControlePerdas } from './views/ControlePerdas';
-import { EstoqueInteligente } from './views/EstoqueInteligente';
-import { Financeiro } from './views/Financeiro';
-import { Configuracoes } from './views/Configuracoes';
-import { SuperAdmin } from './views/SuperAdmin';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { logout } from './firebase';
 import { Login } from './views/Login';
 
 import { Toaster } from 'react-hot-toast';
+
+const InventoryPage = lazy(() => import('./features/inventory/InventoryPage').then(module => ({ default: module.InventoryPage })));
+const QuotesPage = lazy(() => import('./features/quotes/QuotesPage').then(module => ({ default: module.QuotesPage })));
+const FinancePage = lazy(() => import('./features/finance/FinancePage').then(module => ({ default: module.FinancePage })));
+const CatalogPage = lazy(() => import('./features/catalog/CatalogPage').then(module => ({ default: module.CatalogPage })));
+const Dashboard = lazy(() => import('./views/Dashboard').then(module => ({ default: module.Dashboard })));
+const Filamentos = lazy(() => import('./views/Filamentos').then(module => ({ default: module.Filamentos })));
+const AgendaProducao = lazy(() => import('./views/AgendaProducao').then(module => ({ default: module.AgendaProducao })));
+const EncomendasOrcamentos = lazy(() => import('./views/EncomendasOrcamentos').then(module => ({ default: module.EncomendasOrcamentos })));
+const Fornecedores = lazy(() => import('./views/Fornecedores').then(module => ({ default: module.Fornecedores })));
+const Impressoras = lazy(() => import('./views/Impressoras').then(module => ({ default: module.Impressoras })));
+const Insumos = lazy(() => import('./views/Insumos').then(module => ({ default: module.Insumos })));
+const Produtos = lazy(() => import('./views/Produtos').then(module => ({ default: module.Produtos })));
+const Marketplaces = lazy(() => import('./views/Marketplaces').then(module => ({ default: module.Marketplaces })));
+const Precificacao = lazy(() => import('./views/Precificacao').then(module => ({ default: module.Precificacao })));
+const ValoresSugeridos = lazy(() => import('./views/ValoresSugeridos').then(module => ({ default: module.ValoresSugeridos })));
+const Vendas = lazy(() => import('./views/Vendas').then(module => ({ default: module.Vendas })));
+const ControlePerdas = lazy(() => import('./views/ControlePerdas').then(module => ({ default: module.ControlePerdas })));
+const EstoqueInteligente = lazy(() => import('./views/EstoqueInteligente').then(module => ({ default: module.EstoqueInteligente })));
+const Financeiro = lazy(() => import('./views/Financeiro').then(module => ({ default: module.Financeiro })));
+const Configuracoes = lazy(() => import('./views/Configuracoes').then(module => ({ default: module.Configuracoes })));
+const SuperAdmin = lazy(() => import('./views/SuperAdmin').then(module => ({ default: module.SuperAdmin })));
 
 function MainApp() {
   const [currentView, setCurrentView] = useState('dashboard');
@@ -194,7 +196,9 @@ function MainApp() {
           <button className="mb-4 rounded border p-2" onClick={() => setCurrentView('estoque-operacoes')}>Estoque e produção — operações e migração</button>
           <button className="mb-4 ml-3 rounded border p-2" onClick={() => setCurrentView('orcamentos-pedidos')}>Orçamentos e pedidos</button>
           <button className="mb-4 ml-3 rounded border p-2" onClick={() => setCurrentView('financeiro-conciliacao')}>Financeiro e conciliação</button>
-          {renderView()}
+          <ViewBoundary key={`${tenantId}:${inventory.phase}:${currentView}`}>
+            {renderView()}
+          </ViewBoundary>
         </div>
       </main>
     </div>

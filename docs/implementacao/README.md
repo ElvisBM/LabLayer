@@ -51,3 +51,5 @@ B13 implementado localmente: upload privado, download autenticado e migração e
 B14 implementado localmente: registro de envio de versão emitida, evidência e histórico. Barreira acumulada aprovada com **296 testes**. DV35 corrigida no repositório SiteLabLayer (`39d99d7`), com seis testes e build/auditoria de produção aprovados. O [fechamento das lacunas](./fechamento-plano.md) lista entregas, critérios e pendências de homologação.
 
 B15 validado em 21/10/2026: **296 testes preservados**, SDK/Admin e ferramentas atualizados. Auditoria de produção agora **zero alertas**; árvore completa ainda registra sete. Esta evidência substitui a contagem histórica de nove alertas de produção acima. Ver [dependências B15](./dependencias-b15.md).
+
+B16 validado em 21/10/2026: **301 testes**, navegação carregada sob demanda e recuperação de falhas de tela. JS inicial reduzido de 1.190,36 para 714,69 kB (cerca de 40%), sem arquivos acima de 500 kB. Ver [desempenho B16](./desempenho-b16.md).

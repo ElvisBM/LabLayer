@@ -70,7 +70,7 @@ Barreira integral do LabLayer aprovada: **296 testes** (153 unitários/interface
 | DV35 — confirmação da lista de espera | Corrigida localmente no SiteLabLayer; publicação do Apps Script/site e ensaio real pendentes |
 | B11 — piloto, legado, abertura e implantação | Pendente; precisa de empresa/ambiente, documentos e aceite operacional |
 | Escala além dos limites publicados | Paginação/agregações maiores continuam no backlog; relatórios rejeitam truncamento |
-| Dependências e desempenho | B15: produção sem alertas; sete na árvore de desenvolvimento. Bundle grande segue para B16; [evidências](./dependencias-b15.md) |
+| Dependências e desempenho | B15: produção sem alertas; sete na árvore de desenvolvimento. B16 reduz JS inicial em cerca de 40%, sem arquivos acima de 500 kB; [dependências](./dependencias-b15.md) e [desempenho](./desempenho-b16.md) |
 | Agentes, CSV assistido, marketplaces, portal e PDF | Evolução posterior ao piloto reconciliado |
 
 Os totais de testes certificam os cenários automatizados cobertos. Não equivalem a dados reais conciliados, storage publicado, integração Google Sheets homologada ou produção liberada.
