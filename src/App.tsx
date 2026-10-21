@@ -1,3 +1,4 @@
+import { AssistantChat, AssistantLinks } from './features/assistant/Assistant';
 import { TeamPage } from './features/team/TeamPage';
 import { logout } from './firebase';
 import { useState } from 'react';
@@ -46,6 +47,7 @@ function MainApp() {
   if (initializationError) return <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-8"><p role="alert">{initializationError}</p><button onClick={() => window.location.reload()}>Tentar novamente</button><button onClick={() => logout()}>Sair</button></div>;
 
   const renderView = () => {
+    if (currentView === 'assistente') return <AssistantLinks />;
     if (currentView === 'usuarios') return <TeamPage />;
     switch (currentView) {
       case 'dashboard':
@@ -174,6 +176,7 @@ function MainApp() {
 }
 
 export default function App() {
+  if (window.location.pathname === "/assistente") return <AssistantChat />;
   return (
     <AuthProvider>
       <MainApp />

@@ -1,3 +1,4 @@
+import { registerAssistantRoutes } from './server/assistant';
 import { registerAssetRoutes } from './server/assets';
 import { createLocalAssetStore } from './server/local-assets';
 import { getAuth } from 'firebase-admin/auth';
@@ -638,6 +639,7 @@ async function startServer() {
     return { ...identity, superadmin: identity.superadmin === true || profile?.role === 'superadmin' };
   };
   registerAssetRoutes(app, db, verifyTeamToken, process.env.LABLAYER_ASSET_DIR ? createLocalAssetStore(process.env.LABLAYER_ASSET_DIR) : null);
+  registerAssistantRoutes(app, db, verifyTeamToken, process.env.LABLAYER_ASSET_DIR ? createLocalAssetStore(process.env.LABLAYER_ASSET_DIR) : null);
   registerSessionRoute(app, db, verifyTeamToken);
   registerTeamRoutes(app, db, verifyTeamToken);
   registerTeamCreateRoute(app, db, verifyTeamToken, {
