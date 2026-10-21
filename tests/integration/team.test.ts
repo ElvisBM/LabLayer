@@ -132,7 +132,10 @@ it('cliente não cria vínculos, concede papel ou lê solicitações diretamente
 });
 
 it('administrador global gerencia sem atribuir seu nome ao proprietário de outra empresa', async () => {
+  await db.doc('users/platform').set({ tenantId: 'a', tenantRole: 'owner', role: 'user' });
   const team = (await get('/api/tenants/a/team', 'platform').expect(200)).body;
+  expect(team.members.find((m: any) => m.uid === 'platform').platformAdmin).toBe(true);
+  expect((await get('/api/team/companies', 'platform').expect(200)).body.companies.find((c: any) => c.id === 'a').role).toBe('platform-admin');
   expect(team.isOwner).toBe(true);
   expect(team.members.find((m: any) => m.uid === 'a').name).toBe('');
   await join().expect(200);

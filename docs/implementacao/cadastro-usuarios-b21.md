@@ -4,7 +4,7 @@
 
 O menu **Usuários** complementa o B18 com cadastro de nome, e-mail, tipo de acesso (Operador ou Administrador) e senha inicial. A lista passa a exibir nome, e-mail e papel. O cadastro cria uma identidade Firebase Authentication e a vincula à empresa atual. Não representa uma transferência de propriedade.
 
-**Implementação local. Ainda não publicada.** A conferência de produção encontrou uma divergência que exige escolha do responsável: a conta `elvisbmartins@gmail.com` está vinculada à empresa de `brincamentelab@empresa.com`, marcada como `inactive`, com 27 solicitações. A empresa própria do Elvis está `active` e vazia. Nenhum vínculo, status de empresa ou dado comercial foi alterado nesta entrega. Publicar o novo provisionamento de sessão sem resolver essa situação bloquearia a sessão atual com “Empresa inativa”. A decisão foi solicitada ao usuário.
+**Atualização: publicada e empresa reativada em 21/10/2026; ver [registro de publicação](./publicacao-usuarios-20261021.md).** A descrição abaixo registra a divergência encontrada antes da autorização. A conferência de produção encontrou uma divergência que exige escolha do responsável: a conta `elvisbmartins@gmail.com` está vinculada à empresa de `brincamentelab@empresa.com`, marcada como `inactive`, com 27 solicitações. A empresa própria do Elvis está `active` e vazia. Nenhum vínculo, status de empresa ou dado comercial foi alterado nesta entrega. Publicar o novo provisionamento de sessão sem resolver essa situação bloquearia a sessão atual com “Empresa inativa”. A decisão foi solicitada ao usuário.
 
 ## Regras de negócio
 
@@ -39,4 +39,4 @@ A versão de compatibilidade mantém temporariamente o papel global legado, lido
 
 Após a escolha da empresa: registrar a correção de vínculo/status estritamente autorizada, salvar backup de regras e aplicação, publicar servidor/regras/interface/dependências em conjunto, conferir sessão e menu, verificar as 27 solicitações e validar acesso/remoção com uma conta controlada. Não acionar o deploy integral de `main`: há alterações de servidor em produção que precisam ser preservadas. A preparação da release não substitui essa validação operacional.
 
-Release de compatibilidade preparada no commit `457f531`, branch local `release/users-b21`: 39 testes específicos, tipos/build e auditoria de produção aprovados. Não houve push nem publicação.
+Release de compatibilidade preparada no commit `457f531`, branch local `release/users-b21`: 39 testes específicos, tipos/build e auditoria de produção aprovados. A publicação posterior e o ajuste de identificação do administrador global estão registrados no documento de publicação.

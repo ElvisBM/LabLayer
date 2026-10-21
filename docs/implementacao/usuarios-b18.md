@@ -50,3 +50,5 @@ Na homologação, usar duas contas controladas: solicitar, aprovar como operador
 ## Complemento B21
 
 O [B21](./cadastro-usuarios-b21.md) acrescenta cadastro direto com senha inicial, exibição de nome e gestão por administrador global autenticado, além do proprietário. Esta atualização substitui a restrição exclusivamente ao proprietário descrita acima; administradores comuns de tenant continuam sem poder conceder acesso. Publicação permanece pendente da escolha da empresa ativa.
+
+Atualização de publicação: B18/B21 foram publicados isoladamente e a empresa autorizada foi reativada. A pendência acima foi resolvida; ver [registro operacional](./publicacao-usuarios-20261021.md).
