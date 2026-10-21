@@ -61,3 +61,5 @@ B18 validado em 21/10/2026: **329 testes**. Menu Usuários e empresa, solicitaç
 B19 validado em 21/10/2026: **332 testes**. Visualização simplificada em lista na tela Encomendas e Orçamentos, alternância para cartões, busca por cliente e cálculo pendente identificado. Código local, publicação pendente. O cadastro separado dos 13 pedidos foi conferido no site; ver [escopo e evidências B19](./lista-solicitacoes-b19.md).
 
 B20 validado em 21/10/2026: **332 testes**. Seletor ampliado para Lista simplificada, 2 caixas e 3 caixas, com grade responsiva e filtros compartilhados. Código local, publicação pendente; [conferência B20](./visualizacoes-b20.md).
+
+Atualização em 21/10/2026: **visualizações B19/B20 publicadas isoladamente** sobre a base de produção no release `f34d8dd` (`release/quote-view-modes`). Conferidas no site com os pedidos existentes. Esta atualização substitui a pendência de publicação das visualizações acima; as demais etapas e o menu Usuários continuam pendentes de homologação/publicação. Ver [escopo, evidências e reversão](./publicacao-visualizacoes-20261021.md).
