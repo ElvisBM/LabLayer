@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { Calculator, CheckCircle2, Clock3, Edit2, FileText, ImagePlus, Link as LinkIcon, Package, Plus, Printer, Trash2 } from 'lucide-react';
+import { Calculator, CheckCircle2, Clock3, Edit2, FileText, ImagePlus, LayoutGrid, List, Link as LinkIcon, Package, Plus, Printer, Trash2 } from 'lucide-react';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { SearchableSelect, SelectOption } from '../components/SearchableSelect';
@@ -160,6 +160,7 @@ export function EncomendasOrcamentos() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [displayMode, setDisplayMode] = useState<'list' | 'cards'>('list');
   const [statusFilter, setStatusFilter] = useState<'all' | RequestStatus>('all');
   const [formData, setFormData] = useState<Omit<CustomRequest, 'id'>>(getDefaultFormData());
   const [isQuotePriceManual, setIsQuotePriceManual] = useState(false);
@@ -278,7 +279,7 @@ export function EncomendasOrcamentos() {
     return requests
       .filter(item => statusFilter === 'all' || item.status === statusFilter)
       .filter(item => {
-        const haystack = `${item.title} ${item.description}`.toLowerCase();
+        const haystack = `${item.title} ${item.description} ${item.customerName || ''}`.toLowerCase();
         return haystack.includes(search.trim().toLowerCase());
       })
       .sort((a, b) => (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || ''));
@@ -830,6 +831,7 @@ export function EncomendasOrcamentos() {
           />
         </div>
         <select
+          aria-label="Filtrar por status"
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value as 'all' | RequestStatus)}
           className="bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
@@ -839,8 +841,43 @@ export function EncomendasOrcamentos() {
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
         </select>
+        <div role="group" aria-label="Visualização das solicitações" className="flex gap-1 rounded-lg bg-surface-container p-1">
+          {([{ value: 'list', label: 'Lista', Icon: List }, { value: 'cards', label: 'Cartões', Icon: LayoutGrid }] as const).map(({ value, label, Icon }) => (
+            <button key={value} type="button" aria-pressed={displayMode === value} onClick={() => setDisplayMode(value)} className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-bold flex-1 ${displayMode === value ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:bg-surface-container-high'}`}>
+              <Icon className="w-4 h-4" aria-hidden="true" />{label}
+            </button>
+          ))}
+        </div>
       </div>
 
+      <p className="text-sm text-on-surface-variant" role="status">{filteredRequests.length} de {requests.length} solicitações</p>
+
+      {displayMode === 'list' ? (
+        <div className="overflow-x-auto rounded-xl border border-outline-variant/20 bg-surface-container-lowest">
+          <table className="w-full min-w-[760px] text-sm text-left">
+            <caption className="sr-only">Lista simplificada de encomendas e orçamentos</caption>
+            <thead className="bg-surface-container text-on-surface-variant">
+              <tr>{['Solicitação', 'Cliente', 'Quantidade', 'Status', 'Orçamento', 'Ações'].map(label => <th key={label} scope="col" className="p-3 font-semibold">{label}</th>)}</tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant/20">
+              {filteredRequests.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-on-surface-variant">Nenhuma encomenda ou orçamento encontrado com os filtros atuais.</td></tr>}
+              {filteredRequests.map(request => (
+                <tr key={request.id} className="hover:bg-surface-container/50 align-top">
+                  <th scope="row" className="p-3 max-w-sm font-normal">
+                    <span className="block font-semibold text-on-surface break-words">{request.title}</span>
+                    <span className="text-xs text-on-surface-variant">{REQUEST_TYPE_OPTIONS.find(option => option.value === request.type)?.label || 'Solicitação'}</span>
+                  </th>
+                  <td className="p-3 text-on-surface-variant">{request.customerName || 'Não informado'}</td>
+                  <td className="p-3 tabular-nums whitespace-nowrap">{request.requestedQuantity > 0 ? `${request.requestedQuantity} un` : 'A confirmar'}</td>
+                  <td className="p-3"><span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getStatusClasses(request.status)}`}>{STATUS_OPTIONS.find(option => option.value === request.status)?.label || request.status}</span></td>
+                  <td className="p-3 tabular-nums whitespace-nowrap">{request.status === 'aguardando-orcamento' && !request.quotedPrice ? 'A calcular' : request.quotedPrice == null ? 'Não informado' : formatCurrency(request.quotedPrice)}</td>
+                  <td className="p-3"><button type="button" aria-label={`Abrir detalhes de ${request.title}`} onClick={() => handleEdit(request)} className="rounded border border-outline-variant/30 px-3 py-1.5 text-primary font-semibold hover:bg-surface-container">Detalhes</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredRequests.length === 0 && (
           <div className="lg:col-span-2 bg-surface-container-lowest rounded-xl border border-outline-variant/10 p-10 text-center text-sm text-on-surface-variant">
@@ -957,6 +994,7 @@ export function EncomendasOrcamentos() {
           );
         })}
       </div>
+      )}
     </div>
   );
 }

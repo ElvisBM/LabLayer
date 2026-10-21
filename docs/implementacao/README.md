@@ -57,3 +57,5 @@ B16 validado em 21/10/2026: **301 testes**, navegação carregada sob demanda e 
 B17 validado em 21/10/2026: **314 testes**. Configuração alternativa explícita de homologação, manifesto de build e conferência offline de cliente/servidor/conta/banco/bucket. Piloto real não executado: faltam empresa e ambiente identificados. Ver [preparação e comandos B17](./homologacao-b17.md).
 
 B18 validado em 21/10/2026: **329 testes**. Menu Usuários e empresa, solicitação por conta com e-mail verificado, aprovação pelo proprietário, seleção de empresa e revogação auditada. Implementado localmente; ainda não publicado. Ver [regras, contratos e homologação B18](./usuarios-b18.md). A URL de produção foi identificada, mas isso não substitui um ambiente separado nem libera o piloto.
+
+B19 validado em 21/10/2026: **332 testes**. Visualização simplificada em lista na tela Encomendas e Orçamentos, alternância para cartões, busca por cliente e cálculo pendente identificado. Código local, publicação pendente. O cadastro separado dos 13 pedidos foi conferido no site; ver [escopo e evidências B19](./lista-solicitacoes-b19.md).
