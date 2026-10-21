@@ -443,7 +443,9 @@ export function QuotesWorkspace({
   const reserve = async (t: any) => {
     const f = list('stockFulfillments').find((f) => f.orderId === t.id);
     const b = list('stockBalances').find((b) => itemKey(b.item) === itemKey(t.item));
-    const remaining = new D(t.quantity).minus(f?.reserved ?? 0).minus(f?.shipped ?? 0);
+    const remaining = new D(t.quantity - (t.waivedQuantity ?? 0))
+      .minus(f?.reserved ?? 0)
+      .minus(f?.shipped ?? 0);
     const available = b ? new D(b.quantity).minus(b.reserved) : new D(0);
     const quantity = D.min(remaining, available);
     if (quantity.lte(0)) throw new Error('Sem produto disponível ou pedido já atendido.');
@@ -456,14 +458,17 @@ export function QuotesWorkspace({
   const plan = async (t: any) => {
     const f = list('stockFulfillments').find((f) => f.orderId === t.id);
     const plans = list('stockPlans').filter((p) => p.orderId === t.id);
-    const made = plans.reduce((s, p) => s + p.goodUnits, 0);
+    const made = Math.max(0, plans.reduce((s, p) => s + p.goodUnits, 0) - Number(f?.returned ?? 0));
     const pending = plans.reduce(
       (s, p) => s + (p.status === 'active' ? p.remainingRuns * p.recipe.goodUnits : 0),
       0,
     );
     const missing = Math.max(
       0,
-      t.quantity - Math.max(Number(f?.reserved ?? 0) + Number(f?.shipped ?? 0), made) - pending,
+      t.quantity -
+        (t.waivedQuantity ?? 0) -
+        Math.max(Number(f?.reserved ?? 0) + Number(f?.shipped ?? 0), made) -
+        pending,
     );
     if (!missing) throw new Error('Pedido já coberto por reservas ou produção vinculada.');
     const r = await getDoc(
@@ -957,7 +962,7 @@ export function QuotesWorkspace({
                     <p>
                       Reservadas: {f?.reserved ?? 0} · Expedidas: {f?.shipped ?? 0} · Aguardando
                       alocação:{' '}
-                      {new D(t.quantity)
+                      {new D(t.quantity - (t.waivedQuantity ?? 0))
                         .minus(f?.reserved ?? 0)
                         .minus(f?.shipped ?? 0)
                         .toFixed()}

@@ -130,10 +130,12 @@ export function registerQuoteRoutes(
             throw new CatalogError('Solicitação de origem não encontrada.');
           if (data.replacesOrderId) {
             const old = await get(`salesOrders/${data.replacesOrderId}`);
-            if (data.replacesOrderId === quoteId || !old || old.status !== 'cancelled')
+            const closed =
+              (await get(`financeAccounts/${data.replacesOrderId}`))?.status === 'closed';
+            if (data.replacesOrderId === quoteId || !old || (old.status !== 'cancelled' && !closed))
               throw new BusinessError(
                 409,
-                'Revisão comercial exige pedido anterior cancelado após conferência operacional.',
+                'Revisão exige pedido anterior cancelado ou financeiramente conferido após os acordos e fatos físicos.',
               );
           }
           next = {

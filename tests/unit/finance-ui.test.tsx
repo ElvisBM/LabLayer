@@ -143,3 +143,66 @@ it('erro de relatório não mostra indicadores como se fossem zero', async () =>
   expect((await screen.findByRole('alert')).textContent).toContain('excede limite');
   expect(screen.queryByText(/Movimentação líquida de caixa no mês/)).toBeNull();
 });
+it('acordo comercial envia totais explícitos e não produz um reembolso implícito', async () => {
+  const fixture = data();
+  (fixture.orders[0].targets as any[]).push({
+    id: 'target',
+    description: 'Peça',
+    quantity: 5,
+    waivedQuantity: 0,
+  });
+  state.api.mockResolvedValue(fixture);
+  page();
+  await choose('amend-order');
+  fill('Pedido', 'order');
+  fill('Crédito comercial total vigente (R$)', '20,40');
+  fill('Quem informou o acordo', 'Cliente');
+  fill('Referência única e evidência do acordo', 'Protocolo 10');
+  fill(/Unidades dispensadas/, '2');
+  fill('Motivo e conferência', 'Devolução aceita');
+  fireEvent.click(screen.getByText('Confirmar operação'));
+  await waitFor(() =>
+    expect(state.api).toHaveBeenCalledWith(
+      expect.anything(),
+      '/api/tenants/a/finance/commands',
+      expect.objectContaining({
+        type: 'amend-order',
+        payload: expect.objectContaining({
+          creditCents: 2040,
+          waivers: [{ targetId: 'target', quantity: 2 }],
+        }),
+      }),
+    ),
+  );
+});
+it('devolução captura versão do atendimento e exige confirmação física explícita', async () => {
+  const fixture: any = data();
+  fixture.orders[0].shipments = [{ id: 'shipment', orderId: 'target', quantity: '5' }];
+  fixture.orders[0].targets = [
+    { id: 'target', description: 'Peça', quantity: 5, fulfillment: { version: 7 } },
+  ];
+  state.api.mockResolvedValue(fixture);
+  page();
+  await choose('return');
+  fill('Expedição de origem', 'shipment');
+  fill('Quantidade recebida de volta', '2');
+  fill('Destino após conferência', 'scrap');
+  fireEvent.click(screen.getByLabelText('Conferi o recebimento físico e o destino do produto'));
+  fill('Motivo e conferência', 'Peças danificadas recebidas');
+  fireEvent.click(screen.getByText('Confirmar operação'));
+  await waitFor(() =>
+    expect(state.api).toHaveBeenCalledWith(
+      expect.anything(),
+      '/api/tenants/a/inventory/commands',
+      expect.objectContaining({
+        type: 'return',
+        expectedVersion: 7,
+        payload: expect.objectContaining({
+          physicalConfirmed: true,
+          quantity: '2',
+          disposition: 'scrap',
+        }),
+      }),
+    ),
+  );
+});

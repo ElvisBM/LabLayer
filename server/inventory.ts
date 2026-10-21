@@ -233,17 +233,19 @@ async function openingIssues(ctx: Context) {
 }
 
 async function checkLedger(ctx: Context, balances: any[]) {
-  const [events, reservations, plans, fulfillments, shipments, runs, usage] = await Promise.all(
-    [
-      'stockEvents',
-      'stockReservations',
-      'stockPlans',
-      'stockFulfillments',
-      'stockShipments',
-      'stockRuns',
-      'stockPrinterUsage',
-    ].map((c) => bounded(ctx.tx, ctx.db, `${ctx.root}/${c}`, 10000)),
-  );
+  const [events, reservations, plans, fulfillments, shipments, runs, usage, returns] =
+    await Promise.all(
+      [
+        'stockEvents',
+        'stockReservations',
+        'stockPlans',
+        'stockFulfillments',
+        'stockShipments',
+        'stockRuns',
+        'stockPrinterUsage',
+        'stockReturns',
+      ].map((c) => bounded(ctx.tx, ctx.db, `${ctx.root}/${c}`, 10000)),
+    );
   const result = reconcile(
     Object.fromEntries(balances.map((b) => [b.id, b])),
     events,
@@ -279,15 +281,61 @@ async function checkLedger(ctx: Context, balances: any[]) {
     const sent = shipments
       .filter((s) => s.orderId === f.orderId)
       .reduce((q, s) => q.plus(s.quantity), new D(0));
+    const returned = returns
+      .filter((r) => r.orderId === f.orderId)
+      .reduce((q, r) => q.plus(r.quantity), new D(0));
+    const netSent = sent.minus(returned);
     if (
       !held.eq(f.reserved) ||
-      !sent.eq(f.shipped) ||
-      held.plus(sent).gt(f.target) ||
+      !netSent.eq(f.shipped) ||
+      held.plus(netSent).gt(f.target) ||
+      netSent.isNegative() ||
       !(await orderTarget((path) => ctx.get(path), f.orderId, false))
     )
       result.discrepancies.push(
         `${f.orderId}: atendimento diverge das reservas/expedições ou perdeu o pedido.`,
       );
+  }
+  for (const s of shipments) {
+    const related = returns.filter((r) => r.shipmentId === s.id);
+    let cumulative = new D(0);
+    for (const r of related.sort((a, b) => new D(a.returnedBefore).cmp(b.returnedBefore))) {
+      const allocation = (n: any) => new D(s.cost).times(n).div(s.quantity).toDecimalPlaces(12);
+      const expectedCost = allocation(cumulative.plus(r.quantity)).minus(allocation(cumulative));
+      if (
+        !cumulative.eq(r.returnedBefore) ||
+        !expectedCost.eq(r.originalCost) ||
+        (r.disposition === 'restock' && !expectedCost.eq(r.recoveredCost))
+      )
+        result.discrepancies.push(`${r.id}: custo ou sequência de devolução divergente.`);
+      cumulative = cumulative.plus(r.quantity);
+    }
+    if (related.reduce((q, r) => q.plus(r.quantity), new D(0)).gt(s.quantity))
+      result.discrepancies.push(`${s.id}: devoluções excedem a expedição.`);
+  }
+  for (const r of returns) {
+    const s = shipments.find((s) => s.id === r.shipmentId),
+      e = events.find((e) => e.id === r.id);
+    if (
+      !s ||
+      s.orderId !== r.orderId ||
+      itemKey(s.item) !== itemKey(r.item) ||
+      !e ||
+      e.type !== 'return' ||
+      e.result.returnId !== r.id ||
+      e.payload.shipmentId !== r.shipmentId ||
+      e.payload.quantity !== r.quantity ||
+      e.payload.disposition !== r.disposition ||
+      !new D(r.quantity).gt(0) ||
+      (r.disposition === 'scrap'
+        ? r.recoveredCost !== '0' || e.deltas.length !== 0
+        : r.disposition !== 'restock' ||
+          e.deltas.length !== 1 ||
+          e.deltas[0].quantity !== r.quantity ||
+          e.deltas[0].value !== r.recoveredCost ||
+          itemKey(e.deltas[0].item) !== itemKey(r.item))
+    )
+      result.discrepancies.push(`${r.id}: devolução diverge da expedição ou movimento.`);
   }
   const printerIds = new Set([
     ...usage.map((u) => u.id),
@@ -382,7 +430,15 @@ export function registerInventoryRoutes(
           return { ...previous.result, repeated: true };
         }
         const state = (await ctx.get('inventoryControl/state')) ?? { phase: 'legacy', version: 0 };
-        const restricted = ['freeze', 'activate', 'open', 'adjust', 'reverse', 'create-material'];
+        const restricted = [
+          'freeze',
+          'activate',
+          'open',
+          'adjust',
+          'reverse',
+          'create-material',
+          'return',
+        ];
         if (restricted.includes(type) && !owner)
           throw new BusinessError(403, 'Operação exige o responsável pela empresa.');
         if (
@@ -559,7 +615,11 @@ export function registerInventoryRoutes(
             const fulfillment = await ctx.get(`stockFulfillments/${orderId}`);
             const delivered =
               Number(fulfillment?.reserved ?? 0) + Number(fulfillment?.shipped ?? 0);
-            const made = prior.docs.reduce((n, d) => n + d.data().goodUnits, 0);
+            const made = Math.max(
+              0,
+              prior.docs.reduce((n, d) => n + d.data().goodUnits, 0) -
+                Number(fulfillment?.returned ?? 0),
+            );
             const pending = prior.docs.reduce(
               (n, d) =>
                 n +
@@ -568,7 +628,10 @@ export function registerInventoryRoutes(
                   : 0),
               0,
             );
-            const missing = Math.max(0, target.quantity - Math.max(delivered, made) - pending);
+            const missing = Math.max(
+              0,
+              target.quantity - (target.waivedQuantity ?? 0) - Math.max(delivered, made) - pending,
+            );
             if (runs > Math.ceil(missing / recipe.goodUnits))
               throw new CatalogError(
                 'Plano excede a falta do pedido, considerando produção e reservas existentes.',
@@ -784,7 +847,11 @@ export function registerInventoryRoutes(
           if (!order) throw new CatalogError('Pedido/venda de origem não encontrado.');
           if (order.salesOrderId && itemKey(order.item) !== itemKey(i))
             throw new CatalogError('Produto/variação diverge do pedido aprovado.');
-          const target = integer(order.quantity, 'Quantidade do pedido', 1),
+          const target = integer(
+              order.quantity - (order.waivedQuantity ?? 0),
+              'Quantidade vigente do pedido',
+              1,
+            ),
             fulfillment = await ctx.get(`stockFulfillments/${orderId}`);
           version(fulfillment, expected);
           if (fulfillment && itemKey(fulfillment.item) !== itemKey(i))
@@ -892,6 +959,73 @@ export function registerInventoryRoutes(
               });
             }
           }
+        } else if (type === 'return') {
+          const p = record(
+            body.payload,
+            ['shipmentId', 'quantity', 'disposition', 'reason', 'physicalConfirmed'],
+            'Devolução física',
+          );
+          const shipmentId = id(p.shipmentId),
+            shipment = await ctx.get(`stockShipments/${shipmentId}`);
+          if (
+            !shipment ||
+            !['restock', 'scrap'].includes(p.disposition) ||
+            p.physicalConfirmed !== true
+          )
+            throw new CatalogError(
+              'Confira expedição, recebimento físico e destino: estoque utilizável ou descarte.',
+            );
+          const target = await orderTarget((path) => ctx.get(path), shipment.orderId);
+          if (!target?.salesOrderId) throw new CatalogError('Devolução exige pedido canônico.');
+          if ((await ctx.get(`financeAccounts/${target.salesOrderId}`))?.status === 'closed')
+            throw new BusinessError(409, 'Reabra a conferência financeira antes da devolução.');
+          const f = await ctx.get(`stockFulfillments/${shipment.orderId}`);
+          if (!f) throw new CatalogError('Atendimento ausente.');
+          version(f, expected);
+          const q = quantity(p.quantity, shipment.item, true);
+          const previous = await tx.get(
+            db!
+              .collection(`${ctx.root}/stockReturns`)
+              .where('shipmentId', '==', shipmentId)
+              .limit(501),
+          );
+          if (previous.size > 500)
+            throw new CatalogError('Devoluções excedem o limite de conferência.');
+          const returned = previous.docs.reduce((n, d) => n.plus(d.data().quantity), new D(0));
+          if (returned.plus(q).gt(shipment.quantity) || new D(q).gt(f.shipped))
+            throw new CatalogError('Devolução excede a quantidade expedida ainda não devolvida.');
+          // Allocate by cumulative quantity to conserve all twelve decimals on the final return.
+          const allocated = (n: any) =>
+            new D(shipment.cost).times(n).div(shipment.quantity).toDecimalPlaces(12);
+          const originalCost = allocated(returned.plus(q)).minus(allocated(returned)).toFixed();
+          const recoveredCost = p.disposition === 'restock' ? originalCost : '0';
+          if (p.disposition === 'restock')
+            ctx.set(receive(await ctx.balance(shipment.item), q, recoveredCost));
+          ctx.put(`stockFulfillments/${shipment.orderId}`, {
+            ...f,
+            shipped: new D(f.shipped).minus(q).toFixed(),
+            returned: new D(f.returned ?? 0).plus(q).toFixed(),
+            version: f.version + 1,
+          });
+          ctx.put(
+            `stockReturns/${requestId}`,
+            {
+              shipmentId,
+              orderId: shipment.orderId,
+              item: shipment.item,
+              quantity: q,
+              returnedBefore: returned.toFixed(),
+              disposition: p.disposition,
+              originalCost,
+              recoveredCost,
+              reason: textValue(p.reason, 'Conferência física', 500),
+              actorUid: uid,
+              createdAt: now,
+            },
+            true,
+          );
+          result.returnId = requestId;
+          result.recoveredCost = recoveredCost;
         } else if (type === 'reverse') {
           const p = record(body.payload, ['eventId', 'reason', 'physicalConfirmed'], 'Estorno');
           const eventId = id(p.eventId),

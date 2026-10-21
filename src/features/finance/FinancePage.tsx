@@ -9,6 +9,8 @@ const money = (v: string | number) =>
 const cent = (n: number) => money(new D(n).div(100).toFixed());
 const input = 'rounded border border-outline-variant/40 bg-surface-container p-2 w-full';
 const operations: Record<string, string> = {
+  'amend-order': 'Registrar acordo comercial (crédito e entrega)',
+  return: 'Registrar devolução física',
   receive: 'Registrar recebimento',
   refund: 'Registrar reembolso',
   'create-payable': 'Criar conta prevista',
@@ -28,6 +30,7 @@ const categoryLabels = {
   other: 'Outros',
 };
 const paymentLabels = {
+  'refund-due': 'Reembolso pendente',
   unrecorded: 'Sem recebimento',
   partial: 'Parcial',
   paid: 'Recebido integralmente',
@@ -176,15 +179,41 @@ export function FinanceWorkspace({
           confirmed,
           reason,
         };
+      else if (operation === 'amend-order')
+        payload = {
+          orderId: fields.orderId,
+          creditCents: inputCents(fields.credit ?? ''),
+          source: fields.source ?? '',
+          reportedBy: fields.reportedBy ?? '',
+          reason,
+          waivers: (report.orders.find((o: any) => o.id === fields.orderId)?.targets ?? []).map(
+            (t: any) => ({
+              targetId: t.id,
+              quantity: fields[`waive-${t.id}`]?.trim() ? Number(fields[`waive-${t.id}`]) : NaN,
+            }),
+          ),
+        };
+      else if (operation === 'return')
+        payload = {
+          shipmentId: fields.shipmentId,
+          quantity: fields.quantity ?? '',
+          disposition: fields.disposition,
+          physicalConfirmed: confirmed,
+          reason,
+        };
       else payload = { orderId: fields.orderId, reason };
       const body = { type: operation, expectedVersion, payload },
         signature = JSON.stringify(body);
       if (pending.current?.signature !== signature)
         pending.current = { signature, requestId: crypto.randomUUID() };
-      await catalogRequest(user, `/api/tenants/${tenantId}/finance/commands`, {
-        ...body,
-        requestId: pending.current.requestId,
-      });
+      await catalogRequest(
+        user,
+        `/api/tenants/${tenantId}/${operation === 'return' ? 'inventory' : 'finance'}/commands`,
+        {
+          ...body,
+          requestId: pending.current.requestId,
+        },
+      );
       if (mounted.current) {
         pending.current = null;
         setNotice('Operação registrada e auditada.');
@@ -274,7 +303,8 @@ export function FinanceWorkspace({
               é lucro líquido da empresa.
             </p>
             <p>
-              A receber, todos os pedidos ativos: <strong>{cent(report.receivableCents)}</strong>
+              A receber, todos os pedidos ativos: <strong>{cent(report.receivableCents)}</strong> ·
+              A reembolsar após créditos: <strong>{cent(report.refundDueCents ?? 0)}</strong>
             </p>
             <p>
               A pagar, todas as contas previstas: <strong>{cent(report.payableCents)}</strong>. Não
@@ -319,7 +349,9 @@ export function FinanceWorkspace({
             </label>
             {operation && (
               <>
-                {['receive', 'refund', 'close-order', 'reopen-order'].includes(operation) &&
+                {['receive', 'refund', 'close-order', 'reopen-order', 'amend-order'].includes(
+                  operation,
+                ) &&
                   select(
                     'orderId',
                     'Pedido',
@@ -334,6 +366,72 @@ export function FinanceWorkspace({
                         report.orders.find((o: any) => o.id === v)?.account.version ?? 0,
                       ),
                   )}
+                {operation === 'amend-order' && (
+                  <>
+                    <p>
+                      Registre o acordo aceito: o preço original permanece preservado. Informe o
+                      crédito total vigente (não apenas a diferença) e a quantidade total dispensada
+                      de cada item. O crédito não devolve dinheiro automaticamente. Para corrigir,
+                      registre outro acordo com os novos totais.
+                    </p>
+                    {field('credit', 'Crédito comercial total vigente (R$)')}
+                    {field('reportedBy', 'Quem informou o acordo')}
+                    {field('source', 'Referência única e evidência do acordo')}
+                    {(report.orders.find((o: any) => o.id === fields.orderId)?.targets ?? []).map(
+                      (t: any) => (
+                        <div key={t.id}>
+                          {field(
+                            `waive-${t.id}`,
+                            `Unidades dispensadas — ${t.description} (atual ${t.waivedQuantity ?? 0}, original ${t.quantity})`,
+                            'number',
+                          )}
+                        </div>
+                      ),
+                    )}
+                  </>
+                )}
+                {operation === 'return' && (
+                  <>
+                    {select(
+                      'shipmentId',
+                      'Expedição de origem',
+                      report.orders.flatMap((o: any) =>
+                        (o.shipments ?? []).map((s: any) => ({
+                          id: s.id,
+                          label: `${o.customerName} · ${s.id} · ${s.quantity} unidades`,
+                        })),
+                      ),
+                      (v) => {
+                        const o = report.orders.find((o: any) =>
+                          o.shipments?.some((s: any) => s.id === v),
+                        );
+                        const s = o?.shipments.find((s: any) => s.id === v);
+                        setExpectedVersion(
+                          o?.targets.find((t: any) => t.id === s?.orderId)?.fulfillment?.version ??
+                            0,
+                        );
+                      },
+                    )}
+                    {field('quantity', 'Quantidade recebida de volta', 'number')}
+                    {select('disposition', 'Destino após conferência', [
+                      { id: 'restock', label: 'Estoque utilizável' },
+                      { id: 'scrap', label: 'Descarte confirmado' },
+                    ])}
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={confirmed}
+                        onChange={(e) => setConfirmed(e.target.checked)}
+                      />{' '}
+                      Conferi o recebimento físico e o destino do produto
+                    </label>
+                    <p>
+                      A devolução reabre a entrega. Para troca, reserve e expeça a reposição; para
+                      encerrar, registre a dispensa e o crédito acordados. Descarte não restitui
+                      estoque nem custo.
+                    </p>
+                  </>
+                )}
                 {['pay', 'cancel-payable'].includes(operation) &&
                   select(
                     'payableId',
@@ -477,7 +575,10 @@ export function FinanceWorkspace({
                             ? 'Expedido'
                             : 'Expedição pendente'}
                       </td>
-                      <td>{cent(o.priceCents)}</td>
+                      <td>
+                        Original {cent(o.priceCents)} · Vigente{' '}
+                        {cent(o.effectivePriceCents ?? o.priceCents)}
+                      </td>
                       <td>
                         {paymentLabels[o.paymentStatus] ?? o.paymentStatus} ·{' '}
                         {cent(o.receivedCents)}
@@ -527,7 +628,25 @@ export function FinanceWorkspace({
                 {o.targets.map((t: any) => (
                   <p key={t.id}>
                     {t.description} · pedido {t.quantity} · reservado {t.fulfillment?.reserved ?? 0}{' '}
-                    · expedido {t.fulfillment?.shipped ?? 0}
+                    · entregue líquido {t.fulfillment?.shipped ?? 0} · dispensado{' '}
+                    {t.waivedQuantity ?? 0}
+                  </p>
+                ))}
+                <p>
+                  Crédito vigente: {cent(o.creditCents ?? 0)} · A reembolsar:{' '}
+                  {cent(o.refundDueCents ?? 0)} · Custo recuperado em estoque:{' '}
+                  {money(o.recoveredCost ?? '0')}
+                </p>
+                {(o.amendments ?? []).map((a: any) => (
+                  <p key={a.id}>
+                    Acordo {a.source} · crédito total {cent(a.creditCents)} · {a.reportedBy} ·{' '}
+                    {a.reason}
+                  </p>
+                ))}
+                {(o.returns ?? []).map((r: any) => (
+                  <p key={r.id}>
+                    Devolução {r.id} · {r.quantity} unidades ·{' '}
+                    {r.disposition === 'restock' ? 'estoque utilizável' : 'descarte'} · {r.reason}
                   </p>
                 ))}
                 {(o.closures ?? []).map((c: any) => (

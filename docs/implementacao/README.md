@@ -41,3 +41,7 @@ B05 validado com 69 testes unitários/componentes e 54 de integração, tipos, b
 Próximo passo: **homologação real e liberação coordenada do piloto**, seguindo o [roteiro E5](./piloto-e5.md). O financeiro legado continua bloqueado; o novo fluxo integra pedidos E4 e estoque E3. Reembolso financeiro não simula devolução física, revisão de pedido já consumido/expedido ou nota de crédito. Não liberar o núcleo em produção antes de backup/restauração, validação de Auth/servidor/cliente/rules e reconciliação com documentos reais. A auditoria de produção registra 1 alerta baixo e 8 moderados, sem altos/críticos, após correções pontuais de Vite e follow-redirects; o build mantém aviso de bundle grande. O relatório é gerencial e não substitui conciliação bancária ou DRE contábil.
 
 O diretório `scripts/` já existia como não rastreado e não participa destes commits.
+
+## Complementos após E5
+
+B12 implementado localmente: devoluções físicas, trocas por reposição, acordos de crédito/dispensa e revisão após produção. Barreira completa aprovada com 283 testes. O bloqueio geral descrito acima para fatos físicos foi substituído pelos comandos explícitos descritos no [fechamento das lacunas](./fechamento-plano.md). Piloto real continua pendente.

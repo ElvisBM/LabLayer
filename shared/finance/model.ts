@@ -95,6 +95,7 @@ export function validateAccount(d: Delta, totalCents: number, kind: 'order' | 'p
   return d;
 }
 export function paymentStatus(d: Delta, totalCents: number) {
+  if (netReceived(d) > totalCents) return 'refund-due';
   return totalCents > 0 && netReceived(d) === totalCents
     ? 'paid'
     : netReceived(d) > 0
@@ -196,6 +197,33 @@ export function financeReport(data: DataSet, selectedMonth: string) {
   });
   for (const key of projections.keys()) discrepancies.push(`${key}: eventos sem projeção.`);
   const orders = rows('salesOrders').map((o) => {
+    const amendments = rows('orderAmendments')
+      .filter((x) => x.orderId === o.id)
+      .sort((a, b) => a.version - b.version);
+    let credit = 0;
+    const waived = new Map<string, number>();
+    for (const amendment of amendments) {
+      if (
+        amendment.previousCreditCents !== credit ||
+        amendment.creditCents - credit !== amendment.creditDeltaCents
+      )
+        discrepancies.push(`${o.id}: cadeia de créditos comerciais divergente.`);
+      credit = amendment.creditCents;
+      for (const c of amendment.changes) {
+        if ((waived.get(c.targetId) ?? 0) !== c.previous || !o.targetIds.includes(c.targetId))
+          discrepancies.push(`${o.id}: cadeia de dispensa de entrega divergente.`);
+        waived.set(c.targetId, c.quantity);
+      }
+    }
+    if (
+      credit !== (o.creditCents ?? 0) ||
+      !Number.isSafeInteger(credit) ||
+      credit < 0 ||
+      credit > o.priceCents
+    )
+      discrepancies.push(`${o.id}: crédito comercial diverge dos acordos.`);
+    const effectivePrice = o.priceCents - credit;
+
     const a = rows('financeAccounts').find((a) => a.id === o.id) ?? {
       ...zero(),
       version: 0,
@@ -206,6 +234,8 @@ export function financeReport(data: DataSet, selectedMonth: string) {
     );
     const targets = rows('orderTargets').filter((t) => t.salesOrderId === o.id);
     const shipments = rows('stockShipments').filter((s) => targets.some((t) => t.id === s.orderId));
+    const returns = rows('stockReturns').filter((r) => targets.some((t) => t.id === r.orderId));
+    const recoveredCost = sumMoney(returns, 'recoveredCost');
     const runs = rows('stockRuns').filter((r) => targets.some((t) => t.id === r.orderId));
     const lossCost = sumMoney(runs, 'lossCost');
     const pendingProduction = rows('stockPlans').some(
@@ -226,16 +256,26 @@ export function financeReport(data: DataSet, selectedMonth: string) {
         .filter((s) => s.orderId === t.id)
         .reduce((n, s) => n + Number(s.quantity), 0);
       const f = rows('stockFulfillments').find((f) => f.orderId === t.id);
-      if (shipped !== Number(f?.shipped ?? 0) || shipped > t.quantity)
+      const returned = returns
+        .filter((r) => r.orderId === t.id)
+        .reduce((n, r) => n + Number(r.quantity), 0);
+      const targetQuantity = t.quantity - (t.waivedQuantity ?? 0);
+      if ((waived.get(t.id) ?? 0) !== (t.waivedQuantity ?? 0) || targetQuantity < 0)
+        discrepancies.push(`${t.id}: dispensa diverge dos acordos.`);
+      if (
+        shipped - returned !== Number(f?.shipped ?? 0) ||
+        shipped - returned > targetQuantity ||
+        (f?.target !== undefined && f.target !== targetQuantity)
+      )
         discrepancies.push(`${t.id}: quantidade expedida diverge do atendimento.`);
-      if (shipped !== t.quantity) full = false;
+      if (shipped - returned !== targetQuantity) full = false;
     }
     try {
       validateAccount(a, o.priceCents, 'order');
     } catch {
       discrepancies.push(`${o.id}: saldo financeiro inválido.`);
     }
-    if (paymentStatus(a, o.priceCents) !== o.paymentStatus)
+    if (paymentStatus(a, effectivePrice) !== o.paymentStatus)
       discrepancies.push(`${o.id}: situação de pagamento diverge dos eventos.`);
     if (!snapshot || snapshot.price.priceCents !== o.priceCents)
       discrepancies.push(`${o.id}: versão aprovada ausente ou preço divergente.`);
@@ -250,13 +290,17 @@ export function financeReport(data: DataSet, selectedMonth: string) {
         !closure ||
         closure.account.actualExtraCents !== a.actualExtraCents ||
         closure.account.feesCents !== a.feesCents ||
+        (closure.effectivePriceCents ?? closure.priceCents ?? o.priceCents) !== effectivePrice ||
         !full ||
         pendingProduction ||
-        o.priceCents !== netReceived(a)
+        effectivePrice !== netReceived(a)
       )
         discrepancies.push(`${o.id}: conferência final diverge das fontes.`);
     }
-    const shipmentCost = shipments.length ? sumMoney(shipments, 'cost') : null;
+    const shipmentCost =
+      shipments.length || (full && credit >= 0)
+        ? new D(sumMoney(shipments, 'cost')).minus(recoveredCost).toFixed()
+        : null;
     const actualCost =
       full && a.status === 'closed' && shipmentCost !== null
         ? new D(shipmentCost).plus(lossCost).plus(new D(a.actualExtraCents).div(100)).toFixed()
@@ -271,7 +315,7 @@ export function financeReport(data: DataSet, selectedMonth: string) {
     const actualProfit =
       actualCost === null
         ? null
-        : new D(o.priceCents - a.feesCents).div(100).minus(actualCost).toFixed();
+        : new D(effectivePrice - a.feesCents).div(100).minus(actualCost).toFixed();
     return {
       id: o.id,
       customerName: o.customerName,
@@ -282,7 +326,14 @@ export function financeReport(data: DataSet, selectedMonth: string) {
       paymentStatus: o.paymentStatus,
       account: a,
       receivedCents: netReceived(a),
-      receivableCents: o.status === 'cancelled' ? 0 : o.priceCents - netReceived(a),
+      receivableCents: o.status === 'cancelled' ? 0 : Math.max(0, effectivePrice - netReceived(a)),
+      refundDueCents: Math.max(0, netReceived(a) - effectivePrice),
+      effectivePriceCents: effectivePrice,
+      creditCents: credit,
+      amendments,
+      returns,
+      shipments,
+      recoveredCost,
       fullyShipped: full,
       pendingProduction,
       productionCost: sumMoney(runs, 'totalCost'),
@@ -357,6 +408,12 @@ export function financeReport(data: DataSet, selectedMonth: string) {
       orders.filter((o) => o.cancelledAt && inMonth(o.cancelledAt)).map((o) => o.priceCents),
     ),
     receivableCents: sumCents(orders.map((o) => o.receivableCents)),
+    refundDueCents: sumCents(orders.map((o) => o.refundDueCents)),
+    creditCents: sumCents(
+      rows('orderAmendments')
+        .filter((a) => inMonth(a.createdAt))
+        .map((a) => a.creditDeltaCents),
+    ),
     payableCents: sumCents(payables.map((p) => p.outstandingCents)),
     confirmedOrderProfit: sumMoney(closed, 'actualProfit'),
     closedOrderCount: closed.length,

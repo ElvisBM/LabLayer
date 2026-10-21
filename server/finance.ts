@@ -36,6 +36,8 @@ export async function financeData(
   const data: DataSet = {};
   for (const name of [
     'financeEvents',
+    'orderAmendments',
+    'stockReturns',
     'financeAccounts',
     'financeReversals',
     'orderClosures',
@@ -214,6 +216,11 @@ export function registerFinanceRoutes(
               order.priceCents,
               'order',
             );
+            if (
+              type === 'receive' &&
+              netReceived(totals) > order.priceCents - (order.creditCents ?? 0)
+            )
+              throw new BusinessError(409, 'Recebimento excede o valor vigente após créditos.');
             put(`financeAccounts/${accountId}`, {
               ...account,
               ...totals,
@@ -223,7 +230,7 @@ export function registerFinanceRoutes(
             });
             put(`salesOrders/${accountId}`, {
               ...order,
-              paymentStatus: paymentStatus(totals, order.priceCents),
+              paymentStatus: paymentStatus(totals, order.priceCents - (order.creditCents ?? 0)),
             });
           } else {
             const payable = await get(`payables/${accountId}`);
@@ -256,6 +263,94 @@ export function registerFinanceRoutes(
             recordedAt: now,
           });
           output.accountId = accountId;
+        } else if (type === 'amend-order') {
+          record(
+            p,
+            ['orderId', 'creditCents', 'waivers', 'source', 'reason', 'reportedBy'],
+            'Revisão comercial',
+          );
+          const orderId = id(p.orderId),
+            order = await get(`salesOrders/${orderId}`),
+            account = await get(`financeAccounts/${orderId}`);
+          if (!order || order.status !== 'active' || account?.status === 'closed')
+            throw new BusinessError(409, 'Revisão exige pedido ativo com conferência aberta.');
+          version(account);
+          // Absolute totals make a corrected agreement explicit; accepted snapshots never change.
+          const credit = cents(p.creditCents, 'Crédito comercial total');
+          if (credit > order.priceCents) throw new CatalogError('Crédito excede o preço original.');
+          if (!Array.isArray(p.waivers) || p.waivers.length !== order.targetIds.length)
+            throw new CatalogError('Confira a dispensa de entrega de todos os itens.');
+          const seen = new Set<string>(),
+            changes: any[] = [];
+          for (const raw of p.waivers) {
+            const w = record(raw, ['targetId', 'quantity'], 'Dispensa de entrega'),
+              targetId = id(w.targetId);
+            if (seen.has(targetId) || !order.targetIds.includes(targetId))
+              throw new CatalogError('Item repetido ou de outro pedido.');
+            seen.add(targetId);
+            const target = await get(`orderTargets/${targetId}`),
+              f = await get(`stockFulfillments/${targetId}`);
+            const waived = integer(w.quantity, 'Unidades dispensadas');
+            if (
+              !target ||
+              waived > target.quantity ||
+              waived + Number(f?.shipped ?? 0) > target.quantity
+            )
+              throw new CatalogError(
+                'Dispensa excede unidades não entregues; registre a devolução primeiro.',
+              );
+            const plans = await tx.get(
+              db.collection(`${root}/stockPlans`).where('orderId', '==', targetId).limit(501),
+            );
+            if (
+              plans.size > 500 ||
+              plans.docs.some((d) => d.data().status === 'active') ||
+              Number(f?.reserved ?? 0) !== 0
+            )
+              throw new BusinessError(
+                409,
+                'Cancele reservas e planos restantes antes de revisar. Consumos já realizados serão preservados.',
+              );
+            changes.push({ targetId, previous: target.waivedQuantity ?? 0, quantity: waived });
+            put(`orderTargets/${targetId}`, {
+              ...target,
+              waivedQuantity: waived,
+              version: target.version + 1,
+            });
+            if (f)
+              put(`stockFulfillments/${targetId}`, {
+                ...f,
+                target: target.quantity - waived,
+                version: f.version + 1,
+              });
+          }
+          const document = await source('amendment', p.source);
+          create(`orderAmendments/${requestId}`, {
+            orderId,
+            previousCreditCents: order.creditCents ?? 0,
+            creditCents: credit,
+            creditDeltaCents: credit - (order.creditCents ?? 0),
+            changes,
+            source: document,
+            reason: textValue(p.reason, 'Motivo', 500),
+            reportedBy: textValue(p.reportedBy, 'Quem informou o acordo', 150),
+            actorUid: identity.uid,
+            createdAt: now,
+            version: expected + 1,
+          });
+          put(`salesOrders/${orderId}`, {
+            ...order,
+            creditCents: credit,
+            paymentStatus: paymentStatus((account as any) ?? zero(), order.priceCents - credit),
+            version: order.version + 1,
+          });
+          put(`financeAccounts/${orderId}`, {
+            ...(account ?? zero()),
+            status: 'open',
+            version: expected + 1,
+            updatedAt: now,
+          });
+          output.orderId = orderId;
         } else if (type === 'create-payable') {
           record(
             p,
@@ -354,6 +449,7 @@ export function registerFinanceRoutes(
               inv.issues.length ||
               !selected?.fullyShipped ||
               selected.receivableCents !== 0 ||
+              selected.refundDueCents !== 0 ||
               selected.pendingProduction
             )
               throw new BusinessError(
@@ -386,6 +482,7 @@ export function registerFinanceRoutes(
                 .plus(new D(extra).div(100))
                 .toFixed(),
               priceCents: order.priceCents,
+              effectivePriceCents: selected.effectivePriceCents,
               actorUid: identity.uid,
               createdAt: now,
             });
