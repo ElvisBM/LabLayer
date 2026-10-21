@@ -20,6 +20,7 @@ import { registerWhatsAppIngress } from "./server/whatsapp";
 import { DEFAULT_PRICING_SETTINGS, calculateVariationUnitCostBreakdown, normalizePricingSettings, suggestedPrice } from "./src/utils/pricing";
 
 import { registerAssetRoutes, type AssetStore } from './server/assets';
+import { registerTeamRoutes } from './server/team';
 import { checkHomologation, loadDeploymentEnvironment } from './server/deployment-environment';
 
 export type AppOptions = {
@@ -498,6 +499,7 @@ const hasCollectionFilters = (query: express.Request["query"]) => {
   app.disable("x-powered-by");
   app.use(express.json());
 
+  registerTeamRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
   registerSessionRoute(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
   registerPricingRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
   registerCatalogRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));

@@ -321,6 +321,8 @@ service cloud.firestore {
     // Rules
     // ===============================================================
 
+    match /users/{userId}/memberships/{tenantId} { allow read, write: if false; }
+
     match /users/{userId} {
       allow read: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());
       // Provisioning and membership/privilege changes are server-only.
@@ -340,6 +342,9 @@ service cloud.firestore {
         request.resource.data.plan in ['free', 'pro', 'enterprise'] &&
         request.resource.data.status in ['active', 'inactive', 'past_due']
       );
+
+      match /members/{uid} { allow read, write: if false; }
+      match /accessRequests/{uid} { allow read, write: if false; }
 
       // E5: cash events and financial projections are server-only mutations.
       match /assets/{id} { allow read: if isTenantMember(tenantId); allow write: if false; }

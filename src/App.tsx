@@ -31,6 +31,8 @@ const Financeiro = lazy(() => import('./views/Financeiro').then(module => ({ def
 const Configuracoes = lazy(() => import('./views/Configuracoes').then(module => ({ default: module.Configuracoes })));
 const SuperAdmin = lazy(() => import('./views/SuperAdmin').then(module => ({ default: module.SuperAdmin })));
 
+const TeamPage = lazy(() => import('./features/team/TeamPage').then(module => ({ default: module.TeamPage })));
+
 function MainApp() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [isSidebarMobileOpen, setIsSidebarMobileOpen] = useState(false);
@@ -59,6 +61,7 @@ function MainApp() {
   }
 
   const renderView = () => {
+    if (currentView === 'usuarios') return <TeamPage />;
     if (inventory.phase === 'loading') return <p>Conferindo estado do estoque...</p>;
     if (inventory.phase === 'error') return <p role="alert">Não foi possível conferir o estado do estoque. Recarregue antes de operar.</p>;
     if (currentView === 'estoque-operacoes') return <InventoryPage onCatalog={() => setCurrentView('catalogo-fichas')} />;
@@ -153,6 +156,7 @@ function MainApp() {
       case 'fornecedores': return 'Cadastro de Fornecedores';
       case 'impressoras': return 'Frota de Impressoras';
       case 'insumos': return 'Insumos e Componentes';
+      case 'usuarios': return 'Usuários e empresa';
       case 'configuracoes': return 'Configurações do Sistema';
       case 'superadmin': return 'Administração Global';
       default: return 'Painel Operacional';

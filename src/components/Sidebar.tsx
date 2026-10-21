@@ -1,4 +1,4 @@
-import { LayoutDashboard, Package, Printer, Settings, Wrench, Box, Store, Calculator, ShoppingCart, AlertOctagon, Layers, Wallet, ShieldAlert, Cable, CalendarDays, Tag, X, PanelLeftClose, FileText } from 'lucide-react';
+import { LayoutDashboard, Package, Printer, Settings, Wrench, Box, Store, Calculator, ShoppingCart, AlertOctagon, Layers, Wallet, ShieldAlert, Cable, CalendarDays, Tag, X, PanelLeftClose, FileText, Users } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
@@ -50,6 +50,7 @@ export function Sidebar({
       title: 'Configurações',
       items: [
         { id: 'configuracoes', label: 'Configurações', icon: Settings },
+        { id: 'usuarios', label: 'Usuários e empresa', icon: Users },
       ]
     }
   ];

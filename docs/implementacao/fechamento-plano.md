@@ -1,6 +1,6 @@
 # Fechamento das lacunas após E5
 
-Referência: E5 `1be130f`. Este complemento não declara encerrado o B11: piloto real, classificação do legado, abertura conferida, Auth real, backup do ambiente completo e implantação coordenada continuam pendentes. Nenhuma operação real foi executada.
+Referência: E5 `1be130f`. Este complemento não declara encerrado o B11: piloto real, classificação do legado, abertura conferida, Auth real, backup do ambiente completo e implantação coordenada continuam pendentes. Nenhuma operação do novo núcleo foi executada em produção. A conferência/cadastro comercial posterior na versão publicada anterior não homologa este núcleo.
 
 ## B12 — pós-venda e revisão após fatos físicos
 
@@ -80,5 +80,6 @@ Os totais de testes certificam os cenários automatizados cobertos. Não equival
 - B15: dependências atualizadas, 296 testes preservados; commit `3441164`. SiteLabLayer validado com seis testes no commit `3335f85`. Produção sem alertas nos dois projetos; cada árvore completa mantém sete alertas de desenvolvimento.
 - B16: carregamento por tela e recuperação manual de falhas, 301 testes; commit `b39e3a9`. JS inicial cerca de 40% menor, maior arquivo abaixo de 500 kB, sem elevar limite de aviso.
 - B17: configuração explícita de homologação e conferência offline, 314 testes. Evidências em [homologação B17](./homologacao-b17.md).
+- B18: menu Usuários e empresa, solicitação/aprovação/seleção/revogação, 329 testes. Código local, publicação e ensaio com Auth real pendentes; [documentação B18](./usuarios-b18.md).
 
 Nenhuma etapa técnica substitui o aceite operacional. Permanecem o piloto real e validações de Auth/Storage/rules/IAM, backup completo, legado/abertura, publicação do site/Apps Script, alertas de desenvolvimento sem correção compatível validada e dimensionamento com volume real. Agentes e novas integrações continuam como evolução posterior.

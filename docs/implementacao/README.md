@@ -8,7 +8,7 @@ Cada bloco deve ter comportamento esperado, testes de negócio e qualidade, revi
 
 Os testes usam exclusivamente `demo-lablayer-test` em `127.0.0.1:8088`. O guard de integração recusa outros ambientes. O runner não carrega o `.env` nem a configuração Firebase da aplicação. `createApp` recebe banco/verificador de identidade por injeção; importar o servidor não lê credenciais nem abre serviços.
 
-O CI de branches/PR executa a mesma barreira. O workflow de implantação existente passou a exigir testes antes do envio ao servidor. Nenhum push, implantação ou acesso a dados reais foi executado nesta implementação.
+O CI de branches/PR executa a mesma barreira. O workflow de implantação existente passou a exigir testes antes do envio ao servidor. Nenhum push ou implantação foi executado nesta implementação. A conferência e o cadastro comercial realizados depois no aplicativo publicado são separados dos testes e não constituem homologação das etapas locais.
 
 ## Andamento
 
@@ -55,3 +55,5 @@ B15 validado em 21/10/2026: **296 testes preservados**, SDK/Admin e ferramentas 
 B16 validado em 21/10/2026: **301 testes**, navegação carregada sob demanda e recuperação de falhas de tela. JS inicial reduzido de 1.190,36 para 714,69 kB (cerca de 40%), sem arquivos acima de 500 kB. Ver [desempenho B16](./desempenho-b16.md).
 
 B17 validado em 21/10/2026: **314 testes**. Configuração alternativa explícita de homologação, manifesto de build e conferência offline de cliente/servidor/conta/banco/bucket. Piloto real não executado: faltam empresa e ambiente identificados. Ver [preparação e comandos B17](./homologacao-b17.md).
+
+B18 validado em 21/10/2026: **329 testes**. Menu Usuários e empresa, solicitação por conta com e-mail verificado, aprovação pelo proprietário, seleção de empresa e revogação auditada. Implementado localmente; ainda não publicado. Ver [regras, contratos e homologação B18](./usuarios-b18.md). A URL de produção foi identificada, mas isso não substitui um ambiente separado nem libera o piloto.
