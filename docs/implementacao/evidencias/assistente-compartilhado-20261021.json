@@ -1,0 +1,10 @@
+{
+  "publicWithoutLogin": true,
+  "requiresSecretLink": true,
+  "requestScope": "tenant",
+  "mode": "ai",
+  "requests": 27,
+  "attachments": 14,
+  "unauthenticatedStatus": 401,
+  "existingRequestsUnchanged": true
+}

@@ -1,5 +1,7 @@
 # Assistente com IA — entrega e evidências (21/10/2026)
 
+> Atualização posterior: o usuário adicionou saldo; a IA foi validada e ativada com Luna e atendimento compartilhado. Consulte [a entrega atual](assistente-compartilhado-20261021.md). O relato abaixo preserva o diagnóstico da primeira tentativa.
+
 ## Mudança
 
 O assistente passa a oferecer interpretação de texto e fotos e transcrição de um áudio por pedido, utilizando a credencial OpenAI já cadastrada no n8n. O vendedor confere a proposta e confirma o cadastro. Cadastro, anexos, idempotência, isolamento de empresa, preços, estoque e aprovação continuam sob as regras do LabLayer.
