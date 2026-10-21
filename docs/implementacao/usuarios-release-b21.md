@@ -28,3 +28,7 @@ Testes cobrem três visualizações dos orçamentos, sessão, formulário, falha
 6. Em falha, restaurar snapshot da aplicação/dependências e ruleset anterior, recarregar PM2 e conferir sessão. Não excluir identidades ou vínculos automaticamente no rollback.
 
 Esta release de compatibilidade não publica as demais etapas E0–E5.
+
+## Publicação concluída
+
+Publicação e reativação verificadas em produção; [estado final, evidências e reversão](./publicacao-usuarios-20261021.md). A preparação e os passos anteriores foram executados sob autorização do usuário.
