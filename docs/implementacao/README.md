@@ -49,3 +49,5 @@ B12 implementado localmente: devoluções físicas, trocas por reposição, acor
 B13 implementado localmente: upload privado, download autenticado e migração explícita de mídia incorporada. Barreira completa aprovada com 293 testes; storage real/rules/IAM ainda exigem homologação. Ver [fechamento das lacunas](./fechamento-plano.md).
 
 B14 implementado localmente: registro de envio de versão emitida, evidência e histórico. Barreira acumulada aprovada com **296 testes**. DV35 corrigida no repositório SiteLabLayer (`39d99d7`), com seis testes e build/auditoria de produção aprovados. O [fechamento das lacunas](./fechamento-plano.md) lista entregas, critérios e pendências de homologação.
+
+B15 validado em 21/10/2026: **296 testes preservados**, SDK/Admin e ferramentas atualizados. Auditoria de produção agora **zero alertas**; árvore completa ainda registra sete. Esta evidência substitui a contagem histórica de nove alertas de produção acima. Ver [dependências B15](./dependencias-b15.md).
