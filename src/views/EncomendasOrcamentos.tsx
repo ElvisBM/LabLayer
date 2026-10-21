@@ -5,6 +5,7 @@ import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { SearchableSelect, SelectOption } from '../components/SearchableSelect';
 import toast from 'react-hot-toast';
+import { RequestImage, uploadRequestImage } from '../components/RequestImage';
 import { DEFAULT_PRICING_SETTINGS, type PricingPrinterLike, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings, suggestedPrice } from '../utils/pricing';
 
 type RequestType = 'orcamento' | 'encomenda';
@@ -151,7 +152,8 @@ const formatDateTimeInputValue = (value?: string) => {
 };
 
 export function EncomendasOrcamentos() {
-  const { tenantId } = useAuth();
+  const { tenantId, user } = useAuth();
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [requests, setRequests] = useState<CustomRequest[]>([]);
   const [filaments, setFilaments] = useState<FilamentOption[]>([]);
   const [printers, setPrinters] = useState<PrinterOption[]>([]);
@@ -345,22 +347,17 @@ export function EncomendasOrcamentos() {
     }));
   };
 
-  const readImageFile = (file: File, onLoad: (result: string) => void) => {
-    if (file.size > 1024 * 1024) {
-      toast.error('A imagem deve ter no máximo 1MB.');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      onLoad(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+  const readImageFile = async (file: File, onLoad: (result: string) => void) => {
+    if (!tenantId || !user || isUploadingImage) return;
+    setIsUploadingImage(true);
+    try { onLoad(await uploadRequestImage(file, tenantId, user)); }
+    catch (error) { toast.error(error instanceof Error ? error.message : 'Falha no envio da imagem.'); }
+    finally { setIsUploadingImage(false); }
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tenantId) return;
+    if (!tenantId || isUploadingImage) return;
 
     try {
       if (!Number.isSafeInteger(Number(formData.requestedQuantity)) || Number(formData.requestedQuantity) <= 0) throw new Error('Quantidade deve ser inteira e positiva.');
@@ -483,7 +480,7 @@ export function EncomendasOrcamentos() {
       </>}
       {showForm && (
         <section aria-label="Detalhes da solicitação" className="space-y-4">
-          <button type="button" onClick={() => { setShowForm(false); resetForm(); }} className="inline-flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm font-bold text-primary hover:bg-surface-container focus-visible:ring-2 focus-visible:ring-primary">
+          <button type="button" disabled={isUploadingImage} onClick={() => { setShowForm(false); resetForm(); }} className="inline-flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm font-bold text-primary hover:bg-surface-container focus-visible:ring-2 focus-visible:ring-primary">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Voltar para orçamentos
           </button>
         <div className="bg-surface-container-lowest p-4 sm:p-6 rounded-xl border border-outline-variant/20 shadow-sm space-y-6">
@@ -590,10 +587,11 @@ export function EncomendasOrcamentos() {
                   <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Foto / Logo da Solicitação</label>
                   <label className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-outline-variant/30 bg-surface-container px-4 py-5 text-sm text-on-surface-variant cursor-pointer hover:border-primary/40">
                     <ImagePlus className="w-4 h-4" />
-                    <span>Selecionar imagem</span>
+                    <span>Selecionar imagem (até 10 MB)</span>
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/png,image/jpeg,image/webp"
+                      disabled={isUploadingImage}
                       className="hidden"
                       onChange={e => {
                         const file = e.target.files?.[0];
@@ -604,7 +602,7 @@ export function EncomendasOrcamentos() {
                     />
                   </label>
                   {formData.referenceImageUrl && (
-                    <img src={formData.referenceImageUrl} alt="Referência" className="h-28 w-full object-cover rounded-lg border border-outline-variant/20" />
+                    <RequestImage reference={formData.referenceImageUrl} alt="Referência" className="h-28 w-full object-contain rounded-lg border border-outline-variant/20" />
                   )}
                 </div>
 
@@ -612,10 +610,11 @@ export function EncomendasOrcamentos() {
                   <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Foto do Orçamento / Resultado</label>
                   <label className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-outline-variant/30 bg-surface-container px-4 py-4 text-sm text-on-surface-variant cursor-pointer hover:border-primary/40">
                     <ImagePlus className="w-4 h-4" />
-                    <span>Selecionar imagem</span>
+                    <span>Selecionar imagem (até 10 MB)</span>
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/png,image/jpeg,image/webp"
+                      disabled={isUploadingImage}
                       className="hidden"
                       onChange={e => {
                         const file = e.target.files?.[0];
@@ -626,7 +625,7 @@ export function EncomendasOrcamentos() {
                     />
                   </label>
                   {formData.quoteMediaImageUrl && (
-                    <img src={formData.quoteMediaImageUrl} alt="Mídia do orçamento" className="h-24 w-full object-cover rounded-lg border border-outline-variant/20" />
+                    <RequestImage reference={formData.quoteMediaImageUrl} alt="Mídia do orçamento" className="h-24 w-full object-contain rounded-lg border border-outline-variant/20" />
                   )}
                 </div>
 
@@ -817,9 +816,11 @@ export function EncomendasOrcamentos() {
               </div>
             </div>
 
+            {isUploadingImage && <p role="status">Enviando imagem original... Aguarde antes de salvar.</p>}
             <div className="flex justify-end gap-3 pt-4 border-t border-outline-variant/20">
               <button
                 type="button"
+                disabled={isUploadingImage}
                 onClick={() => {
                   setShowForm(false);
                   resetForm();
@@ -830,6 +831,7 @@ export function EncomendasOrcamentos() {
               </button>
               <button
                 type="submit"
+                disabled={isUploadingImage}
                 className="px-8 py-2.5 bg-primary text-on-primary rounded font-bold text-sm hover:opacity-90 transition-all active:scale-95"
               >
                 {editingId ? 'Atualizar' : 'Salvar'}
@@ -945,10 +947,10 @@ export function EncomendasOrcamentos() {
                 {(request.referenceImageUrl || request.quoteMediaImageUrl) && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {request.referenceImageUrl && (
-                      <img src={request.referenceImageUrl} alt="Referência" className="h-36 w-full object-cover rounded-lg border border-outline-variant/20" />
+                      <RequestImage reference={request.referenceImageUrl} alt="Referência" className="h-36 w-full object-contain rounded-lg border border-outline-variant/20" />
                     )}
                     {request.quoteMediaImageUrl && (
-                      <img src={request.quoteMediaImageUrl} alt="Mídia do orçamento" className="h-36 w-full object-cover rounded-lg border border-outline-variant/20" />
+                      <RequestImage reference={request.quoteMediaImageUrl} alt="Mídia do orçamento" className="h-36 w-full object-contain rounded-lg border border-outline-variant/20" />
                     )}
                   </div>
                 )}

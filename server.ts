@@ -20,6 +20,7 @@ import { registerWhatsAppIngress } from "./server/whatsapp";
 import { DEFAULT_PRICING_SETTINGS, calculateVariationUnitCostBreakdown, normalizePricingSettings, suggestedPrice } from "./src/utils/pricing";
 
 import { registerAssetRoutes, type AssetStore } from './server/assets';
+import { createLocalAssetStore } from './server/local-assets';
 import { registerTeamRoutes } from './server/team';
 import { registerTeamCreateRoute, type TeamAuth } from './server/team-create';
 import { checkHomologation, loadDeploymentEnvironment } from './server/deployment-environment';
@@ -512,7 +513,7 @@ const hasCollectionFilters = (query: express.Request["query"]) => {
   registerQuoteRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
   registerFinanceRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
 
-  const assetStore: AssetStore | null = options.assetStore !== undefined ? options.assetStore : storageBucket ? {
+  const assetStore: AssetStore | null = options.assetStore !== undefined ? options.assetStore : process.env.LABLAYER_ASSET_DIR ? createLocalAssetStore(process.env.LABLAYER_ASSET_DIR) : storageBucket ? {
     async put(objectPath, bytes, mime) {
       try { await storageBucket.file(objectPath).save(bytes, {resumable:false, preconditionOpts:{ifGenerationMatch:0}, metadata:{contentType:mime,cacheControl:'private, no-store'}}); }
       catch (error) { if (Number((error as any).code) !== 412) throw error; }

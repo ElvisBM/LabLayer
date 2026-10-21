@@ -64,11 +64,12 @@ export function registerAssetRoutes(
     if (!validId(tenantId) || !validId(uid)) throw new BusinessError(400, 'Identidade inválida.');
     const tenant = (await tx.get(db!.doc(`tenants/${tenantId}`))).data();
     const profile = (await tx.get(db!.doc(`users/${uid}`))).data();
+    const member = (await tx.get(db!.doc(`tenants/${tenantId}/members/${uid}`))).data();
     const owner = tenant?.ownerUid === uid;
     if (
       !tenant ||
       tenant.status === 'inactive' ||
-      !(owner || profile?.tenantId === tenantId) ||
+      !(owner || (profile?.tenantId === tenantId && member?.active !== false)) ||
       (ownerOnly && !owner)
     )
       throw new BusinessError(403, 'Sem acesso aos arquivos desta empresa.');

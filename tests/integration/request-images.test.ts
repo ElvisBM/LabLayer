@@ -1,0 +1,65 @@
+import { afterAll, beforeEach, expect, it } from 'vitest';
+import { initializeApp, deleteApp } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import { mkdtemp, rm, stat } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import express from 'express';
+import request from 'supertest';
+import { registerAssetRoutes } from '../../server/assets';
+import { createLocalAssetStore } from '../../server/local-assets';
+const firebase = initializeApp({ projectId: 'demo-lablayer-test' }, 'request-images-test');
+const db = getFirestore(firebase);
+const root = await mkdtemp(path.join(os.tmpdir(), 'lablayer-images-'));
+const store = createLocalAssetStore(root);
+const app = express(); app.use(express.json());
+registerAssetRoutes(app, db, async uid => { if (uid === 'invalid') throw Error(); return { uid } as any; }, store);
+const png = Buffer.concat([Buffer.from('89504e470d0a1a0a','hex'), Buffer.alloc(1100000, 1)]);
+const upload = (body = png, uid = 'image-owner', tenant = 'image-a', name = 'referencia.png', mime = 'image/png') => request(app).post(`/api/tenants/${tenant}/assets/upload`).set('Authorization', `Bearer ${uid}`).set('Content-Type', 'application/octet-stream').set('X-File-Name', encodeURIComponent(name)).set('X-File-Type', mime).send(body);
+const download = (key: string, uid = 'image-owner', tenant = 'image-a') => request(app).get(`/api/tenants/${tenant}/assets/${key}/download`).set('Authorization', `Bearer ${uid}`);
+beforeEach(async () => {
+  await db.doc('tenants/image-a').set({ownerUid:'image-owner',status:'active'});
+  await db.doc('tenants/image-b').set({ownerUid:'outsider',status:'active'});
+  await db.doc('users/image-member').set({tenantId:'image-a'});
+  await db.doc('tenants/image-a/members/image-member').set({active:true});
+  await db.doc('users/outsider').set({tenantId:'image-b'});
+});
+afterAll(async () => { await db.terminate(); await deleteApp(firebase); await rm(root,{recursive:true,force:true}); });
+it('envia imagem acima de 1 MB, preserva os bytes e repetições não duplicam o anexo', async () => {
+  const first = (await upload().expect(200)).body;
+  expect((await upload().expect(200)).body.reference).toBe(first.reference);
+  const response = await download(first.id).expect(200);
+  expect(response.body.equals(png)).toBe(true);
+  expect(response.headers['cache-control']).toBe('private, no-store');
+  const metadata = (await db.doc(`tenants/image-a/assets/${first.id}`).get()).data()!;
+  expect(metadata.size).toBe(png.length);
+  expect((await stat(path.join(root, metadata.path))).mode & 0o777).toBe(0o600);
+  expect((await createLocalAssetStore(root).get(metadata.path)).equals(png)).toBe(true);
+});
+it('membro pode visualizar e empresa alheia, token inválido e empresa inativa são bloqueados', async () => {
+  const {id} = (await upload().expect(200)).body;
+  await download(id,'image-member').expect(200);
+  await db.doc('tenants/image-a/members/image-member').update({active:false});
+  await download(id,'image-member').expect(403);
+  await download(id,'outsider').expect(403);
+  await download(id,'outsider','image-b').expect(404);
+  await upload(png,'outsider').expect(403);
+  await upload(png,'invalid').expect(401);
+  await request(app).get(`/api/tenants/image-a/assets/${id}/download`).expect(401);
+  await db.doc('tenants/image-a').update({status:'inactive'});
+  await download(id).expect(403);
+  await upload().expect(403);
+});
+it('bloqueia formato falso, SVG, nome com caminho e arquivo acima de 10 MiB', async () => {
+  await upload(Buffer.from('<svg/>')).expect(422);
+  await upload(Buffer.from('<svg/>'),'image-owner','image-a','x.svg','image/svg+xml').expect(422);
+  await upload(png,'image-owner','image-a','../x.png').expect(422);
+  await upload(Buffer.alloc(10*1024*1024+1)).expect(413);
+});
+it('armazenamento privado bloqueia fuga de diretório e colisão com conteúdo diferente', async () => {
+  await expect(store.get('../secrets')).rejects.toThrow();
+  const key = `tenants/image-a/managed-assets/${'a'.repeat(64)}`;
+  await store.put(key,Buffer.from('original'),'image/png');
+  await expect(store.put(key,Buffer.from('different'),'image/png')).rejects.toThrow('divergente');
+  expect((await store.get(key)).toString()).toBe('original');
+});
