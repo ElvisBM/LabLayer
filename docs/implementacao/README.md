@@ -63,3 +63,5 @@ B19 validado em 21/10/2026: **332 testes**. Visualização simplificada em lista
 B20 validado em 21/10/2026: **332 testes**. Seletor ampliado para Lista simplificada, 2 caixas e 3 caixas, com grade responsiva e filtros compartilhados. Código local, publicação pendente; [conferência B20](./visualizacoes-b20.md).
 
 Atualização em 21/10/2026: **visualizações B19/B20 publicadas isoladamente** sobre a base de produção no release `f34d8dd` (`release/quote-view-modes`). Conferidas no site com os pedidos existentes. Esta atualização substitui a pendência de publicação das visualizações acima; as demais etapas e o menu Usuários continuam pendentes de homologação/publicação. Ver [escopo, evidências e reversão](./publicacao-visualizacoes-20261021.md).
+
+B21 implementado: menu **Usuários** com nome, e-mail, Operador/Administrador e senha inicial; criação Auth com vínculo transacional e recuperação de falhas. Publicação depende da reconciliação da empresa atual (inativa, com 27 solicitações) versus empresa própria do Elvis (ativa, vazia). Ver [regras e conferência B21](./cadastro-usuarios-b21.md).

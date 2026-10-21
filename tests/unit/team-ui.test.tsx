@@ -28,10 +28,43 @@ it('membro não recebe controles de aprovação e pedido não simula acesso conc
   render(<TeamPage />);
   expect(await screen.findByText(/lista e a aprovação de usuários/)).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Aprovar new@example.test' })).toBeNull();
+  expect(screen.queryByRole('form', { name: 'Cadastrar usuário' })).toBeNull();
   fireEvent.change(screen.getByRole('textbox', { name: 'ID da empresa' }), { target: { value: 'other' } });
   fireEvent.click(screen.getByRole('button', { name: 'Solicitar acesso' }));
   expect(await screen.findByText(/Aguarde a aprovação/)).toBeTruthy();
   expect(mock.call).toHaveBeenCalledWith(expect.anything(), '/api/team/request-access', { tenantId: 'other' });
+});
+
+it('cadastra nome, e-mail, papel e senha no tenant atual e limpa a senha após sucesso', async () => {
+  render(<TeamPage />);
+  await screen.findByRole('form', { name: 'Cadastrar usuário' });
+  fireEvent.change(screen.getByLabelText('Nome'), { target: { value: ' Nova Pessoa ' } });
+  fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'NEW@example.test' } });
+  fireEvent.change(screen.getByLabelText('Tipo de acesso'), { target: { value: 'admin' } });
+  const password = screen.getByLabelText('Senha inicial') as HTMLInputElement;
+  expect(password.type).toBe('password');
+  fireEvent.change(password, { target: { value: 'Initial-test-123!' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Cadastrar usuário' }));
+  expect(await screen.findByText(/Usuário cadastrado com acesso/)).toBeTruthy();
+  expect(mock.call).toHaveBeenCalledWith(mock.user, '/api/tenants/a/team/create-user', expect.objectContaining({ requestId: expect.any(String), name: 'Nova Pessoa', email: 'new@example.test', role: 'admin', password: 'Initial-test-123!' }));
+  expect(password.value).toBe('');
+});
+
+it('falha mantém identificador para retry e não anuncia acesso concedido', async () => {
+  render(<TeamPage />);
+  const form = await screen.findByRole('form', { name: 'Cadastrar usuário' });
+  fireEvent.change(screen.getByLabelText('Nome'), { target: { value: 'Pessoa' } });
+  fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'new@example.test' } });
+  fireEvent.change(screen.getByLabelText('Senha inicial'), { target: { value: 'Initial-test-123!' } });
+  mock.call.mockRejectedValue(Error('Serviço indisponível'));
+  fireEvent.submit(form);
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Serviço indisponível');
+  expect(screen.queryByText(/Usuário cadastrado com acesso/)).toBeNull();
+  expect((screen.getByLabelText('Senha inicial') as HTMLInputElement).readOnly).toBe(true);
+  const firstId = mock.call.mock.calls.at(-1)![2].requestId;
+  fireEvent.submit(form);
+  await screen.findByRole('alert');
+  expect(mock.call.mock.calls.at(-1)![2].requestId).toBe(firstId);
 });
 it('erro de concessão não anuncia sucesso e remoção exige confirmação', async () => {
   render(<TeamPage />);

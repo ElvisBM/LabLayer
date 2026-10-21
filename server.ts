@@ -21,9 +21,11 @@ import { DEFAULT_PRICING_SETTINGS, calculateVariationUnitCostBreakdown, normaliz
 
 import { registerAssetRoutes, type AssetStore } from './server/assets';
 import { registerTeamRoutes } from './server/team';
+import { registerTeamCreateRoute, type TeamAuth } from './server/team-create';
 import { checkHomologation, loadDeploymentEnvironment } from './server/deployment-environment';
 
 export type AppOptions = {
+  teamAuth?: TeamAuth;
   assetStore?: AssetStore | null;
   database?: Firestore | null;
   verifyIdToken?: (token: string) => Promise<DecodedIdToken>;
@@ -499,6 +501,9 @@ const hasCollectionFilters = (query: express.Request["query"]) => {
   app.disable("x-powered-by");
   app.use(express.json());
 
+  registerTeamCreateRoute(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)), options.teamAuth ?? {
+    getUser: uid => getAuth().getUser(uid), createUser: input => getAuth().createUser(input), updateUser: (uid, input) => getAuth().updateUser(uid, input),
+  });
   registerTeamRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
   registerSessionRoute(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
   registerPricingRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));

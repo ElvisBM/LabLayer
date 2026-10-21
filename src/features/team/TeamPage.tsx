@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { sendEmailVerification } from 'firebase/auth';
 import { useAuth } from '../../contexts/AuthContext';
+import { CreateTeamUserForm } from './CreateTeamUserForm';
 import { catalogRequest } from '../catalog/client';
 
-type Member = { uid: string; email: string; role: string; revision: number };
+type Member = { uid: string; name?: string; email: string; role: string; revision: number };
 type AccessRequest = { uid: string; email: string; revision: number };
 type Team = { tenantId: string; companyName: string; isOwner: boolean; members: Member[]; requests: AccessRequest[] };
 type Companies = { currentTenantId: string; email: string; companies: { id: string; name: string; role: string }[] };
@@ -79,12 +80,13 @@ export function TeamPage() {
         <h3 className="font-bold">{team.companyName || 'Minha Empresa'}</h3>
         <p>ID para solicitar acesso: <code className="break-all">{team.tenantId}</code></p>
         <p>Cada pessoa entra com sua própria conta, solicita acesso pelo ID acima e aguarda aprovação do proprietário. Depois seleciona esta empresa na própria conta.</p>
-        <p>Operadores acessam os dados da empresa e as operações permitidas ao membro. Administradores também podem aprovar orçamentos e registrar financeiro. Somente o proprietário gerencia usuários.</p>
+        <p>Operadores acessam os dados da empresa e as operações permitidas ao membro. Administradores também podem aprovar orçamentos e registrar financeiro. O proprietário e o administrador da plataforma gerenciam usuários.</p>
       </div>
       {team.isOwner ? <>
+        <CreateTeamUserForm key={tenantId} user={user!} tenantId={tenantId!} disabled={busy} onCreated={load} />
         <h3 className="font-bold">Pessoas com acesso</h3>
         <ul className="space-y-2">{team.members.map(member => <li className="rounded border p-3" key={member.uid}>
-          <span>{member.email || member.uid} — {roles[member.role] || member.role}</span>
+          <span>{member.name && <strong>{member.name} · </strong>}{member.email || member.uid} — {roles[member.role] || member.role}</span>
           {member.role !== 'owner' && <button className="ml-3 rounded border p-2" disabled={busy} onClick={() => setRevoke(member)}>Remover acesso de {member.email || member.uid}</button>}
         </li>)}</ul>
         {revoke && <div role="alertdialog" aria-label="Confirmar remoção de acesso" className="rounded border p-4 space-y-2">

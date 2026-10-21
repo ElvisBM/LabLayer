@@ -12,9 +12,10 @@ export function registerTeamRoutes(app: Express, db: Firestore | null, verify: (
   }
   function tenantId(value: unknown) { if (!validId(value)) fail(400, 'Empresa inválida.'); return value as string; }
   function revision(value: unknown) { if (!Number.isSafeInteger(value) || Number(value) < 0) fail(400, 'Revisão inválida.'); return Number(value); }
-  async function owner(tx: Transaction, tenant: string, uid: string) {
+  async function owner(tx: Transaction, tenant: string, identity: DecodedIdToken) {
+    const uid = identity.uid;
     const snap = await tx.get(ref(`tenants/${tenant}`));
-    if (!snap.exists || snap.data()?.status === 'inactive' || tenant !== uid || snap.data()?.ownerUid !== uid) fail(403, 'Somente o proprietário da empresa pode gerenciar acessos.');
+    if (!snap.exists || snap.data()?.status === 'inactive' || (identity.superadmin !== true && (tenant !== uid || snap.data()?.ownerUid !== uid))) fail(403, 'Somente o proprietário ou administrador da plataforma pode gerenciar acessos.');
     return snap.data()!;
   }
   function audit(tx: Transaction, tenant: string, actor: string, operation: string, targetUid: string, detail: object = {}) {
@@ -30,7 +31,7 @@ export function registerTeamRoutes(app: Express, db: Firestore | null, verify: (
     try { return res.json(await run(req, identity)); }
     catch (error) {
       if (error instanceof BusinessError) return res.status(error.status).json({ error: error.message });
-      console.error('Falha na gestão de usuários:', error);
+      console.error('Falha na gestão de usuários.');
       return res.status(503).json({ error: 'Não foi possível concluir. Atualize a lista e confira antes de tentar novamente.' });
     }
   };
@@ -55,7 +56,7 @@ export function registerTeamRoutes(app: Express, db: Firestore | null, verify: (
     return db!.runTransaction(async tx => {
       const company = (await tx.get(ref(`tenants/${tenant}`))).data();
       const profile = (await tx.get(ref(`users/${identity.uid}`))).data();
-      const isOwner = tenant === identity.uid && company?.ownerUid === identity.uid;
+      const isOwner = identity.superadmin === true || (tenant === identity.uid && company?.ownerUid === identity.uid);
       if (!company || company.status === 'inactive' || !(isOwner || profile?.tenantId === tenant)) fail(403, 'Empresa sem acesso.');
       if (!isOwner) return { tenantId: tenant, companyName: company.companyName, isOwner: false, members: [], requests: [] };
       const members = await tx.get(db!.collection(`tenants/${tenant}/members`).limit(201));
@@ -63,12 +64,12 @@ export function registerTeamRoutes(app: Express, db: Firestore | null, verify: (
       const requests = await tx.get(db!.collection(`tenants/${tenant}/accessRequests`).where('status', '==', 'pending').limit(201));
       if ([members, legacy, requests].some(s => s.size > 200)) fail(409, 'Lista excede 200 registros; paginar antes de gerenciar acessos.');
       const result = new Map<string, any>();
-      for (const user of legacy.docs) result.set(user.id, { uid: user.id, email: user.data().email || '', role: user.id === tenant ? 'owner' : user.data().tenantRole === 'admin' ? 'admin' : 'member', revision: 0 });
+      for (const user of legacy.docs) result.set(user.id, { uid: user.id, email: user.data().email || '', name: user.data().name || '', role: user.id === tenant ? 'owner' : user.data().tenantRole === 'admin' ? 'admin' : 'member', revision: 0 });
       for (const user of members.docs) {
-        if (user.data().active) result.set(user.id, { uid: user.id, email: user.data().email, role: user.data().role, revision: user.data().revision });
+        if (user.data().active) result.set(user.id, { uid: user.id, email: user.data().email, name: user.data().name || '', role: user.data().role, revision: user.data().revision });
         else result.delete(user.id);
       }
-      result.set(tenant, { uid: tenant, email: company.ownerEmail || identity.email || '', role: 'owner', revision: 0 });
+      result.set(tenant, { uid: tenant, email: company.ownerEmail || identity.email || '', name: legacy.docs.find(d => d.id === tenant)?.data().name || (identity.uid === tenant ? identity.name || '' : ''), role: 'owner', revision: 0 });
       return { tenantId: tenant, companyName: company.companyName, isOwner: true, members: [...result.values()], requests: requests.docs.map(d => ({ uid: d.id, email: d.data().email, revision: d.data().revision, requestedAt: d.data().requestedAt })) };
     });
   }));
@@ -99,7 +100,7 @@ export function registerTeamRoutes(app: Express, db: Firestore | null, verify: (
     if (!['approve', 'reject'].includes(body.decision) || !['member', 'admin'].includes(body.role)) fail(400, 'Decisão ou papel inválido.');
     const expected = revision(body.expectedRevision);
     return db!.runTransaction(async tx => {
-      await owner(tx, tenant, identity.uid);
+      await owner(tx, tenant, identity);
       if (uid === tenant) fail(409, 'A propriedade não pode ser alterada por este comando.');
       const requestRef = ref(`tenants/${tenant}/accessRequests/${uid}`);
       const previous = await tx.get(requestRef);
@@ -123,7 +124,7 @@ export function registerTeamRoutes(app: Express, db: Firestore | null, verify: (
     const tenant = tenantId(req.params.tenantId), uid = tenantId(req.params.uid);
     const expected = revision(fields(req.body, ['expectedRevision']).expectedRevision);
     return db!.runTransaction(async tx => {
-      await owner(tx, tenant, identity.uid);
+      await owner(tx, tenant, identity);
       if (uid === tenant) fail(409, 'Não é possível remover o proprietário.');
       const memberRef = ref(`tenants/${tenant}/members/${uid}`);
       const member = await tx.get(memberRef);

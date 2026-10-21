@@ -50,7 +50,7 @@ export function Sidebar({
       title: 'Configurações',
       items: [
         { id: 'configuracoes', label: 'Configurações', icon: Settings },
-        { id: 'usuarios', label: 'Usuários e empresa', icon: Users },
+        { id: 'usuarios', label: 'Usuários', icon: Users },
       ]
     }
   ];

@@ -46,3 +46,7 @@ Execução em Node 22/Java 21, Firestore emulado `demo-lablayer-test`. Firebase 
 Implementação, testes e commit locais não disponibilizam o menu no site. A instalação publicada ainda utiliza a versão anterior às etapas de estabilização. Antes de publicar o conjunto, executar o [roteiro de piloto](./piloto-e5.md) e a [conferência B17](./homologacao-b17.md): backup/restauração, reconciliação de vínculos legados e propriedade, Auth real, configuração do servidor, cliente, Firestore rules e Storage/IAM quando aplicável. Não acionar deploy automático apenas para tornar este menu visível sem conferir as demais mudanças acumuladas.
 
 Na homologação, usar duas contas controladas: solicitar, aprovar como operador, selecionar a empresa, verificar a mesma solicitação comercial, voltar à empresa própria e revogar. Repetir a conferência de permissões com administrador e testar e-mail de verificação. Validar que outro tenant não lê os dados, e que a revogação bloqueia novas operações. Nenhum acesso de terceiros foi concedido na instalação real durante esta implementação.
+
+## Complemento B21
+
+O [B21](./cadastro-usuarios-b21.md) acrescenta cadastro direto com senha inicial, exibição de nome e gestão por administrador global autenticado, além do proprietário. Esta atualização substitui a restrição exclusivamente ao proprietário descrita acima; administradores comuns de tenant continuam sem poder conceder acesso. Publicação permanece pendente da escolha da empresa ativa.
