@@ -12,7 +12,7 @@ it('quantidade ausente vira uma unidade provisória; rejeita medidas, campos ext
 });
 it('pedido à OpenAI usa esquema estrito, sem armazenamento nem ferramentas e não inclui áudio na visão',()=>{
  const r=openAiRequest({...input,attachments:[{name:'x.png',mime:'image/png',data:'image'},{name:'x.wav',mime:'audio/wav',data:'audio'}]});
- expect(r.store).toBe(false); expect(r.text.format.strict).toBe(true); expect(r).not.toHaveProperty('tools');
+ expect(r.model).toBe("gpt-6-luna"); expect(r.reasoning.effort).toBe("none"); expect(r.store).toBe(false); expect(r.text.format.strict).toBe(true); expect(r).not.toHaveProperty('tools');
  expect(JSON.stringify(r)).toContain('data:image/png;base64,image'); expect(JSON.stringify(r)).not.toContain('base64,audio');
 });
 it('ticket é de uso único, opaco, e autorização é revalidada ao trocar e retornar',async()=>{

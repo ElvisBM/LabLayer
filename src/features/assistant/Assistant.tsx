@@ -152,9 +152,9 @@ export function AssistantLinks() {
           <ShieldCheck size={20} /> Um link por vendedor
         </p>
         <p>
-          Quem possui o link pode cadastrar e consultar os pedidos enviados por
-          ele. O link vence em 90 dias e pode ser revogado aqui. Compartilhe
-          apenas com o vendedor responsável.
+          O link abre sem login. Em empresas com atendimento compartilhado, todos os
+          vendedores consultam os pedidos da empresa e podem acrescentar informações.
+          O link vence em 90 dias e pode ser revogado aqui. Compartilhe com sua equipe.
         </p>
         <p className="text-sm">
           O assistente organiza o recebimento. A equipe confere os anexos e
@@ -289,6 +289,10 @@ export function AssistantChat() {
   const lockedPayload = useRef<any>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const load = async () => setState(await api(token, "/api/assistant"));
+  async function loadMore() {
+    const page = await api(token, `/api/assistant?cursor=${encodeURIComponent(state.nextCursor)}`);
+    setState((current: any) => ({ ...page, requests: [...current.requests, ...page.requests.filter((r: any) => !current.requests.some((x: any) => x.id === r.id))] }));
+  }
   useEffect(() => {
     const meta = document.createElement("meta");
     meta.name = "referrer";
@@ -309,7 +313,7 @@ export function AssistantChat() {
     }
   }
   async function loadFile(id: string) {
-    const response = await fetch(`/api/assistant/assets/${id}`, {
+    const response = await fetch(`/api/assistant/assets/${id}${detail ? `?requestId=${encodeURIComponent(detail.id)}` : ""}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!response.ok) throw Error();
@@ -539,7 +543,7 @@ export function AssistantChat() {
                     })
                   }
                 >
-                  Meus pedidos
+                  {state.requestScope === "tenant" ? "Todos os pedidos" : "Meus pedidos"}
                 </button>
               </nav>
             )}
@@ -578,12 +582,13 @@ export function AssistantChat() {
                   <p className="font-medium text-indigo-700">
                     {statusLabels[detail.status] || detail.status}
                   </p>
+                  {detail.quotedPrice != null && <p>Valor do orçamento: {Number(detail.quotedPrice).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>}
                   <p className="whitespace-pre-wrap">{detail.description}</p>
                   <Files files={detail.attachments || []} load={loadFile} />
                   {detail.notes?.map((note: any) => (
                     <div key={note.id} className="border-t pt-3 space-y-2">
                       <p className="text-xs text-slate-500">
-                        Complemento ·{" "}
+                        Complemento · {note.seller || "Equipe"} ·{" "}
                         {new Date(note.createdAt).toLocaleString("pt-BR")}
                       </p>
                       <p className="whitespace-pre-wrap">{note.message}</p>
@@ -602,7 +607,7 @@ export function AssistantChat() {
                   <p>
                     Olá! Envie um pedido de cada vez. Vou organizar o texto e os
                     anexos para cadastrar na fila de orçamentos. Depois você
-                    acompanha a situação em <strong>Meus pedidos</strong>.
+                    acompanha a situação em <strong>{state.requestScope === "tenant" ? "Todos os pedidos" : "Meus pedidos"}</strong>.
                   </p>
                 </div>
                 <section className="bg-white rounded-2xl border p-5 space-y-5">
@@ -702,7 +707,7 @@ export function AssistantChat() {
             ) : (
               <section className="space-y-3">
                 <p className="text-sm text-slate-500">
-                  Até 100 pedidos mais recentes deste link.
+                  {state.requestScope === "tenant" ? "Pedidos da empresa, compartilhados com toda a equipe." : "Até 100 pedidos mais recentes deste link."}
                 </p>
                 {!state.requests.length && (
                   <div className="rounded-2xl bg-white border p-6">
@@ -726,6 +731,7 @@ export function AssistantChat() {
                     </p>
                   </button>
                 ))}
+                {state.nextCursor && <button className={secondary} disabled={busy} onClick={() => run(loadMore)}>Carregar mais pedidos</button>}
               </section>
             )}
           </>
@@ -771,7 +777,7 @@ export function AssistantRequestNotes({ requestId }: { requestId: string }) {
   return (
     <section className="rounded-xl border border-indigo-200 p-4 space-y-3">
       <h3 className="font-semibold">
-        Recebido pelo assistente · {data.seller}
+        Atendimento · {data.seller}
       </h3>
       {data.provisionalQuantity && (
         <p>Quantidade inicial provisória: confirmar com o cliente.</p>
