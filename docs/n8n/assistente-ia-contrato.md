@@ -1,10 +1,14 @@
 # Assistente IA — integração LabLayer / n8n / OpenAI
 
+## Atualização de atendimento compartilhado
+
+A configuração mais recente e os resultados de ativação estão em [Atendimento compartilhado e Luna](../implementacao/assistente-compartilhado-20261021.md). A implementação abaixo documenta a integração original; o modelo de interpretação passa a `gpt-6-luna`, sem raciocínio adicional.
+
 ## Implementação de 21/10/2026
 
 A conexão `OpenAI — LabLayer Bot` foi conferida no n8n com `Connection tested successfully`. A chave permanece no gerenciador de credenciais do n8n. Nenhuma chave do provedor é necessária no ambiente do LabLayer, no código, no workflow exportado ou no navegador do vendedor.
 
-Workflow separado: **LabLayer — Assistente IA v1**, ID `qcfswpWqCsxJUtCd`. O workflow preexistente **Whatsapp Encomendas e Orcamentos LabLayer** (`IgH0E3hD739uBBWE`) foi preservado. A ativação do assistente por empresa é controlada no servidor; publicação do workflow, isoladamente, não habilita os vendedores. **Estado final: workflow despublicado e IA desabilitada no LabLayer por ausência de créditos na OpenAI. Modo guiado disponível.**
+Workflow separado: **LabLayer — Assistente IA v1**, ID `qcfswpWqCsxJUtCd`. O workflow preexistente **Whatsapp Encomendas e Orcamentos LabLayer** (`IgH0E3hD739uBBWE`) foi preservado. A ativação do assistente por empresa é controlada no servidor; publicação do workflow, isoladamente, não habilita os vendedores. **Estado atual: workflow publicado e IA habilitada para a empresa de Elvis após testes reais aprovados com saldo. Atendimento compartilhado ativo; modo manual continua disponível.**
 
 ## Responsabilidades e autenticação
 
@@ -19,7 +23,7 @@ A autorização efêmera substitui o Header Auth estático previsto inicialmente
 
 ## Modelos e dados
 
-- Interpretação: `gpt-4.1-mini-2025-04-14`, Responses API, `store:false`, saída estrita JSON Schema, até 1.800 tokens de saída, sem ferramentas.
+- Interpretação: `gpt-6-luna`, `reasoning.effort: none`, Responses API, `store:false`, saída estrita JSON Schema, até 1.800 tokens de saída, sem ferramentas.
 - Transcrição: `gpt-transcribe`, endpoint `/v1/audio/transcriptions`, idioma português. Modelo corrente conferido na documentação; modelos legados de transcrição possuem descontinuação anunciada.
 - Até 6 anexos, 8 MiB combinados para interpretação; upload normal continua aceitando 10 MiB por arquivo.
 - Imagens PNG/JPEG/WebP. Um áudio MP3/M4A/WAV/WebM por interpretação. OGG e múltiplos áudios permanecem anexados para a equipe, com aviso de modo guiado.

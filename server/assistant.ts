@@ -1,7 +1,7 @@
 import { assistantAiFromEnvironment, AI_MAX_BYTES, type AssistantAi, type AiFile } from "./assistant-ai";
 import express, { type Express, type Request, type Response } from "express";
 import { createHash, randomBytes } from "node:crypto";
-import type { Firestore, Transaction } from "firebase-admin/firestore";
+import { FieldPath, type Firestore, type Transaction } from "firebase-admin/firestore";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import { BusinessError, validId } from "./session";
 import { inspectAsset, type AssetStore } from "./assets";
@@ -158,7 +158,7 @@ export function registerAssistantRoutes(
     const company = (await tx.get(ref(`tenants/${link.tenantId}`))).data();
     if (!company || company.status === "inactive")
       fail(403, "Empresa indisponível.");
-    return { ...link, companyName: company.companyName || "LabLayer" };
+    return { ...link, companyName: company.companyName || "LabLayer", sharedRequests: company.assistantSharedRequests === true };
   }
   const errors = (res: Response, e: any) => {
     if (e instanceof BusinessError)
@@ -332,9 +332,21 @@ export function registerAssistantRoutes(
   );
   app.get(
     "/api/assistant",
-    publicRoute(async (_req, res, key) => {
+    publicRoute(async (req, res, key) => {
+      const cursor = req.query.cursor;
+      if (cursor !== undefined && !validId(cursor)) fail(422, "Página inválida.");
       const result = await db!.runTransaction(async (tx) => {
         const link = await access(tx, key);
+        if (link.sharedRequests) {
+          let query = db!.collection(`tenants/${link.tenantId}/customRequests`).orderBy(FieldPath.documentId()).limit(101);
+          if (cursor) query = query.startAfter(cursor);
+          const page = await tx.get(query), rows = page.docs.slice(0, 100);
+          return { seller: link.name, company: link.companyName, mode: aiEnabled(link.tenantId) ? "ai" : "guided",
+            requestScope: "tenant", nextCursor: page.size > 100 ? rows.at(-1)!.id : null,
+            requests: rows.map(d => ({ id: d.id, title: d.data().title || "Pedido sem título",
+              customerName: d.data().customerName || "", quantity: d.data().requestedQuantity ?? 1,
+              createdAt: d.data().createdAt || null, status: d.data().status || "aguardando-orcamento" })) };
+        }
         const mappings = await tx.get(
           db!
             .collection(`assistantLinks/${key}/requests`)
@@ -352,6 +364,7 @@ export function registerAssistantRoutes(
           seller: link.name,
           company: link.companyName,
           mode: aiEnabled(link.tenantId) ? "ai" : "guided",
+          requestScope: "link", nextCursor: null,
           requests: mappings.docs.flatMap((d, i) =>
             rows[i].exists
               ? [
@@ -553,8 +566,8 @@ export function registerAssistantRoutes(
         const existing = await tx.get(
           ref(`tenants/${link.tenantId}/customRequests/${requestId}`),
         );
-        if (!mapping || !existing.exists)
-          fail(404, "Solicitação não encontrada neste link.");
+        if ((!link.sharedRequests && !mapping) || !existing.exists)
+          fail(404, "Solicitação não encontrada neste acesso.");
         const noteRef = ref(
             `tenants/${link.tenantId}/assistantRequests/${requestId}/notes/${body.operationId}`,
           ),
@@ -577,6 +590,8 @@ export function registerAssistantRoutes(
         tx.create(noteRef, {
           message,
           attachments: files,
+          seller: link.name,
+          linkId: key,
           createdAt: new Date().toISOString(),
           fingerprint,
         });
@@ -598,7 +613,6 @@ export function registerAssistantRoutes(
     const info = (
       await tx.get(ref(`tenants/${tenant}/assistantRequests/${requestId}`))
     ).data();
-    if (!info) return { attachments: [], notes: [] };
     const notes = await tx.get(
       db!
         .collection(`tenants/${tenant}/assistantRequests/${requestId}/notes`)
@@ -606,12 +620,13 @@ export function registerAssistantRoutes(
         .limit(100),
     );
     return {
-      seller: info.seller,
-      provisionalQuantity: info.provisionalQuantity,
-      attachments: info.attachments,
+      seller: info?.seller || (notes.empty ? "" : "Equipe"),
+      provisionalQuantity: info?.provisionalQuantity || false,
+      attachments: info?.attachments || [],
       notes: notes.docs.map((d) => ({
         id: d.id,
         message: d.data().message,
+        seller: d.data().seller || "Equipe",
         attachments: d.data().attachments,
         createdAt: d.data().createdAt,
       })),
@@ -628,21 +643,33 @@ export function registerAssistantRoutes(
           const mapping = (
             await tx.get(ref(`assistantLinks/${key}/requests/${requestId}`))
           ).data();
-          if (!mapping) fail(404, "Solicitação não encontrada neste link.");
+          if (!link.sharedRequests && !mapping) fail(404, "Solicitação não encontrada neste acesso.");
           const row = (
             await tx.get(
               ref(`tenants/${link.tenantId}/customRequests/${requestId}`),
             )
           ).data();
           if (!row) fail(404, "Solicitação não disponível.");
+          const info = await detail(tx, link.tenantId, requestId);
+          // Only managed images referenced by this request are exposed, never arbitrary URLs.
+          const referenceIds = (link.sharedRequests ? [row.referenceImageUrl, row.quoteMediaImageUrl] : [])
+            .filter((v): v is string => typeof v === "string" && /^asset:[a-f0-9]{64}$/.test(v))
+            .map(v => v.slice(6));
+          const files = [...info.attachments];
+          for (const id of new Set(referenceIds)) {
+            if (files.some(f => f.id === id)) continue;
+            const meta = (await tx.get(ref(`tenants/${link.tenantId}/assets/${id}`))).data();
+            if (meta) files.push({ id, name: meta.name, mime: meta.mime });
+          }
           return {
             id: requestId,
-            title: mapping.title,
-            description: mapping.description,
-            customerName: mapping.customerName,
-            quantity: mapping.quantity,
+            title: link.sharedRequests ? row.title || "Pedido sem título" : mapping.title,
+            description: link.sharedRequests ? row.description || "" : mapping.description,
+            customerName: link.sharedRequests ? row.customerName || "" : mapping.customerName,
+            quantity: link.sharedRequests ? row.requestedQuantity ?? 1 : mapping.quantity,
             status: row.status,
-            ...(await detail(tx, link.tenantId, requestId)),
+            ...(link.sharedRequests ? { quotedPrice: typeof row.quotedPrice === "number" && row.quotedPrice > 0 ? row.quotedPrice : null } : {}),
+            ...info, attachments: files,
           };
         }),
       );
@@ -723,7 +750,16 @@ export function registerAssistantRoutes(
       const meta = await db!.runTransaction(async (tx) => {
         const link = await access(tx, key);
         const owned = await tx.get(ref(`assistantLinks/${key}/assets/${id}`));
-        if (!owned.exists) fail(404, "Arquivo não encontrado neste link.");
+        if (!owned.exists) {
+          const requestId = req.query.requestId;
+          if (!link.sharedRequests || !validId(requestId)) fail(404, "Arquivo não encontrado neste acesso.");
+          const row = (await tx.get(ref(`tenants/${link.tenantId}/customRequests/${requestId}`))).data();
+          if (!row) fail(404, "Solicitação não disponível.");
+          const info = await detail(tx, link.tenantId, requestId as string);
+          const references = [...info.attachments, ...info.notes.flatMap(n => n.attachments || [])];
+          if (![row.referenceImageUrl, row.quoteMediaImageUrl].includes(`asset:${id}`) && !references.some(f => f.id === id))
+            fail(404, "Arquivo não vinculado ao pedido.");
+        }
         return (
           await tx.get(ref(`tenants/${link.tenantId}/assets/${id}`))
         ).data();

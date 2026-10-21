@@ -334,3 +334,57 @@ it("não cria pedidos ocultos após migração ao novo fluxo de estoque", async 
     (await db.collection(`tenants/${tenant}/customRequests`).get()).empty,
   ).toBe(true);
 });
+
+it('atendimento compartilhado consulta pedidos manuais e de outro vendedor com dados atuais', async () => {
+  await db.doc(`tenants/${tenant}`).update({ assistantSharedRequests: true });
+  const other = (await admin('post', `/api/tenants/${tenant}/assistant-links`, { name: 'Turno B' })).body.token;
+  const saved = (await call('post', '/requests', payload()).expect(200)).body;
+  await db.doc(`tenants/${tenant}/customRequests/${saved.id}`).update({ title: 'Título revisado', requestedQuantity: 12, quotedPrice: 95 });
+  await db.doc(`tenants/${tenant}/customRequests/manual`).set({ title: 'Pedido manual sem data', requestedQuantity: 3, status: 'orcado', description: 'Referência original', quotedPrice: 42, internalCost: 9 });
+  const list = (await call('get', '', undefined, other).expect(200)).body;
+  expect(list.requestScope).toBe('tenant'); expect(list.requests).toHaveLength(2);
+  const result = (await call('get', `/requests/${saved.id}`, undefined, other).expect(200)).body;
+  expect(result).toMatchObject({ title: 'Título revisado', quantity: 12, quotedPrice: 95 });
+  const manual = (await call('get', '/requests/manual', undefined, other).expect(200)).body;
+  expect(manual).toMatchObject({ title: 'Pedido manual sem data', quantity: 3, quotedPrice: 42 });
+  expect(manual).not.toHaveProperty('internalCost');
+  const note = { operationId: randomUUID(), message: 'Turno B confirmou a cor', attachments: [] };
+  await call('post', '/requests/manual/notes', note, other).expect(200);
+  await call('post', '/requests/manual/notes', note, other).expect(200);
+  const notes = (await call('get', '/requests/manual').expect(200)).body.notes;
+  expect(notes).toHaveLength(1); expect(notes[0]).toMatchObject({ message: note.message, seller: 'Turno B' });
+});
+it('compartilhamento permite apenas anexos vinculados ao pedido, mantendo uploads privados e isolamento de empresa', async () => {
+  await db.doc(`tenants/${tenant}`).update({ assistantSharedRequests: true });
+  const other = (await admin('post', `/api/tenants/${tenant}/assistant-links`, { name: 'Outro turno' })).body.token;
+  const file = (await upload().expect(200)).body;
+  const saved = (await call('post', '/requests', payload({ attachments: [file.id] })).expect(200)).body;
+  await call('get', `/assets/${file.id}?requestId=${saved.id}`, undefined, other).expect(200);
+  await call('get', `/assets/${file.id}`, undefined, other).expect(404);
+  await call('post', '/requests', payload({ attachments: [file.id] }), other).expect(422);
+  await db.doc(`tenants/${tenant}/customRequests/manual`).set({ title: 'Manual', referenceImageUrl: `asset:${file.id}` });
+  expect((await call('get', '/requests/manual', undefined, other)).body.attachments[0].id).toBe(file.id);
+  await call('get', `/assets/${file.id}?requestId=manual`, undefined, other).expect(200);
+  await db.doc(`tenants/${tenant}/customRequests/unrelated`).set({ title: 'Sem anexo' });
+  await call('get', `/assets/${file.id}?requestId=unrelated`, undefined, other).expect(404);
+  await db.doc(`tenants/foreign-${tenant}`).set({ ownerUid: `foreign-${tenant}`, status: 'active', assistantSharedRequests: true });
+  const foreign = (await admin('post', `/api/tenants/foreign-${tenant}/assistant-links`, { name: 'Empresa B' }, `foreign-${tenant}`)).body.token;
+  expect((await call('get', '', undefined, foreign)).body.requests).toEqual([]);
+  await call('get', `/requests/${saved.id}`, undefined, foreign).expect(404);
+  await call('post', `/requests/${saved.id}/notes`, { operationId: randomUUID(), message: 'Não permitido', attachments: [] }, foreign).expect(404);
+  await call('get', `/assets/${file.id}?requestId=${saved.id}`, undefined, foreign).expect(404);
+});
+it('pagina todos os pedidos compartilhados, inclusive registros antigos sem data', async () => {
+  await db.doc(`tenants/${tenant}`).update({ assistantSharedRequests: true });
+  const batch = db.batch();
+  for (let n = 0; n < 103; n++) batch.set(db.doc(`tenants/${tenant}/customRequests/item-${String(n).padStart(3, '0')}`), { title: `Pedido ${n}` });
+  await batch.commit();
+  const first = (await call('get', '').expect(200)).body;
+  expect(first.requests).toHaveLength(100); expect(first.nextCursor).toBe('item-099');
+  const second = (await call('get', `?cursor=${first.nextCursor}`).expect(200)).body;
+  expect(second.requests).toHaveLength(3); expect(second.nextCursor).toBeNull();
+  expect(new Set([...first.requests, ...second.requests].map(x => x.id)).size).toBe(103);
+  await call('get', '?cursor=invalid/path').expect(422);
+  await db.doc(`assistantLinks/${key}`).update({ active: false });
+  await call('get', '').expect(403);
+});

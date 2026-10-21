@@ -91,3 +91,22 @@ it("envia anexos para interpretar, mostra a transcrição e exige confirmação 
   expect(body).toMatchObject({attachments:[],guided:false});
   expect(fake.mock.calls.some(c=>c[0]==='/api/assistant/requests')).toBe(false);
 });
+
+it('lista pedidos da empresa, carrega outra página e abre pedido de outro atendimento', async () => {
+  fake.mockImplementation(async (path: string) => {
+    const state = { company: 'Empresa', seller: 'Equipe', requestScope: 'tenant', mode: 'guided' };
+    if (path === '/api/assistant') return reply({ ...state, requests: [{id:'manual', title:'Manual da equipe', quantity:2}], nextCursor:'manual' });
+    if (path === '/api/assistant?cursor=manual') return reply({ ...state, requests: [{id:'outro', title:'Outro atendimento', quantity:3}], nextCursor:null });
+    if (path === '/api/assistant/requests/outro') return reply({ id:'outro',title:'Outro atendimento',quantity:3,description:'Azul',attachments:[],notes:[] });
+    throw Error('Unexpected path');
+  });
+  render(<AssistantChat />);
+  fireEvent.click(await screen.findByRole('button', {name:'Todos os pedidos'}));
+  await screen.findByText('Manual da equipe');
+  fireEvent.click(screen.getByRole('button', {name:'Carregar mais pedidos'}));
+  fireEvent.click(await screen.findByRole('button', {name:/Outro atendimento/}));
+  await screen.findByText('Azul');
+  expect(screen.getByLabelText('Complementar este pedido')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', {name:'Voltar aos pedidos'}));
+  expect(screen.getByText('Manual da equipe')).toBeTruthy();
+});
