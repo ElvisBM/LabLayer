@@ -22,10 +22,10 @@ A interface disponibiliza as operações e históricos em **Financeiro e concili
 
 Barreira integral aprovada em 20/10/2026: **283 testes** (149 unitários/interface e 134 de integração), TypeScript, build e auditoria de produção. Os 274 casos anteriores passaram; nove casos foram adicionados. Evidência: [log B12](./evidencias-b12-quality.txt). Permanecem os nove alertas baixos/moderados de produção e o aviso de bundle grande. Novos casos cobrem devolução parcial, descarte/troca, retorno cumulativo, concorrência, crédito/reembolso, revisão após produção, correção de acordo, permissões, rules, falha de auditoria e interface.
 
-## Demais blocos em execução
+## Blocos complementares
 
-- B13: arquivos próprios, referências autenticadas e migração explícita de mídia incorporada.
-- B14: registro de envio da versão emitida e confirmação verificável da lista de espera (DV35).
+- B13: implementado e validado; arquivos próprios, referências autenticadas e migração explícita de mídia incorporada.
+- B14: implementado e validado; registro de envio da versão emitida e confirmação verificável da lista de espera (DV35).
 - B11: homologação real e corte coordenado; dependem da identificação da empresa/ambiente e dos documentos reais.
 
 Escala maior (paginação/agregações) e atualização das dependências remanescentes devem ser avaliadas com compatibilidade e volume real. Os limites atuais recusam resultados parciais e continuam explícitos. Novos agentes, importação assistida, marketplaces, portal de aprovação e PDF elaborado permanecem evoluções posteriores.
@@ -49,3 +49,28 @@ Conteúdos não suportados ou base64 malformado são recusados, sem migração s
 ### Qualidade B13
 
 Sete testes de integração exercitam API/Firestore com adaptador de objetos isolado: upload/retry, download/hash, isolamento/rules, limites/formato, falhas de storage/auditoria, migração e vínculo no orçamento. Três testes de interface verificam upload autenticado, ausência de sucesso fictício e download privado. O adaptador real do bucket e suas permissões dependem de homologação; nenhum teste enviou arquivo para um bucket real. Barreira integral aprovada: **293 testes** (152 unitários/interface e 141 de integração), tipos, build e auditoria de produção. Os 283 casos anteriores passaram. [Evidência B13](./evidencias-b13-quality.txt).
+
+## B14 — envio de propostas e lista de espera
+
+`record-send` registra destinatário, canal, evidência, data/hora efetiva e versão emitida. Data do registro e ator vêm do servidor. O envio informado precisa estar entre emissão e validade; versão substituída não pode ser registrada como vigente. O comando conserva preço, snapshot e aprovação e não aciona mensagens externas. Registros imutáveis em `quotes/{id}/dispatches` têm recibo idempotente, versão otimista e auditoria atômica; rules negam escrita direta. A interface mostra os 100 envios mais recentes, com aviso se houver mais. O registro comprova o que o operador informou, não a entrega/leitura autenticada pelo cliente.
+
+No repositório irmão **SiteLabLayer**, a DV35 passou a exigir confirmação positiva da gravação, mesmo requestId e recibo. O Apps Script usa lock e deduplicação; falha de rede/negócio não é anunciada como sucesso. O script e o site precisam ser publicados de forma coordenada, conferindo colunas H–J da planilha, permissões e leitura da resposta no navegador. Não foi enviado cadastro real. Ver [documentação do site](../../../SiteLabLayer/README.md). As seis verificações automatizadas e tipos/build/auditoria de produção do site passaram; a árvore de produção do site tem zero alertas, com alertas remanescentes nas ferramentas de desenvolvimento.
+
+### Qualidade B14
+
+Barreira integral do LabLayer aprovada: **296 testes** (153 unitários/interface e 143 de integração), tipos, build e auditoria de produção; os 293 casos anteriores passaram. [Log B14](./evidencias-b14-quality.txt). A DV35 foi commitada no SiteLabLayer em `39d99d7`. Casos novos verificam envio da versão correta, data/fuso, identidade, retry, rules e atomicidade em falha de auditoria. A interface também traduz a situação de crédito excedente como “reembolso pendente”.
+
+## Pendências para encerrar o plano
+
+| Item | Estado após os complementos |
+|---|---|
+| Revisão após produção, devolução, troca e crédito | Implementados por comandos explícitos B12; validar política/destinos com a empresa piloto |
+| Upload próprio e migração de mídia incorporada | Implementados B13; homologar bucket, IAM, rules e backup dos objetos |
+| Registro de envio de proposta | Implementado B14; envio externo continua manual |
+| DV35 — confirmação da lista de espera | Corrigida localmente no SiteLabLayer; publicação do Apps Script/site e ensaio real pendentes |
+| B11 — piloto, legado, abertura e implantação | Pendente; precisa de empresa/ambiente, documentos e aceite operacional |
+| Escala além dos limites publicados | Paginação/agregações maiores continuam no backlog; relatórios rejeitam truncamento |
+| Dependências e desempenho | Alertas remanescentes e bundle grande continuam registrados; não se aumentou threshold para ocultá-los |
+| Agentes, CSV assistido, marketplaces, portal e PDF | Evolução posterior ao piloto reconciliado |
+
+Os totais de testes certificam os cenários automatizados cobertos. Não equivalem a dados reais conciliados, storage publicado, integração Google Sheets homologada ou produção liberada.

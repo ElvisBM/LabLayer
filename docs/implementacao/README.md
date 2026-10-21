@@ -47,3 +47,5 @@ O diretório `scripts/` já existia como não rastreado e não participa destes 
 B12 implementado localmente: devoluções físicas, trocas por reposição, acordos de crédito/dispensa e revisão após produção. Barreira completa aprovada com 283 testes. O bloqueio geral descrito acima para fatos físicos foi substituído pelos comandos explícitos descritos no [fechamento das lacunas](./fechamento-plano.md). Piloto real continua pendente.
 
 B13 implementado localmente: upload privado, download autenticado e migração explícita de mídia incorporada. Barreira completa aprovada com 293 testes; storage real/rules/IAM ainda exigem homologação. Ver [fechamento das lacunas](./fechamento-plano.md).
+
+B14 implementado localmente: registro de envio de versão emitida, evidência e histórico. Barreira acumulada aprovada com **296 testes**. DV35 corrigida no repositório SiteLabLayer (`39d99d7`), com seis testes e build/auditoria de produção aprovados. O [fechamento das lacunas](./fechamento-plano.md) lista entregas, critérios e pendências de homologação.

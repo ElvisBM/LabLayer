@@ -314,6 +314,13 @@ export function QuotesWorkspace({
 }) {
   const [data, setData] = useState<Record<string, any[]>>({}),
     [versions, setVersions] = useState<any[]>([]);
+  const [dispatches, setDispatches] = useState<any[]>([]);
+  const [dispatch, setDispatch] = useState({
+    recipient: '',
+    channel: '',
+    evidence: '',
+    sentAt: '',
+  });
   const [quoteId, setQuoteId] = useState(''),
     [draft, setDraft] = useState<QuoteData>(blankQuote),
     [revision, setRevision] = useState(0);
@@ -373,6 +380,23 @@ export function QuotesWorkspace({
       () => setError('Falha ao carregar versões.'),
     );
   }, [tenantId, quoteId]);
+  useEffect(() => {
+    setDispatches([]);
+    if (!quoteId) return;
+    return onSnapshot(
+      query(
+        collection(db, `tenants/${tenantId}/quotes/${quoteId}/dispatches`),
+        orderBy('sentAt', 'desc'),
+        limit(101),
+      ),
+      (snap) => {
+        setDispatches(snap.docs.slice(0, 100).map((d) => ({ ...d.data(), id: d.id })));
+        if (snap.size > 100)
+          setError('Mostrando os 100 envios mais recentes; os demais permanecem preservados.');
+      },
+      () => setError('Falha ao carregar os registros de envio.'),
+    );
+  }, [tenantId, quoteId]);
   const list = (name: string) => data[name] ?? [];
   const quote = list('quotes').find((q) => q.id === quoteId),
     order = list('salesOrders').find((o) => o.id === quoteId);
@@ -424,6 +448,7 @@ export function QuotesWorkspace({
     setReportedBy('');
     setChannel('');
     setEvidence('');
+    setDispatch({ recipient: '', channel: '', evidence: '', sentAt: '' });
     setBinding({ productId: '', variationId: '', recipeVersion: '' });
   };
   const update = (patch: Partial<QuoteData>) => {
@@ -877,6 +902,64 @@ export function QuotesWorkspace({
             </label>
           )}
           {frozen && <QuotePreview value={frozen} />}
+          {quote && ['issued', 'approved'].includes(quote.status) && (
+            <section className="space-y-3 rounded border p-4">
+              <h3>Registro de envio ao cliente</h3>
+              <p>
+                Informe o envio realizado externamente. Este registro não envia mensagens nem
+                comprova leitura ou aceite.
+              </p>
+              <Input
+                label="Destinatário do envio"
+                value={dispatch.recipient}
+                change={(v) => setDispatch((d) => ({ ...d, recipient: v }))}
+              />
+              <Input
+                label="Canal do envio"
+                value={dispatch.channel}
+                change={(v) => setDispatch((d) => ({ ...d, channel: v }))}
+              />
+              <Input
+                label="Evidência do envio"
+                value={dispatch.evidence}
+                change={(v) => setDispatch((d) => ({ ...d, evidence: v }))}
+              />
+              <Input
+                label="Data e hora do envio (UTC−03:00)"
+                type="datetime-local"
+                value={dispatch.sentAt}
+                change={(v) => setDispatch((d) => ({ ...d, sentAt: v }))}
+              />
+              <button
+                disabled={!!viewVersion && viewVersion !== quote.currentVersion}
+                onClick={() =>
+                  run(async () => {
+                    await send('record-send', {
+                      ...dispatch,
+                      versionId: quote.currentVersion,
+                      sentAt: dispatch.sentAt
+                        ? new Date(`${dispatch.sentAt}:00-03:00`).toISOString()
+                        : '',
+                    });
+                  })
+                }
+              >
+                Registrar envio realizado
+              </button>
+            </section>
+          )}
+          {dispatches.length > 0 && (
+            <details>
+              <summary>Histórico de envios</summary>
+              {dispatches.map((d) => (
+                <p key={d.id}>
+                  {new Date(d.sentAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} ·
+                  versão {d.versionId} · {d.recipient} · {d.channel} · {d.evidence} · registrado por{' '}
+                  {d.actorUid}
+                </p>
+              ))}
+            </details>
+          )}
           {quote?.status === 'issued' && (
             <section className="space-y-3 rounded border p-4">
               <h3>Aprovação informada pelo operador</h3>
@@ -950,6 +1033,7 @@ export function QuotesWorkspace({
                     partial: 'recebimento parcial',
                     paid: 'recebido integralmente',
                     refunded: 'reembolsado',
+                    'refund-due': 'reembolso pendente',
                   } as Record<string, string>
                 )[order.paymentStatus] ?? order.paymentStatus}
                 . Consulte os eventos em Financeiro e conciliação. Não há sinal obrigatório

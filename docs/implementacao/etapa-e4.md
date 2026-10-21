@@ -1,5 +1,7 @@
 # E4 — orçamento, aprovação e pedido
 
+Atualização posterior: os [complementos B12–B14](./fechamento-plano.md) acrescentam devolução física, crédito/dispensa comercial, revisão após fatos físicos, arquivos privados e registro de envio. As limitações descritas abaixo retratam o fechamento original desta etapa; a homologação real permanece pendente.
+
 Base: `7e14251` (E3). Implementação local em 17/10/2026. O plano original permanece em `docs/mapeamento/07-plano-de-correcao.md`; este documento registra os contratos implementados. Nenhuma migração, implantação, push ou escrita em dados reais faz parte desta etapa.
 
 Atualização de 20/10/2026: a [E5](./etapa-e5.md) acrescenta recebimentos, pagamentos, reembolsos e conferência gerencial. O pedido E4 passa a exibir a situação financeira projetada desses eventos; cancelamento consulta recebimentos pendentes de devolução. As descrições abaixo de financeiro ainda pendente registram o escopo original da E4. A homologação real continua pendente; devolução física após expedição não é simulada por reembolso financeiro.

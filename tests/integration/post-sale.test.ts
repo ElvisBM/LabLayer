@@ -356,3 +356,46 @@ it('falha de auditoria não aplica crédito; projeção adulterada é detectada'
   expect(r.consistent).toBe(false);
   expect(r.discrepancies.join(' ')).toContain('dispensa');
 });
+it('registro de envio preserva versão, evidencia informante e repete sem duplicar', async () => {
+  const snapshot = await get('quotes/q/versions/version');
+  const payload = {
+    versionId: 'version',
+    recipient: 'cliente@example.test',
+    channel: 'E-mail',
+    evidence: 'Protocolo de envio 1',
+    sentAt: new Date().toISOString(),
+  };
+  await quote('record-send', payload, 3, 'sent').expect(200);
+  await quote('record-send', payload, 3, 'sent').expect(200);
+  expect(await size('quotes/q/dispatches')).toBe(1);
+  expect(await get('quotes/q/versions/version')).toEqual(snapshot);
+  expect(await get('quotes/q/dispatches/sent')).toMatchObject({
+    kind: 'operator-reported',
+    actorUid: 'a',
+    versionId: 'version',
+    recipient: payload.recipient,
+  });
+  expect((await get('salesOrders/q')).priceCents).toBe(5100);
+  await assertFails(
+    updateDoc(
+      doc(rules.authenticatedContext('a').firestore(), 'tenants/a/quotes/q/dispatches/sent'),
+      { recipient: 'fake' },
+    ),
+  );
+});
+it('registro de envio recusa versão trocada, data impossível, evidência vazia e auditoria parcial', async () => {
+  const payload = {
+    versionId: 'version',
+    recipient: 'cliente@example.test',
+    channel: 'E-mail',
+    evidence: 'Protocolo',
+    sentAt: new Date().toISOString(),
+  };
+  await quote('record-send', { ...payload, versionId: 'outdated' }, 3).expect(409);
+  await quote('record-send', { ...payload, sentAt: '2020-01-01T00:00:00Z' }, 3).expect(422);
+  await quote('record-send', { ...payload, evidence: '' }, 3).expect(422);
+  await set('auditLogs/quote-send-failure', { existing: true });
+  await quote('record-send', payload, 3, 'send-failure').expect(503);
+  expect(await size('quotes/q/dispatches')).toBe(0);
+  expect((await get('quotes/q')).revision).toBe(3);
+});

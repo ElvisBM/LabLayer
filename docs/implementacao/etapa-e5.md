@@ -1,5 +1,7 @@
 # E5 — recebimentos e conciliação gerencial
 
+Atualização posterior: os [complementos B12–B14](./fechamento-plano.md) acrescentam devolução física, crédito/dispensa comercial, revisão após fatos físicos, arquivos privados e registro de envio. As limitações descritas abaixo retratam o fechamento original desta etapa; a homologação real permanece pendente.
+
 Base: `274f08a` (E4). Implementação local em **20/10/2026**. O plano original permanece em `docs/mapeamento/07-plano-de-correcao.md`. Esta entrega implementa os comandos financeiros, a comparação estimado/realizado e o ensaio integrado isolado. **Não representa homologação de uma empresa real nem liberação em produção.** O roteiro dessa liberação está em [piloto-e5.md](./piloto-e5.md).
 
 ## Uso e contrato de negócio

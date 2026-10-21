@@ -360,6 +360,7 @@ service cloud.firestore {
       match /quotes/{id} {
         allow read: if isTenantMember(tenantId);
         allow write: if false;
+        match /dispatches/{id} { allow read: if isTenantMember(tenantId); allow write: if false; }
         match /versions/{versionId} {
           allow read: if isTenantMember(tenantId);
           allow write: if false;

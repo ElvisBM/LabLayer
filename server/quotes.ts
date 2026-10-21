@@ -6,7 +6,7 @@ import { BusinessError, validId } from './session';
 import { CatalogError, id, integer, record, textValue } from '../shared/catalog/model';
 import { PricingError } from '../shared/pricing/engine';
 import { validateQuote } from '../shared/quotes/model';
-import { netReceived } from '../shared/finance/model';
+import { netReceived, instant } from '../shared/finance/model';
 import { catalogRecipe, fingerprint, quoteCost } from './quote-cost';
 
 export const targetId = (quoteId: string, lineId: string) =>
@@ -151,6 +151,36 @@ export function registerQuoteRoutes(
             createdAt: quote?.createdAt ?? now,
             createdBy: quote?.createdBy ?? identity.uid,
           };
+        } else if (type === 'record-send') {
+          record(
+            p,
+            ['versionId', 'recipient', 'channel', 'evidence', 'sentAt'],
+            'Registro de envio',
+          );
+          if (
+            !quote ||
+            !['issued', 'approved'].includes(quote.status) ||
+            quote.currentVersion !== id(p.versionId)
+          )
+            throw new BusinessError(409, 'Registre o envio da versão vigente emitida/aprovada.');
+          const snapshot = await get(`quotes/${quoteId}/versions/${p.versionId}`);
+          const sentAt = instant(p.sentAt);
+          if (!snapshot || sentAt < snapshot.issuedAt || sentAt > snapshot.expiresAt)
+            throw new CatalogError('Envio deve ocorrer entre emissão e validade da versão.');
+          const dispatch = {
+            quoteId,
+            versionId: p.versionId,
+            kind: 'operator-reported',
+            recipient: textValue(p.recipient, 'Destinatário', 200),
+            channel: textValue(p.channel, 'Canal do envio', 80),
+            evidence: textValue(p.evidence, 'Evidência do envio', 2000),
+            sentAt,
+            recordedAt: now,
+            actorUid: identity.uid,
+          };
+          create(`quotes/${quoteId}/dispatches/${requestId}`, dispatch);
+          next.lastDispatch = { id: requestId, ...dispatch };
+          result.dispatchId = requestId;
         } else if (type === 'issue') {
           const payload = record(p, ['expiresAt', 'previewFingerprint'], 'Emissão');
           if (!quote || quote.status !== 'draft')

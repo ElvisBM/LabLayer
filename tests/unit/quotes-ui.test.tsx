@@ -129,3 +129,26 @@ it('documento reconcilia unitários com centavo residual e alerta resultado nega
   expect(screen.getByText(/Total: R\$.*1,00/)).toBeTruthy();
   expect(screen.getByRole('alert').textContent).toContain('resultado estimado negativo');
 });
+it('envio informado usa versão vigente, fuso explícito e conserva a chave no retry', async () => {
+  state.data['tenants/a/quotes'] = [
+    { id: 'q', data: customQuote(), status: 'issued', revision: 2, currentVersion: 'v1' },
+  ];
+  state.api.mockRejectedValueOnce(new Error('Sem conexão')).mockResolvedValueOnce({ revision: 3 });
+  renderPage();
+  fireEvent.click(screen.getByText(/Cliente — Emitido/));
+  fill('Destinatário do envio', 'cliente@example.test');
+  fill('Canal do envio', 'E-mail');
+  fill('Evidência do envio', 'Mensagem 10');
+  fill('Data e hora do envio (UTC−03:00)', '2026-10-20T15:30');
+  fireEvent.click(screen.getByText('Registrar envio realizado'));
+  await screen.findByText('Sem conexão');
+  fireEvent.click(screen.getByText('Registrar envio realizado'));
+  await waitFor(() => expect(state.api).toHaveBeenCalledTimes(2));
+  expect(state.api.mock.calls[0][2]).toEqual(state.api.mock.calls[1][2]);
+  expect(state.api.mock.calls[0][2]).toMatchObject({
+    type: 'record-send',
+    expectedRevision: 2,
+    payload: { versionId: 'v1', sentAt: '2026-10-20T18:30:00.000Z' },
+  });
+  expect(state.write).not.toHaveBeenCalled();
+});
