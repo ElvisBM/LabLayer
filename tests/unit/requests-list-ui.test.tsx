@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 
-const state = vi.hoisted(() => ({ writes: vi.fn(), requests: [] as any[] }));
+const state = vi.hoisted(() => ({ writes: vi.fn(), commit: vi.fn(), requests: [] as any[] }));
 vi.mock('../../src/firebase', () => ({ db: {} }));
 vi.mock('../../src/contexts/AuthContext', () => ({ useAuth: () => ({ tenantId: 'a' }) }));
 vi.mock('firebase/firestore', () => ({
-  collection: (_: unknown, path: string) => ({ path }), doc: (_: unknown, path: string) => ({ path }),
+  collection: (_: unknown, path: string) => ({ path }), doc: (_: unknown, path: string, id?: string) => ({ path: id ? `${path}/${id}` : path }),
+  writeBatch: () => ({ update: state.writes, commit: state.commit }),
   onSnapshot: (ref: { path: string }, callback: any) => {
     callback({ docs: ref.path.endsWith('/customRequests') ? state.requests.map(({ id, ...data }) => ({ id, data: () => data })) : [], exists: () => false });
     return () => {};
@@ -17,6 +18,7 @@ import { EncomendasOrcamentos } from '../../src/views/EncomendasOrcamentos';
 
 beforeEach(() => {
   state.writes.mockReset();
+  state.commit.mockReset().mockResolvedValue(undefined);
   state.requests = [
     { id: 'pending', title: 'Chaveiro NFC', customerName: 'Cliente Aurora', description: 'Quantidade provisória: 1 unidade; quantidade final a confirmar.', type: 'orcamento', status: 'aguardando-orcamento', requestedQuantity: 1, quotedPrice: 0, filaments: [], productionTimeHours: 0, createdAt: '2026-10-21T12:00:00Z' },
     { id: 'quoted', title: 'Organizador', customerName: 'Cliente Boreal', description: 'Descrição completa do organizador.', type: 'orcamento', status: 'orcado', requestedQuantity: 10, quotedPrice: 125.5, filaments: [], productionTimeHours: 2, createdAt: '2026-10-20T12:00:00Z' },
@@ -110,4 +112,40 @@ it('nova solicitação também abre tela própria e permite voltar sem criar reg
   expect(screen.getByRole('table')).toBeTruthy();
   expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Nova Solicitação' }));
   expect(state.writes).not.toHaveBeenCalled();
+});
+
+it('altera somente selecionados em commit único sem recalcular preços ou quantidade', async () => {
+  render(<EncomendasOrcamentos />);
+  fireEvent.click(screen.getByRole('checkbox', {name:'Selecionar Chaveiro NFC'}));
+  fireEvent.change(screen.getByRole('combobox', {name:'Novo status em lote'}), {target:{value:'orcado'}});
+  fireEvent.click(screen.getByRole('button', {name:'Alterar status de 1 selecionado(s)'}));
+  await waitFor(()=>expect(state.commit).toHaveBeenCalledTimes(1));
+  expect(state.writes).toHaveBeenCalledTimes(1);
+  expect(state.writes.mock.calls[0][0].path).toBe('tenants/a/customRequests/pending');
+  expect(Object.keys(state.writes.mock.calls[0][1]).sort()).toEqual(['status','updatedAt']);
+  expect(state.writes.mock.calls[0][1].status).toBe('orcado');
+  await waitFor(()=>expect(screen.getByText('0 selecionado(s)')).toBeTruthy());
+});
+it('selecionar todos respeita filtro; trocar filtro limpa seleção e caixas preservam a seleção', () => {
+  render(<EncomendasOrcamentos />);
+  fireEvent.change(screen.getByPlaceholderText('Buscar solicitação...'), {target:{value:'Boreal'}});
+  fireEvent.click(screen.getByRole('checkbox', {name:'Selecionar todos os resultados'}));
+  expect(screen.getByText('1 selecionado(s)')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', {name:'2 caixas'}));
+  expect((screen.getByRole('checkbox', {name:'Selecionar Organizador'}) as HTMLInputElement).checked).toBe(true);
+  fireEvent.change(screen.getByRole('combobox', {name:'Filtrar por status'}), {target:{value:'finalizado'}});
+  expect(screen.getByText('0 selecionado(s)')).toBeTruthy();
+  expect(state.commit).not.toHaveBeenCalled();
+});
+it('erro mantém seleção para repetir e bloqueia duplo envio durante salvamento', async()=>{
+  let reject!: (reason: Error)=>void;
+  state.commit.mockImplementation(()=>new Promise((_resolve, rejectPromise)=>{reject=rejectPromise}));
+  render(<EncomendasOrcamentos />);
+  fireEvent.click(screen.getByRole('checkbox',{name:'Selecionar todos os resultados'}));
+  fireEvent.click(screen.getByRole('button',{name:'Alterar status de 2 selecionado(s)'}));
+  expect((screen.getByRole('button',{name:'Salvando…'}) as HTMLButtonElement).disabled).toBe(true);
+  reject(Error('permission denied'));
+  await screen.findByRole('button',{name:'Alterar status de 2 selecionado(s)'});
+  expect(state.commit).toHaveBeenCalledTimes(1);
+  expect(screen.getByText('2 selecionado(s)')).toBeTruthy();
 });

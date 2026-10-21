@@ -17,7 +17,7 @@ beforeEach(() => {
   fake.mockReset();
   vi.stubGlobal("fetch", fake);
   fake.mockImplementation(async (path: string) => {
-    if (path === "/api/assistant")
+    if (path === "/api/assistant?status=active")
       return reply({ company: "Empresa", seller: "Vendedor", requests: [] });
     if (path === "/api/assistant/draft")
       return reply({
@@ -78,7 +78,7 @@ it("link revogado apresenta erro de acesso sem formulário de envio", async () =
 });
 it("envia anexos para interpretar, mostra a transcrição e exige confirmação antes de persistir", async () => {
   fake.mockImplementation(async(path:string)=>{
-    if(path==='/api/assistant') return reply({company:'Empresa',seller:'Vendas',mode:'ai',requests:[]});
+    if(path==='/api/assistant?status=active') return reply({company:'Empresa',seller:'Vendas',mode:'ai',requests:[]});
     if(path==='/api/assistant/draft') return reply({draft:{title:'Chaveiro',customerName:'Teste',description:'Azul',quantity:10,provisionalQuantity:false},transcript:'Dez chaveiros azuis',message:'Confira a sugestão',mode:'ai'});
     throw Error('Unexpected path');
   });
@@ -95,8 +95,8 @@ it("envia anexos para interpretar, mostra a transcrição e exige confirmação 
 it('lista pedidos da empresa, carrega outra página e abre pedido de outro atendimento', async () => {
   fake.mockImplementation(async (path: string) => {
     const state = { company: 'Empresa', seller: 'Equipe', requestScope: 'tenant', mode: 'guided' };
-    if (path === '/api/assistant') return reply({ ...state, requests: [{id:'manual', title:'Manual da equipe', quantity:2}], nextCursor:'manual' });
-    if (path === '/api/assistant?cursor=manual') return reply({ ...state, requests: [{id:'outro', title:'Outro atendimento', quantity:3}], nextCursor:null });
+    if (path === '/api/assistant?status=active') return reply({ ...state, requests: [{id:'manual', title:'Manual da equipe', quantity:2}], nextCursor:'manual' });
+    if (path === '/api/assistant?status=active&cursor=manual') return reply({ ...state, requests: [{id:'outro', title:'Outro atendimento', quantity:3}], nextCursor:null });
     if (path === '/api/assistant/requests/outro') return reply({ id:'outro',title:'Outro atendimento',quantity:3,description:'Azul',attachments:[],notes:[] });
     throw Error('Unexpected path');
   });
@@ -114,7 +114,7 @@ it('lista pedidos da empresa, carrega outra página e abre pedido de outro atend
 it('consulta exibe dados reais e prepara complemento sem salvar até confirmar, preservando contexto', async()=>{
   let intent='lookup';
   fake.mockImplementation(async(path:string, options:any)=>{
-    if(path==='/api/assistant') return reply({company:'Empresa',seller:'Equipe',mode:'ai',requestScope:'tenant',requests:[]});
+    if(path==='/api/assistant?status=active') return reply({company:'Empresa',seller:'Equipe',mode:'ai',requestScope:'tenant',requests:[]});
     if(path==='/api/assistant/draft') return reply({draft:null,action:{intent,note:'Cor azul confirmada'},candidates:[{id:'p1',title:'Chaveiro Zalma',customerName:'Zalma',status:'orcado'}],message:'Escolha o pedido'});
     if(path==='/api/assistant/requests/p1') return reply({id:'p1',title:'Chaveiro Zalma',customerName:'Zalma',quantity:10,status:'orcado',quotedPrice:80,description:'Descrição salva',notes:[]});
     if(path==='/api/assistant/requests/p1/notes') return reply({message:'Complemento salvo'});
@@ -139,10 +139,30 @@ it('consulta exibe dados reais e prepara complemento sem salvar até confirmar, 
   expect(JSON.parse(fake.mock.calls.find(c=>c[0].endsWith('/notes'))![1].body).message).toBe('Cor azul confirmada');
 });
 it('pedido inexistente ou falha de interpretação mantém conversa sem botão de cadastro',async()=>{
-  fake.mockImplementation(async(path:string)=>reply(path==='/api/assistant'?{company:'Empresa',seller:'Equipe',requests:[]}:{draft:null,action:{intent:'clarify'},message:'Informe o cliente'}));
+  fake.mockImplementation(async(path:string)=>reply(path==='/api/assistant?status=active'?{company:'Empresa',seller:'Equipe',requests:[]}:{draft:null,action:{intent:'clarify'},message:'Informe o cliente'}));
   render(<AssistantChat/>);
   fireEvent.change(await screen.findByLabelText('Criar, consultar ou atualizar um pedido'),{target:{value:'Como está?'}});
   fireEvent.click(screen.getByRole('button',{name:'Enviar mensagem'}));
   await screen.findByText('Informe o cliente');
   expect(screen.queryByRole('button',{name:'Cadastrar no LabLayer'})).toBeNull();
+});
+it('lista inicia aguardando e orçado; mudança de filtro reinicia paginação e preserva escolha ao voltar',async()=>{
+ fake.mockImplementation(async(path:string)=>{
+   const state={company:'Empresa',seller:'Equipe',requestScope:'tenant',requests:[]};
+   if(path==='/api/assistant?status=active')return reply({...state,requests:[{id:'a',title:'Pendente',quantity:1,status:'aguardando-orcamento'}],nextCursor:'a'});
+   if(path==='/api/assistant?status=finalizado')return reply({...state,requests:[{id:'b',title:'Concluído',quantity:1,status:'finalizado'}],nextCursor:null});
+   if(path==='/api/assistant/requests/b')return reply({id:'b',title:'Concluído',quantity:1,status:'finalizado',description:'Entregue',notes:[]});
+   throw Error(path);
+ });
+ render(<AssistantChat/>);
+ fireEvent.click(await screen.findByRole('button',{name:'Todos os pedidos'}));
+ const filter=await screen.findByRole('combobox',{name:'Filtrar pedidos por status'});
+ expect((filter as HTMLSelectElement).value).toBe('active');
+ fireEvent.change(filter,{target:{value:'finalizado'}});
+ fireEvent.click(await screen.findByRole('button',{name:/Concluído/}));
+ await screen.findByText('Entregue');
+ fireEvent.click(screen.getByRole('button',{name:'Voltar aos pedidos'}));
+ expect((screen.getByRole('combobox',{name:'Filtrar pedidos por status'}) as HTMLSelectElement).value).toBe('finalizado');
+ expect(screen.queryByText('Pendente')).toBeNull();
+ expect(screen.queryByRole('button',{name:'Carregar mais pedidos'})).toBeNull();
 });

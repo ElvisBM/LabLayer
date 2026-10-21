@@ -1,3 +1,4 @@
+import { changeRequestStatuses, MAX_BULK_REQUESTS } from "../features/requests/bulk-status";
 import { AssistantRequestNotes } from '../features/assistant/Assistant';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, onSnapshot, updateDoc } from 'firebase/firestore';
@@ -164,6 +165,10 @@ export function EncomendasOrcamentos() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [displayMode, setDisplayMode] = useState<'list' | 'cards-2' | 'cards-3'>('list');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkStatus, setBulkStatus] = useState<RequestStatus>('orcado');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const bulkLock = useRef(false);
   const [statusFilter, setStatusFilter] = useState<'all' | RequestStatus>('all');
   const [formData, setFormData] = useState<Omit<CustomRequest, 'id'>>(getDefaultFormData());
   const [isQuotePriceManual, setIsQuotePriceManual] = useState(false);
@@ -184,6 +189,8 @@ export function EncomendasOrcamentos() {
 
 
   useEffect(() => {
+    setSelectedIds([]);
+    setRequests([]);
     if (!tenantId) return;
 
     const unsubRequests = onSnapshot(collection(db, `tenants/${tenantId}/customRequests`), (snapshot) => {
@@ -302,6 +309,29 @@ export function EncomendasOrcamentos() {
       })
       .sort((a, b) => (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || ''));
   }, [requests, search, statusFilter]);
+
+  // Only currently visible records are eligible; filtering cannot silently change hidden rows.
+  const visibleSelected = selectedIds.filter(id => filteredRequests.some(row => row.id === id));
+  const allSelected = filteredRequests.length > 0 && visibleSelected.length === filteredRequests.length;
+  const toggleSelected = (id: string) => {
+    setSelectedIds(current => {
+      if (current.includes(id)) return current.filter(value => value !== id);
+      if (current.length >= MAX_BULK_REQUESTS) { toast.error('Selecione no máximo 100 solicitações por vez.'); return current; }
+      return [...current, id];
+    });
+  };
+  const applyBulkStatus = async () => {
+    if (!tenantId || bulkLock.current || !visibleSelected.length) return;
+    bulkLock.current = true; setBulkBusy(true);
+    try {
+      await changeRequestStatuses(db, tenantId, visibleSelected, bulkStatus);
+      toast.success(`Status de ${visibleSelected.length} solicitação(ões) atualizado.`);
+      setSelectedIds([]);
+    } catch {
+      toast.error('Não foi possível confirmar a alteração. Confira sua conexão, permissão e a lista atualizada antes de tentar novamente.');
+    } finally { bulkLock.current = false; setBulkBusy(false); }
+  };
+  const selectionCheckbox = (request: CustomRequest) => <input type="checkbox" aria-label={`Selecionar ${request.title}`} checked={visibleSelected.includes(request.id)} disabled={bulkBusy} onChange={() => toggleSelected(request.id)} className="h-5 w-5 shrink-0 accent-primary" />;
 
   const resetForm = () => {
     setFormData(getDefaultFormData());
@@ -850,7 +880,8 @@ export function EncomendasOrcamentos() {
           <input
             type="text"
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            disabled={bulkBusy}
+            onChange={e => { setSearch(e.target.value); setSelectedIds([]); }}
             placeholder="Buscar solicitação..."
             className="w-full bg-surface-container border-none rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
           />
@@ -858,7 +889,8 @@ export function EncomendasOrcamentos() {
         <select
           aria-label="Filtrar por status"
           value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value as 'all' | RequestStatus)}
+          disabled={bulkBusy}
+          onChange={e => { setStatusFilter(e.target.value as 'all' | RequestStatus); setSelectedIds([]); }}
           className="bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
         >
           <option value="all">Todos os status</option>
@@ -877,17 +909,36 @@ export function EncomendasOrcamentos() {
 
       <p className="text-sm text-on-surface-variant" role="status">{filteredRequests.length} de {requests.length} solicitações</p>
 
+      <section aria-label="Alterar status em lote" className="flex flex-wrap items-center gap-3 rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" aria-label="Selecionar todos os resultados" checked={allSelected} ref={el => { if (el) el.indeterminate = visibleSelected.length > 0 && !allSelected; }} disabled={bulkBusy || !filteredRequests.length} onChange={() => {
+            if (!allSelected && filteredRequests.length > MAX_BULK_REQUESTS) { toast.error('Há mais de 100 resultados. Refine os filtros ou selecione até 100 individualmente.'); return; }
+            setSelectedIds(allSelected ? [] : filteredRequests.map(row => row.id));
+          }} className="h-5 w-5 accent-primary" />
+          Selecionar todos os resultados
+        </label>
+        <span className="text-sm">{visibleSelected.length} selecionado(s)</span>
+        <label className="flex items-center gap-2 text-sm">Novo status
+          <select aria-label="Novo status em lote" value={bulkStatus} disabled={bulkBusy} onChange={e => setBulkStatus(e.target.value as RequestStatus)} className="rounded bg-surface-container p-2">
+            {STATUS_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <button type="button" disabled={bulkBusy || !visibleSelected.length} onClick={applyBulkStatus} className="rounded bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-50">{bulkBusy ? 'Salvando…' : `Alterar status de ${visibleSelected.length} selecionado(s)`}</button>
+        {!!visibleSelected.length && <button type="button" disabled={bulkBusy} onClick={() => setSelectedIds([])} className="text-sm text-primary underline">Limpar seleção</button>}
+      </section>
+
       {displayMode === 'list' ? (
         <div className="overflow-x-auto rounded-xl border border-outline-variant/20 bg-surface-container-lowest">
           <table className="w-full min-w-[760px] text-sm text-left">
             <caption className="sr-only">Lista simplificada de encomendas e orçamentos</caption>
             <thead className="bg-surface-container text-on-surface-variant">
-              <tr>{['Solicitação', 'Cliente', 'Quantidade', 'Status', 'Orçamento', 'Ações'].map(label => <th key={label} scope="col" className="p-3 font-semibold">{label}</th>)}</tr>
+              <tr>{['Selecionar', 'Solicitação', 'Cliente', 'Quantidade', 'Status', 'Orçamento', 'Ações'].map(label => <th key={label} scope="col" className="p-3 font-semibold">{label}</th>)}</tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/20">
-              {filteredRequests.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-on-surface-variant">Nenhuma encomenda ou orçamento encontrado com os filtros atuais.</td></tr>}
+              {filteredRequests.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-on-surface-variant">Nenhuma encomenda ou orçamento encontrado com os filtros atuais.</td></tr>}
               {filteredRequests.map(request => (
                 <tr key={request.id} className="hover:bg-surface-container/50 align-top">
+                  <td className="p-3">{selectionCheckbox(request)}</td>
                   <th scope="row" className="p-3 max-w-sm font-normal">
                     <button id={`request-title-${request.id}`} type="button" onClick={() => handleEdit(request)} className="block min-h-11 text-left font-semibold text-primary break-words hover:underline focus-visible:ring-2 focus-visible:ring-primary rounded">{request.title}</button>
                     <span className="text-xs text-on-surface-variant">{REQUEST_TYPE_OPTIONS.find(option => option.value === request.type)?.label || 'Solicitação'}</span>
@@ -918,6 +969,7 @@ export function EncomendasOrcamentos() {
           return (
             <div key={request.id} className="min-w-0 bg-surface-container-lowest rounded-xl border border-outline-variant/10 shadow-sm overflow-hidden">
               <div className="p-5 space-y-4">
+                <label className="flex items-center gap-2 text-sm">{selectionCheckbox(request)} Selecionar</label>
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="flex flex-wrap items-center gap-2 mb-2">

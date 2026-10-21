@@ -388,3 +388,28 @@ it('pagina todos os pedidos compartilhados, inclusive registros antigos sem data
   await db.doc(`assistantLinks/${key}`).update({ active: false });
   await call('get', '').expect(403);
 });
+
+it('filtra status antes de paginar, mantém acesso ao conjunto completo e rejeita filtro inválido',async()=>{
+ await db.doc(`tenants/${tenant}`).update({assistantSharedRequests:true});
+ const batch=db.batch();
+ for(let i=0;i<105;i++)batch.set(db.doc(`tenants/${tenant}/customRequests/a-${String(i).padStart(3,'0')}`),{title:'Finalizado',status:'finalizado'});
+ for(let i=0;i<102;i++)batch.set(db.doc(`tenants/${tenant}/customRequests/b-${String(i).padStart(3,'0')}`),{title:'Ativo',status:i%2?'orcado':'aguardando-orcamento'});
+ await batch.commit();
+ const first=await call('get','?status=active').expect(200);
+ expect(first.body.requests).toHaveLength(100);expect(first.body.requests.every((r:any)=>['aguardando-orcamento','orcado'].includes(r.status))).toBe(true);
+ const second=await call('get',`?status=active&cursor=${first.body.nextCursor}`).expect(200);
+ expect(second.body.requests).toHaveLength(2);expect(second.body.nextCursor).toBeNull();
+ const done=await call('get','?status=finalizado').expect(200);
+ expect(done.body.requests).toHaveLength(100);expect(done.body.requests.every((r:any)=>r.status==='finalizado')).toBe(true);
+ const all=await call('get','?status=all').expect(200);expect(all.body.requests[0].status).toBe('finalizado');
+ await call('get','?status=invalid').expect(422);
+ await call('get','?status=orcado&status=finalizado').expect(422);
+});
+it('filtro de link individual usa status atual sem incluir pedidos de outro link',async()=>{
+ const result=await call('post','/requests',payload()).expect(200);
+ await db.doc(`tenants/${tenant}/customRequests/${result.body.id}`).update({status:'finalizado'});
+ await db.doc(`tenants/${tenant}/customRequests/foreign`).set({status:'orcado',title:'Outro vendedor'});
+ expect((await call('get','?status=active').expect(200)).body.requests).toHaveLength(0);
+ const done=await call('get','?status=finalizado').expect(200);
+ expect(done.body.requests.map((r:any)=>r.id)).toEqual([result.body.id]);
+});

@@ -286,13 +286,14 @@ export function AssistantChat() {
     [answer, setAnswer] = useState<any>(null),
     [pendingNote, setPendingNote] = useState(false),
     [detail, setDetail] = useState<any>(null),
-    [tab, setTab] = useState<"new" | "list">("new");
+    [tab, setTab] = useState<"new" | "list">("new"),
+    [listStatus, setListStatus] = useState("active");
   const operation = useRef(crypto.randomUUID());
   const lockedPayload = useRef<any>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const load = async () => setState(await api(token, "/api/assistant"));
+  const load = async (status = listStatus) => setState(await api(token, `/api/assistant?status=${encodeURIComponent(status)}`));
   async function loadMore() {
-    const page = await api(token, `/api/assistant?cursor=${encodeURIComponent(state.nextCursor)}`);
+    const page = await api(token, `/api/assistant?status=${encodeURIComponent(listStatus)}&cursor=${encodeURIComponent(state.nextCursor)}`);
     setState((current: any) => ({ ...page, requests: [...current.requests, ...page.requests.filter((r: any) => !current.requests.some((x: any) => x.id === r.id))] }));
   }
   useEffect(() => {
@@ -727,12 +728,22 @@ export function AssistantChat() {
               </>
             ) : (
               <section className="space-y-3">
+                <label className="block font-medium">Filtrar pedidos por status
+                  <select className={`${field} mt-2`} value={listStatus} disabled={busy} onChange={e => {
+                    const value = e.target.value;
+                    run(async () => { await load(value); setListStatus(value); });
+                  }}>
+                    <option value="active">Aguardando orçamento e Orçado</option>
+                    <option value="all">Todos os status</option>
+                    {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </label>
                 <p className="text-sm text-slate-500">
                   {state.requestScope === "tenant" ? "Pedidos da empresa, compartilhados com toda a equipe." : "Até 100 pedidos mais recentes deste link."}
                 </p>
                 {!state.requests.length && (
                   <div className="rounded-2xl bg-white border p-6">
-                    Nenhum pedido enviado ainda.
+                    Nenhum pedido encontrado neste filtro.
                   </div>
                 )}
                 {state.requests.map((row: any) => (

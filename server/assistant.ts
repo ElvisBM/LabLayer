@@ -333,12 +333,17 @@ export function registerAssistantRoutes(
   app.get(
     "/api/assistant",
     publicRoute(async (req, res, key) => {
+      const statusFilter = req.query.status;
+      const allowedStatuses = ["aguardando-orcamento", "orcado", "fila-producao", "produzindo", "finalizado"];
+      if (statusFilter !== undefined && (typeof statusFilter !== "string" || !["active", "all", ...allowedStatuses].includes(statusFilter))) fail(422, "Filtro de status inválido.");
+      const statuses = statusFilter === "active" ? ["aguardando-orcamento", "orcado"] : statusFilter && statusFilter !== "all" ? [statusFilter] : null;
       const cursor = req.query.cursor;
       if (cursor !== undefined && !validId(cursor)) fail(422, "Página inválida.");
       const result = await db!.runTransaction(async (tx) => {
         const link = await access(tx, key);
         if (link.sharedRequests) {
           let query = db!.collection(`tenants/${link.tenantId}/customRequests`).orderBy(FieldPath.documentId()).limit(101);
+          if (statuses) query = query.where("status", "in", statuses);
           if (cursor) query = query.startAfter(cursor);
           const page = await tx.get(query), rows = page.docs.slice(0, 100);
           return { seller: link.name, company: link.companyName, mode: aiEnabled(link.tenantId) ? "ai" : "guided",
@@ -366,7 +371,7 @@ export function registerAssistantRoutes(
           mode: aiEnabled(link.tenantId) ? "ai" : "guided",
           requestScope: "link", nextCursor: null,
           requests: mappings.docs.flatMap((d, i) =>
-            rows[i].exists
+            rows[i].exists && (!statuses || statuses.includes(rows[i].data()?.status))
               ? [
                   {
                     id: d.id,
