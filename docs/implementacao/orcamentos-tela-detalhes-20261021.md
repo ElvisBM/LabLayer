@@ -29,3 +29,9 @@ Publicação restrita à tela e aos assets compilados da branch `release/users-b
 - HTML público comparado byte a byte com o build e `/api/health` retornando `status: ok`.
 - Hashes do servidor, módulo de usuários e regras Firestore permanecem iguais aos anteriores.
 - Rollback: restaurar `dist/index.html` e `src/views/EncomendasOrcamentos.tsx` do backup no diretório da aplicação; assets antigos permanecem disponíveis.
+
+### Verificação visual em produção
+
+Sessão autenticada existente: abertura de ORC-001 pelo nome em lista a 390×844 e em 3 caixas a 1366×900. Confirmados tela exclusiva, botão Voltar, foco no cabeçalho e retorno com busca `ORC-001`, status Aguardando orçamento e modo selecionado preservados. Nenhuma ação Salvar/Atualizar foi acionada em produção. Ao concluir, busca/filtro foram limpos, modo Lista restaurado e viewport de teste removido; 27 de 27 registros disponíveis.
+
+Evidências locais fora do Git: `../evidencias-publicacao/orcamento-detalhes-mobile-20261021.png` e `../evidencias-publicacao/orcamento-detalhes-desktop-20261021.png`.
