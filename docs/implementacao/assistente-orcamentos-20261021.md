@@ -58,3 +58,8 @@ Publicação utiliza o worktree de release compatível com produção, preservan
 ### Atualização: acesso ao n8n recuperado
 
 Login confirmado em 21/10/2026 após o usuário recuperar o acesso. Versão 2.26.4, um workflow de WhatsApp publicado e nenhuma credencial de provedor cadastrada visível. O bloqueio de login foi resolvido; escolha e configuração da API de IA continuam pendentes. Conferência e desenho da integração: [contrato do assistente IA](../n8n/assistente-ia-contrato.md). Nenhuma alteração na automação de WhatsApp ou no modo guiado publicado.
+
+
+## Continuação: interpretação com IA
+
+A integração com n8n/OpenAI foi implementada posteriormente. Estado, testes e bloqueio de créditos estão em [Assistente IA — entrega e evidências](assistente-ia-20261021.md). O modo guiado continua sendo a configuração ativa.

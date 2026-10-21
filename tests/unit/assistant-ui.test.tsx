@@ -76,3 +76,18 @@ it("link revogado apresenta erro de acesso sem formulário de envio", async () =
   await screen.findByRole("alert");
   expect(screen.queryByLabelText("Conte o pedido do cliente")).toBeNull();
 });
+it("envia anexos para interpretar, mostra a transcrição e exige confirmação antes de persistir", async () => {
+  fake.mockImplementation(async(path:string)=>{
+    if(path==='/api/assistant') return reply({company:'Empresa',seller:'Vendas',mode:'ai',requests:[]});
+    if(path==='/api/assistant/draft') return reply({draft:{title:'Chaveiro',customerName:'Teste',description:'Azul',quantity:10,provisionalQuantity:false},transcript:'Dez chaveiros azuis',message:'Confira a sugestão',mode:'ai'});
+    throw Error('Unexpected path');
+  });
+  render(<AssistantChat />);
+  fireEvent.change(await screen.findByLabelText('Conte o pedido do cliente'),{target:{value:'Quero dez chaveiros'}});
+  fireEvent.click(screen.getByRole('button',{name:'Preparar solicitação'}));
+  await screen.findByText('Transcrição do áudio — confira');
+  expect(screen.getByText('Dez chaveiros azuis')).toBeTruthy();
+  const body=JSON.parse(fake.mock.calls.find(c=>c[0]==='/api/assistant/draft')![1].body);
+  expect(body).toMatchObject({attachments:[],guided:false});
+  expect(fake.mock.calls.some(c=>c[0]==='/api/assistant/requests')).toBe(false);
+});

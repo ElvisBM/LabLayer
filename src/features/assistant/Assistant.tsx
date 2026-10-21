@@ -281,6 +281,8 @@ export function AssistantChat() {
     [draft, setDraft] = useState<Intake | null>(null),
     [files, setFiles] = useState<Attachment[]>([]),
     [notice, setNotice] = useState(""),
+    [transcript, setTranscript] = useState(""),
+    [guided, setGuided] = useState(false),
     [detail, setDetail] = useState<any>(null),
     [tab, setTab] = useState<"new" | "list">("new");
   const operation = useRef(crypto.randomUUID());
@@ -315,6 +317,7 @@ export function AssistantChat() {
   }
   function reset() {
     setDraft(null);
+    setTranscript("");
     setMessage("");
     setFiles([]);
     operation.current = crypto.randomUUID();
@@ -362,7 +365,7 @@ export function AssistantChat() {
       const payload = lockedPayload.current || {
         operationId: operation.current,
         intake: draft,
-        message,
+        message: message.trim() || "Pedido recebido por anexos.",
         attachments: files.map((f) => f.id),
       };
       lockedPayload.current = payload;
@@ -408,8 +411,9 @@ export function AssistantChat() {
         <Paperclip size={18} /> Fotos ou áudios
       </button>
       <p className="text-xs text-slate-500">
-        Até 6 anexos por envio, 10 MiB cada. Áudio fica disponível para a equipe
-        ouvir; sem transcrição automática nesta versão.
+        Até 6 anexos, 10 MiB cada. {state?.mode === "ai"
+          ? "A IA interpreta fotos e um áudio MP3, M4A, WAV ou WebM, até 8 MiB no total. OGG fica para análise da equipe."
+          : "Áudios ficam disponíveis para a equipe ouvir."}
       </p>
       {files.length > 0 && (
         <ul className="text-sm space-y-1">
@@ -428,10 +432,16 @@ export function AssistantChat() {
           ))}
         </ul>
       )}
+      {!detail && !draft && state?.mode === "ai" && (
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={guided} disabled={busy} onChange={e => setGuided(e.target.checked)} />
+          Preencher manualmente, sem usar IA
+        </label>
+      )}
       {!draft && (
         <button
           className={`${button} w-full`}
-          disabled={busy || !message.trim()}
+          disabled={busy || (!message.trim() && (detail || !files.length))}
           onClick={() =>
             detail
               ? run(async () => {
@@ -454,9 +464,12 @@ export function AssistantChat() {
                 })
               : run(async () => {
                   const result = await api(token, "/api/assistant/draft", {
-                    message,
+                    message: message.trim() || "Pedido recebido por anexos.",
+                    attachments: files.map(f => f.id),
+                    guided,
                   });
-                  setDraft(result.draft);
+                  setDraft({ ...result.draft, description: result.transcript ? `${result.draft.description}\n\nTranscrição do áudio:\n${result.transcript}`.slice(0, 4000) : result.draft.description });
+                  setTranscript(result.transcript || "");
                   setNotice(result.message);
                 })
           }
@@ -538,6 +551,10 @@ export function AssistantChat() {
                 {notice}
               </p>
             )}
+            {transcript && <section className="rounded-xl border bg-white p-4">
+              <h2 className="font-semibold">Transcrição do áudio — confira</h2>
+              <p className="whitespace-pre-wrap">{transcript}</p>
+            </section>}
             {detail ? (
               <>
                 <button

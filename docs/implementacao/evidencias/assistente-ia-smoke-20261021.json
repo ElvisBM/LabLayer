@@ -1,0 +1,32 @@
+[
+  {
+    "name": "quantidade explícita",
+    "passed": false,
+    "status": 200,
+    "body": {
+      "draft": {
+        "title": "Cliente: QA sintético",
+        "customerName": "QA sintético",
+        "description": "Cliente: QA sintético\nChaveiro NFC azul e branco, 10 unidades, 4 cm.",
+        "quantity": 10,
+        "provisionalQuantity": false
+      },
+      "mode": "guided",
+      "transcript": "",
+      "message": "A IA não concluiu a interpretação. Confira manualmente; seu texto e anexos continuam disponíveis. Nenhum pedido foi cadastrado."
+    }
+  },
+  {
+    "name": "ticket inválido",
+    "passed": true
+  },
+  {
+    "name": "pedidos reais preservados",
+    "passed": true,
+    "count": 27
+  },
+  {
+    "name": "rascunho não cadastra orçamento",
+    "passed": true
+  }
+]
