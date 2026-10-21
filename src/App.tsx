@@ -1,3 +1,5 @@
+import { TeamPage } from './features/team/TeamPage';
+import { logout } from './firebase';
 import { useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
@@ -31,7 +33,7 @@ function MainApp() {
     mode: 'new',
     productId: null,
   });
-  const { user, loading } = useAuth();
+  const { user, loading, initializationError } = useAuth();
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-surface text-primary font-bold">Carregando...</div>;
@@ -41,7 +43,10 @@ function MainApp() {
     return <Login />;
   }
 
+  if (initializationError) return <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-8"><p role="alert">{initializationError}</p><button onClick={() => window.location.reload()}>Tentar novamente</button><button onClick={() => logout()}>Sair</button></div>;
+
   const renderView = () => {
+    if (currentView === 'usuarios') return <TeamPage />;
     switch (currentView) {
       case 'dashboard':
         return <Dashboard />;
@@ -121,6 +126,7 @@ function MainApp() {
       case 'impressoras': return 'Frota de Impressoras';
       case 'insumos': return 'Insumos e Componentes';
       case 'configuracoes': return 'Configurações do Sistema';
+      case 'usuarios': return 'Usuários';
       case 'superadmin': return 'Administração Global';
       default: return 'Painel Operacional';
     }

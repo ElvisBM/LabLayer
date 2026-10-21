@@ -34,7 +34,7 @@ service cloud.firestore {
 
     function isSuperAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email == "elvisbmartins@gmail.com" ||
+        request.auth.token.get("superadmin", false) == true ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin')
       );
@@ -45,11 +45,16 @@ service cloud.firestore {
     }
 
     function isTenantMember(tenantId) {
-      return isAuthenticated() && (
+      return isAuthenticated() && get(/databases/$(database)/documents/tenants/$(tenantId)).data.get("status", "active") != "inactive" && (
         isTenantOwner(tenantId) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId)
       );
+    }
+
+    function isTenantAdmin(tenantId) {
+      return isTenantMember(tenantId) && (isTenantOwner(tenantId) ||
+        isSuperAdmin() || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('tenantRole', '') == 'admin');
     }
 
     function hasOnlyAllowedFields(allowedFields) {
@@ -317,9 +322,9 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());
-      allow delete: if isSuperAdmin();
+      // Identity, tenant and privileges are provisioned only through authenticated server routes.
+      allow create, update, delete: if false;
+      match /memberships/{tenantId} { allow read, write: if false; }
     }
 
     match /tenants/{tenantId} {
@@ -337,6 +342,10 @@ service cloud.firestore {
       
       allow delete: if isSuperAdmin();
 
+      match /members/{uid} { allow read, write: if false; }
+      match /accessRequests/{uid} { allow read, write: if false; }
+      match /userCreations/{id} { allow read, write: if false; }
+      match /auditLogs/{id} { allow read, write: if false; }
       // Subcollections
       match /products/{productId} {
         allow read: if isTenantMember(tenantId);
@@ -375,9 +384,9 @@ service cloud.firestore {
 
       match /transactions/{transactionId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && isValidTransaction();
-        allow update: if isTenantMember(tenantId) && isValidTransaction() && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isTenantMember(tenantId);
+        allow create: if isTenantAdmin(tenantId) && isValidTransaction();
+        allow update: if isTenantAdmin(tenantId) && isValidTransaction() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantAdmin(tenantId);
       }
 
       match /losses/{lossId} {
@@ -410,9 +419,9 @@ service cloud.firestore {
 
       match /customRequests/{requestId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && isValidCustomRequest();
-        allow update: if isTenantMember(tenantId) && isValidCustomRequest() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
-        allow delete: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId) && (isTenantAdmin(tenantId) || (request.resource.data.status == 'aguardando-orcamento' && !request.resource.data.keys().hasAny(['approvedAt', 'paidAt']))) && isValidCustomRequest();
+        allow update: if isTenantMember(tenantId) && (isTenantAdmin(tenantId) || (resource.data.status == 'aguardando-orcamento' && request.resource.data.status == 'aguardando-orcamento' && !request.resource.data.keys().hasAny(['approvedAt', 'paidAt']))) && isValidCustomRequest() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+        allow delete: if isTenantAdmin(tenantId);
       }
 
       match /inventoryMovements/{movementId} {
@@ -431,7 +440,7 @@ service cloud.firestore {
 
       match /settings/{settingId} {
         allow read: if isTenantMember(tenantId);
-        allow write: if isTenantMember(tenantId);
+        allow write: if isTenantAdmin(tenantId);
       }
     }
   }

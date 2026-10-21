@@ -96,6 +96,7 @@ interface Filament {
 }
 
 interface Printer {
+  usedHours?: number;
   id: string;
   name: string;
   model: string;
@@ -362,6 +363,7 @@ const normalizeProductionOrderFallback = (order: ProductionOrderFallback): Produ
 };
 
 interface Product {
+  createdAt?: string;
   id: string;
   name: string;
   baseSku: string;
