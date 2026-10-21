@@ -1,3 +1,5 @@
+import { registerAssetRoutes } from './server/assets';
+import { createLocalAssetStore } from './server/local-assets';
 import { getAuth } from 'firebase-admin/auth';
 import { registerSessionRoute } from './server/session';
 import { registerTeamRoutes } from './server/team';
@@ -635,6 +637,7 @@ async function startServer() {
     const profile = db ? (await db.doc(`users/${identity.uid}`).get()).data() : undefined;
     return { ...identity, superadmin: identity.superadmin === true || profile?.role === 'superadmin' };
   };
+  registerAssetRoutes(app, db, verifyTeamToken, process.env.LABLAYER_ASSET_DIR ? createLocalAssetStore(process.env.LABLAYER_ASSET_DIR) : null);
   registerSessionRoute(app, db, verifyTeamToken);
   registerTeamRoutes(app, db, verifyTeamToken);
   registerTeamCreateRoute(app, db, verifyTeamToken, {
