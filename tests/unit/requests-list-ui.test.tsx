@@ -37,17 +37,23 @@ it('lista mostra quantidade e preço registrado, distinguindo orçamento pendent
   expect(state.writes).not.toHaveBeenCalled();
 });
 
-it('busca por cliente e filtro de status são preservados ao alternar lista e cartões, incluindo resultado vazio', () => {
+it('busca por cliente e filtro de status são preservados ao alternar lista, duas e três caixas, incluindo resultado vazio', () => {
   render(<EncomendasOrcamentos />);
   fireEvent.change(screen.getByPlaceholderText('Buscar solicitação...'), { target: { value: ' boreal ' } });
   fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar por status' }), { target: { value: 'orcado' } });
   expect(screen.getByRole('status').textContent).toBe('1 de 2 solicitações');
   expect(screen.queryByText('Chaveiro NFC')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Cartões' }));
+  fireEvent.click(screen.getByRole('button', { name: '2 caixas' }));
   expect(screen.getByRole('heading', { name: 'Organizador' })).toBeTruthy();
   expect(screen.getByText('Descrição completa do organizador.')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Lista' }));
-  expect(screen.getByRole('button', { name: 'Lista' }).getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(screen.getByRole('button', { name: '3 caixas' }));
+  expect(screen.getByRole('button', { name: '3 caixas' }).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.getByRole('button', { name: '2 caixas' }).getAttribute('aria-pressed')).toBe('false');
+  expect(screen.getByRole('heading', { name: 'Organizador' })).toBeTruthy();
+  expect(screen.queryByText('Chaveiro NFC')).toBeNull();
+  expect(screen.getByRole('status').textContent).toBe('1 de 2 solicitações');
+  fireEvent.click(screen.getByRole('button', { name: 'Lista simplificada' }));
+  expect(screen.getByRole('button', { name: 'Lista simplificada' }).getAttribute('aria-pressed')).toBe('true');
   expect(screen.getByRole('status').textContent).toBe('1 de 2 solicitações');
   fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar por status' }), { target: { value: 'finalizado' } });
   expect(screen.getByText('Nenhuma encomenda ou orçamento encontrado com os filtros atuais.')).toBeTruthy();

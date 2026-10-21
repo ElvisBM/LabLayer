@@ -1,0 +1,122 @@
+
+> react-example@0.0.0 quality
+> npm run lint && npm test && npm run build && npm run audit:production
+
+
+> react-example@0.0.0 lint
+> tsc --noEmit
+
+
+> react-example@0.0.0 test
+> npm run test:unit && npm run test:integration
+
+
+> react-example@0.0.0 test:unit
+> vitest run --config vitest.config.ts
+
+
+ RUN  v4.1.11 /Users/PCNOTES/Workspace/3D/lablayer/LabLayer
+
+
+ Test Files  21 passed (21)
+      Tests  178 passed (178)
+   Start at  12:12:51
+   Duration  6.26s (transform 2.57s, setup 0ms, import 9.48s, tests 12.21s, environment 15.12s)
+
+
+> react-example@0.0.0 test:integration
+> firebase emulators:exec --project demo-lablayer-test --config firebase.test.json --only firestore "vitest run --config vitest.integration.config.ts"
+
+i  emulators: Starting emulators: firestore
+i  emulators: Detected demo project ID "demo-lablayer-test", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail.
+i  firestore: Firestore Emulator logging to firestore-debug.log
+✔  firestore: Firestore Emulator was started in standard edition.
+✔  firestore: Firestore Emulator UI websocket is running on 9150.
+i  Running script: vitest run --config vitest.integration.config.ts
+
+ RUN  v4.1.11 /Users/PCNOTES/Workspace/3D/lablayer/LabLayer
+
+(node:20094) MetadataLookupWarning: received unexpected error = All promises were rejected code = ETIMEDOUT, ENOTFOUND
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:20130) MetadataLookupWarning: received unexpected error = All promises were rejected code = ETIMEDOUT, ENOTFOUND
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:20203) MetadataLookupWarning: received unexpected error = All promises were rejected code = ETIMEDOUT, ENOTFOUND
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:20231) MetadataLookupWarning: received unexpected error = All promises were rejected code = ETIMEDOUT, ENOTFOUND
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:20313) MetadataLookupWarning: received unexpected error = All promises were rejected code = ETIMEDOUT, ENOTFOUND
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:20373) MetadataLookupWarning: received unexpected error = All promises were rejected code = ETIMEDOUT, ENOTFOUND
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ Test Files  12 passed (12)
+      Tests  154 passed (154)
+   Start at  12:13:01
+   Duration  119.77s (transform 421ms, setup 45ms, import 6.90s, tests 111.34s, environment 1ms)
+
+✔  Script exited successfully (code 0)
+i  emulators: Shutting down emulators.
+i  firestore: Stopping Firestore Emulator
+i  hub: Stopping emulator hub
+i  logging: Stopping Logging Emulator
+
+> react-example@0.0.0 build
+> vite build
+
+vite v6.4.4 building for production...
+transforming...
+✓ 1735 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/lablayer-environment.json                  0.36 kB │ gzip:   0.25 kB
+dist/index.html                                 0.47 kB │ gzip:   0.30 kB
+dist/assets/index-DJg56kaj.css                 49.81 kB │ gzip:   8.84 kB
+dist/assets/plus-DcZpIUmT.js                    0.32 kB │ gzip:   0.25 kB
+dist/assets/client-DJC7Atq6.js                  0.33 kB │ gzip:   0.27 kB
+dist/assets/circle-check-ZyVqMCdx.js            0.35 kB │ gzip:   0.28 kB
+dist/assets/dollar-sign-DgRtQmPl.js             0.39 kB │ gzip:   0.30 kB
+dist/assets/target-D06PvDBm.js                  0.40 kB │ gzip:   0.27 kB
+dist/assets/pen-ByzgkbnT.js                     0.41 kB │ gzip:   0.31 kB
+dist/assets/percent-DhUuwx16.js                 0.42 kB │ gzip:   0.30 kB
+dist/assets/circle-alert-VR2E2xgI.js            0.42 kB │ gzip:   0.29 kB
+dist/assets/link-DpWyLkLq.js                    0.43 kB │ gzip:   0.30 kB
+dist/assets/save-BNleR2Ra.js                    0.50 kB │ gzip:   0.33 kB
+dist/assets/trash-2-GPyZ7rwe.js                 0.50 kB │ gzip:   0.32 kB
+dist/assets/product-protection-C4ZG6e5s.js      0.54 kB │ gzip:   0.39 kB
+dist/assets/list-CtwgfDN6.js                    0.95 kB │ gzip:   0.40 kB
+dist/assets/model-BxGqFSom.js                   1.86 kB │ gzip:   0.94 kB
+dist/assets/Configuracoes-Cu2ZQEpO.js           3.27 kB │ gzip:   1.34 kB
+dist/assets/AssetControls-Cm1yPdjz.js           3.63 kB │ gzip:   1.70 kB
+dist/assets/SearchableSelect-EHKeQBAh.js        4.12 kB │ gzip:   1.53 kB
+dist/assets/pricing-D6yAnKkP.js                 4.47 kB │ gzip:   2.03 kB
+dist/assets/EstoqueInteligente-Bzdu9i24.js      4.85 kB │ gzip:   1.22 kB
+dist/assets/model-ezj3Cver.js                   5.57 kB │ gzip:   2.35 kB
+dist/assets/ControlePerdas-BrIuSjJq.js          6.24 kB │ gzip:   1.95 kB
+dist/assets/TeamPage-M2hy-SGy.js                6.80 kB │ gzip:   2.38 kB
+dist/assets/SuperAdmin-jxZImrYf.js              8.45 kB │ gzip:   2.35 kB
+dist/assets/ValoresSugeridos-COPXdEK4.js        9.17 kB │ gzip:   3.10 kB
+dist/assets/Marketplaces-C74MxwV4.js           10.00 kB │ gzip:   2.47 kB
+dist/assets/Insumos-Crir-9ZH.js                10.51 kB │ gzip:   2.56 kB
+dist/assets/Fornecedores-B80sTd0e.js           10.65 kB │ gzip:   2.91 kB
+dist/assets/Dashboard-C98HyBtP.js              11.98 kB │ gzip:   2.68 kB
+dist/assets/Impressoras-bnyxdLpJ.js            13.35 kB │ gzip:   3.47 kB
+dist/assets/InventoryPage-C2LoKDS7.js          16.33 kB │ gzip:   6.06 kB
+dist/assets/FinancePage-ZCLamKqi.js            18.29 kB │ gzip:   6.41 kB
+dist/assets/Vendas-B02ou9Q_.js                 19.41 kB │ gzip:   4.46 kB
+dist/assets/Financeiro-BUz02NFb.js             22.77 kB │ gzip:   4.63 kB
+dist/assets/Precificacao-CVP5wK2K.js           23.45 kB │ gzip:   5.56 kB
+dist/assets/CatalogPage-Bhznzpvr.js            23.75 kB │ gzip:   6.95 kB
+dist/assets/QuotesPage-Bk9Fm3NL.js             24.79 kB │ gzip:   8.00 kB
+dist/assets/AgendaProducao-xmo_yISV.js         27.63 kB │ gzip:   7.12 kB
+dist/assets/Filamentos-B60htVze.js             31.68 kB │ gzip:   7.78 kB
+dist/assets/engine-C6yJj52a.js                 35.19 kB │ gzip:  14.27 kB
+dist/assets/EncomendasOrcamentos-Bh_JOeB0.js   35.54 kB │ gzip:   7.76 kB
+dist/assets/Produtos-4HB-zozL.js               92.21 kB │ gzip:  19.63 kB
+dist/assets/index-DyqCiWSa.js                 243.62 kB │ gzip:  76.36 kB
+dist/assets/firebase-9eTSwwRN.js              472.02 kB │ gzip: 110.99 kB
+✓ built in 5.26s
+
+> react-example@0.0.0 audit:production
+> npm audit --omit=dev --audit-level=high
+
+found 0 vulnerabilities

@@ -59,3 +59,5 @@ B17 validado em 21/10/2026: **314 testes**. Configuração alternativa explícit
 B18 validado em 21/10/2026: **329 testes**. Menu Usuários e empresa, solicitação por conta com e-mail verificado, aprovação pelo proprietário, seleção de empresa e revogação auditada. Implementado localmente; ainda não publicado. Ver [regras, contratos e homologação B18](./usuarios-b18.md). A URL de produção foi identificada, mas isso não substitui um ambiente separado nem libera o piloto.
 
 B19 validado em 21/10/2026: **332 testes**. Visualização simplificada em lista na tela Encomendas e Orçamentos, alternância para cartões, busca por cliente e cálculo pendente identificado. Código local, publicação pendente. O cadastro separado dos 13 pedidos foi conferido no site; ver [escopo e evidências B19](./lista-solicitacoes-b19.md).
+
+B20 validado em 21/10/2026: **332 testes**. Seletor ampliado para Lista simplificada, 2 caixas e 3 caixas, com grade responsiva e filtros compartilhados. Código local, publicação pendente; [conferência B20](./visualizacoes-b20.md).

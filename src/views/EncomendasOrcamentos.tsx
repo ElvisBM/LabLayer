@@ -160,7 +160,7 @@ export function EncomendasOrcamentos() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [displayMode, setDisplayMode] = useState<'list' | 'cards'>('list');
+  const [displayMode, setDisplayMode] = useState<'list' | 'cards-2' | 'cards-3'>('list');
   const [statusFilter, setStatusFilter] = useState<'all' | RequestStatus>('all');
   const [formData, setFormData] = useState<Omit<CustomRequest, 'id'>>(getDefaultFormData());
   const [isQuotePriceManual, setIsQuotePriceManual] = useState(false);
@@ -841,9 +841,9 @@ export function EncomendasOrcamentos() {
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
         </select>
-        <div role="group" aria-label="Visualização das solicitações" className="flex gap-1 rounded-lg bg-surface-container p-1">
-          {([{ value: 'list', label: 'Lista', Icon: List }, { value: 'cards', label: 'Cartões', Icon: LayoutGrid }] as const).map(({ value, label, Icon }) => (
-            <button key={value} type="button" aria-pressed={displayMode === value} onClick={() => setDisplayMode(value)} className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-bold flex-1 ${displayMode === value ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:bg-surface-container-high'}`}>
+        <div role="group" aria-label="Visualização das solicitações" className="flex flex-wrap gap-1 rounded-lg bg-surface-container p-1">
+          {([{ value: 'list', label: 'Lista simplificada', Icon: List }, { value: 'cards-2', label: '2 caixas', Icon: LayoutGrid }, { value: 'cards-3', label: '3 caixas', Icon: LayoutGrid }] as const).map(({ value, label, Icon }) => (
+            <button key={value} type="button" aria-pressed={displayMode === value} onClick={() => setDisplayMode(value)} className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-bold flex-1 whitespace-nowrap ${displayMode === value ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:bg-surface-container-high'}`}>
               <Icon className="w-4 h-4" aria-hidden="true" />{label}
             </button>
           ))}
@@ -878,9 +878,9 @@ export function EncomendasOrcamentos() {
           </table>
         </div>
       ) : (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className={`grid grid-cols-1 gap-6 ${displayMode === 'cards-3' ? 'md:grid-cols-2 xl:grid-cols-3' : 'md:grid-cols-2'}`}>
         {filteredRequests.length === 0 && (
-          <div className="lg:col-span-2 bg-surface-container-lowest rounded-xl border border-outline-variant/10 p-10 text-center text-sm text-on-surface-variant">
+          <div className="col-span-full bg-surface-container-lowest rounded-xl border border-outline-variant/10 p-10 text-center text-sm text-on-surface-variant">
             Nenhuma encomenda ou orçamento encontrado com os filtros atuais.
           </div>
         )}
@@ -891,7 +891,7 @@ export function EncomendasOrcamentos() {
           const statusLabel = STATUS_OPTIONS.find(option => option.value === request.status)?.label || request.status;
 
           return (
-            <div key={request.id} className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 shadow-sm overflow-hidden">
+            <div key={request.id} className="min-w-0 bg-surface-container-lowest rounded-xl border border-outline-variant/10 shadow-sm overflow-hidden">
               <div className="p-5 space-y-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -902,8 +902,8 @@ export function EncomendasOrcamentos() {
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700">WhatsApp</span>
                       )}
                     </div>
-                    <h3 className="text-lg font-bold text-on-surface leading-tight">{request.title}</h3>
-                    {request.description && <p className="text-sm text-on-surface-variant mt-2 leading-relaxed">{request.description}</p>}
+                    <h3 className="text-lg font-bold text-on-surface leading-tight break-words">{request.title}</h3>
+                    {request.description && <p className="text-sm text-on-surface-variant mt-2 leading-relaxed break-words">{request.description}</p>}
                     {(request.customerName || request.customerPhone) && (
                       <div className="mt-3 flex flex-wrap gap-3 text-xs text-on-surface-variant">
                         {request.customerName && <span>Cliente: <strong className="text-on-surface">{request.customerName}</strong></span>}
@@ -932,7 +932,7 @@ export function EncomendasOrcamentos() {
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className={`grid grid-cols-2 gap-3 ${displayMode === 'cards-2' ? '2xl:grid-cols-4' : ''}`}>
                   <div className="bg-surface-container p-3 rounded-lg border border-outline-variant/10">
                     <div className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Filamento</div>
                     <div className="font-bold text-on-surface tabular-nums">{totalFilamentGrams.toFixed(0)} g</div>
