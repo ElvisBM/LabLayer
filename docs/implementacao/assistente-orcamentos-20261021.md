@@ -43,3 +43,14 @@ Não foram criados webhooks públicos do n8n, nem fornecidas chaves administrati
 Testes de unidade/UI e integração com Firestore emulado cobrem quantidade, limites, campos proibidos, permissão de gerência, segredo não retornado na lista, isolamento de vendedor/empresa, anexos, falha de armazenamento, integridade, reenvio concorrente, complementos, status sem custos internos, revogação, expiração, tenant inativo, cotas e bloqueio após migração. As suítes preexistentes são executadas em ambas as bases.
 
 Publicação utiliza o worktree de release compatível com produção, preservando a branch de estabilização E0–E5. Backup do código e índice antes da troca; assets publicados antes do índice, PM2 recarregado e saúde conferida. Nenhuma importação/duplicação dos 27 pedidos existentes faz parte desta entrega. Dados de produção e criação do link inicial são conferidos por script restrito, com segredo fora do Git.
+
+### Resultado confirmado
+
+- Release: `npm run quality` aprovado — 23 testes unitários/UI + 46 de integração = **69**; TypeScript, build e auditoria de produção com zero vulnerabilidades.
+- Base E0–E5: `npm run quality` aprovado — 191 testes unitários/UI + 184 de integração = **375**; TypeScript, build e auditoria aprovados.
+- Publicação em produção: `/api/health` OK; acesso sem credencial ao assistente retorna 401; link do vendedor e preparação de rascunho retornam 200.
+- Conta verificada: elvisbmartins@gmail.com; empresa vinculada conferida. Primeiro link “Elvis — vendas” criado, válido até 19/01/2027, com auditoria. Segredo guardado fora do Git e entregue ao usuário.
+- Snapshot anterior e posterior: **27 pedidos**, mesmo digest SHA-256 `11965d91f02b42a5540b1efaf655f9a99f2d927fed05c0defb8fff09dc5321aa`. Nenhum orçamento de teste foi cadastrado na empresa.
+- Navegador: menu Assistente com link ativo, chat acessível, rascunho com 10 unidades + medida 12 cm interpretado como quantidade 10, largura de 390 px sem rolagem horizontal. Rascunho de teste descartado sem cadastro. Ajustado também o título da barra superior; lint, testes de UI/unidade e build repetidos para esse ajuste visual.
+- Evidências: [chat mobile](evidencias/assistente-mobile-20261021.png), [conferência mobile](evidencias/assistente-conferencia-mobile-20261021.png).
+- Backup: `/home/lablayer/deploy-backups/assistant-a9c8b82-before.tar.gz`; pacote e verificação em `/home/lablayer/releases/assistant-a9c8b82/`. Não houve alteração de regras Firestore, credenciais n8n ou configurações financeiras.
