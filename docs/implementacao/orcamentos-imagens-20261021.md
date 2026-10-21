@@ -31,3 +31,5 @@ Release: `npm run quality`, 50 testes (18 unitários/UI e 32 integração), Type
 - A janela de saúde de publicação foi ajustada de 5 para até 30 segundos após uma reversão automática durante a inicialização. Nova publicação e leitura dos anexos concluídas.
 
 Para recuperação, preservar/restaurar em conjunto a configuração `LABLAYER_ASSET_DIR`, `/home/lablayer/private-assets` e os documentos Firestore. A versão anterior do frontend não entende `asset:`; não reverter somente o frontend após anexar. Os backups anteriores permitem restauração coordenada, conferindo alterações posteriores antes de sobrescrever registros.
+
+Evidência visual local: `../evidencias-publicacao/orcamentos-imagens-20261021.png`, mostrando as duas imagens dentro do botom. A automação confirmou a renderização, mas o teste de abrir a URL temporária `blob:` em outra aba foi bloqueado pela política do navegador de automação; essa navegação não foi validada automaticamente.
