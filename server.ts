@@ -19,7 +19,10 @@ import { registerAdminWrites } from "./server/admin-writes";
 import { registerWhatsAppIngress } from "./server/whatsapp";
 import { DEFAULT_PRICING_SETTINGS, calculateVariationUnitCostBreakdown, normalizePricingSettings, suggestedPrice } from "./src/utils/pricing";
 
+import { registerAssetRoutes, type AssetStore } from './server/assets';
+
 export type AppOptions = {
+  assetStore?: AssetStore | null;
   database?: Firestore | null;
   verifyIdToken?: (token: string) => Promise<DecodedIdToken>;
   env?: NodeJS.ProcessEnv;
@@ -489,6 +492,15 @@ const hasCollectionFilters = (query: express.Request["query"]) => {
   registerInventoryRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
   registerQuoteRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
   registerFinanceRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
+
+  const assetStore: AssetStore | null = options.assetStore !== undefined ? options.assetStore : storageBucket ? {
+    async put(objectPath, bytes, mime) {
+      try { await storageBucket.file(objectPath).save(bytes, {resumable:false, preconditionOpts:{ifGenerationMatch:0}, metadata:{contentType:mime,cacheControl:'private, no-store'}}); }
+      catch (error) { if (Number((error as any).code) !== 412) throw error; }
+    },
+    async get(objectPath) { return (await storageBucket.file(objectPath).download())[0]; },
+  } : null;
+  registerAssetRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)), assetStore);
 
   // API routes FIRST
   app.get("/api/health", (req, res) => {

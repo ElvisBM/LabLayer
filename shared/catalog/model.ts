@@ -1,3 +1,4 @@
+import { assetId } from '../assets/model';
 import { D } from '../pricing/engine';
 
 export class CatalogError extends Error {}
@@ -222,7 +223,7 @@ export function validateRecipe(raw: unknown): Recipe {
     } catch {
       throw new CatalogError('URL de arquivo inválida.');
     }
-    if (parsed.protocol !== 'https:' || parsed.username || parsed.password)
+    if (!assetId(url) && (parsed.protocol !== 'https:' || parsed.username || parsed.password))
       throw new CatalogError('Arquivo exige referência HTTPS sem credenciais na URL.');
     return { name: textValue(f.name, 'Nome do arquivo'), url };
   });

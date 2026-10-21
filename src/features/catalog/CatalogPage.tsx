@@ -1,3 +1,4 @@
+import { AssetLink } from '../assets/AssetControls';
 import React, { useEffect, useRef, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -620,9 +621,7 @@ function CatalogWorkspace({
                       <p>{v.recipe.notes}</p>
                       {v.recipe.files.map((f: any, i: number) => (
                         <p key={i}>
-                          <a href={f.url} target="_blank" rel="noreferrer" className="underline">
-                            {f.name}
-                          </a>
+                          <AssetLink reference={f.url}>{f.name}</AssetLink>
                         </p>
                       ))}
                     </details>

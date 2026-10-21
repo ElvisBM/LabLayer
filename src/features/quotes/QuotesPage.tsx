@@ -1,3 +1,4 @@
+import { AssetUpload, AssetLink, LegacyAssets } from '../assets/AssetControls';
 import { useEffect, useRef, useState } from 'react';
 import { collection, doc, getDoc, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -147,14 +148,7 @@ export function QuotePreview({ value }: { value: any }) {
                 <td>
                   {l.description}
                   {l.referenceUrl && (
-                    <a
-                      className="block underline"
-                      target="_blank"
-                      rel="noreferrer"
-                      href={l.referenceUrl}
-                    >
-                      Referência visual
-                    </a>
+                    <AssetLink reference={l.referenceUrl}>Referência visual</AssetLink>
                   )}
                 </td>
                 <td>{l.quantity}</td>
@@ -587,10 +581,24 @@ export function QuotesWorkspace({
                         change={(v) => change({ quantity: Number(v) })}
                       />
                       <Input
-                        label="Referência visual (HTTPS, opcional)"
+                        label="Referência visual (HTTPS ou arquivo privado, opcional)"
                         value={l.referenceUrl}
                         change={(v) => change({ referenceUrl: v })}
                       />
+                      <AssetUpload
+                        user={user}
+                        tenantId={tenantId}
+                        onUploaded={(file) => change({ referenceUrl: file.url })}
+                      />
+                      {draft.sourceRequestId && (
+                        <LegacyAssets
+                          user={user}
+                          tenantId={tenantId}
+                          collection="customRequests"
+                          documentId={draft.sourceRequestId}
+                          onImported={(file) => change({ referenceUrl: file.url })}
+                        />
+                      )}
                       {l.kind === 'custom' && (
                         <>
                           <Input

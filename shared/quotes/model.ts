@@ -1,3 +1,4 @@
+import { assetId } from '../assets/model';
 import { CatalogError, decimalText, id, integer, record, textValue } from '../catalog/model';
 import { D, calculatePrice, type PriceTarget } from '../pricing/engine';
 
@@ -87,7 +88,7 @@ export function validateQuote(raw: unknown): QuoteData {
       } catch {
         throw new CatalogError('Referência visual inválida.');
       }
-      if (parsed.protocol !== 'https:' || parsed.username || parsed.password)
+      if (!assetId(url) && (parsed.protocol !== 'https:' || parsed.username || parsed.password))
         throw new CatalogError('Referência visual exige HTTPS sem credenciais.');
     }
     if (

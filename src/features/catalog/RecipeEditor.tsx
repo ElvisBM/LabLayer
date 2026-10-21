@@ -1,3 +1,4 @@
+import { AssetUpload, LegacyAssets } from '../assets/AssetControls';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   fromPhysical,
@@ -484,9 +485,24 @@ export function RecipeEditor({
           <summary>Arquivos e observações</summary>
           <div className="space-y-3 mt-3">
             <p className="text-sm">
-              Informe links HTTPS de arquivos já armazenados. O conteúdo dos arquivos não é
+              Envie arquivos privados ou informe links HTTPS já armazenados. O conteúdo não é
               incorporado à ficha.
             </p>
+            <AssetUpload
+              user={user}
+              tenantId={tenantId}
+              disabled={recipe.files.length >= 10}
+              onUploaded={(file) => update({ files: [...recipe.files, file] })}
+            />
+            {recipe.files.length < 10 && (
+              <LegacyAssets
+                user={user}
+                tenantId={tenantId}
+                collection="products"
+                documentId={item.id}
+                onImported={(file) => update({ files: [...recipe.files, file] })}
+              />
+            )}
             {recipe.files.map((f, index) => (
               <div className="flex flex-wrap gap-2" key={index}>
                 <Field label={`Nome do arquivo ${index + 1}`}>

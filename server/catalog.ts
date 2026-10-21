@@ -1,3 +1,4 @@
+import { requireAssets } from './assets';
 import type { Express, Request, Response } from 'express';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import type { Firestore, Transaction } from 'firebase-admin/firestore';
@@ -251,6 +252,10 @@ export function registerCatalogRoutes(
             throw new CatalogError(`Referência ausente: ${collection}/${referenceId}.`);
           return doc.data()!;
         };
+        await requireAssets(
+          async (path) => (await tx.get(db!.doc(`${root}/${path}`))).data(),
+          recipe.files.map((f) => f.url),
+        );
         if (recipe.kind === 'print') {
           const printer = await requireReference('printers', recipe.printerId);
           if (printer.status === 'inativa' || printer.status === 'manutenção')

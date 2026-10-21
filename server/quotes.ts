@@ -1,3 +1,4 @@
+import { requireAssets } from './assets';
 import type { Express } from 'express';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import type { Firestore } from 'firebase-admin/firestore';
@@ -126,6 +127,10 @@ export function registerQuoteRoutes(
             );
           textValue(payload.reason, 'Motivo da revisão', 500);
           const data = validateQuote(payload.data);
+          await requireAssets(
+            get,
+            data.lines.map((l) => l.referenceUrl),
+          );
           if (data.sourceRequestId && !(await get(`customRequests/${data.sourceRequestId}`)))
             throw new CatalogError('Solicitação de origem não encontrada.');
           if (data.replacesOrderId) {

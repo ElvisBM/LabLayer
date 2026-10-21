@@ -29,3 +29,23 @@ Barreira integral aprovada em 20/10/2026: **283 testes** (149 unitários/interfa
 - B11: homologação real e corte coordenado; dependem da identificação da empresa/ambiente e dos documentos reais.
 
 Escala maior (paginação/agregações) e atualização das dependências remanescentes devem ser avaliadas com compatibilidade e volume real. Os limites atuais recusam resultados parciais e continuam explícitos. Novos agentes, importação assistida, marketplaces, portal de aprovação e PDF elaborado permanecem evoluções posteriores.
+
+## B13 — arquivos próprios e migração de mídia
+
+Arquivos novos podem ser enviados nos rascunhos de orçamento e no editor de ficha: PNG, JPEG, WebP, PDF, STL e 3MF, até 10 MiB. São recebidos pela API autenticada, armazenados como objetos imutáveis e referenciados por `asset:<id>`; URLs HTTPS externas continuam aceitas. O documento de negócio contém somente a referência, sem base64. O servidor recusa referências privadas inexistentes na empresa ao salvar ficha/rascunho.
+
+- Upload: `POST /api/tenants/:tenantId/assets/upload`, corpo binário; download: `GET /api/tenants/:tenantId/assets/:id/download`. O token é enviado em header e nunca incorporado ao link. Download é attachment com `nosniff` e `private, no-store`.
+- Metadados incluem nome, MIME, tamanho e SHA-256. A identidade depende do conteúdo/nome/MIME e o objeto usa caminho por empresa; retry não duplica. Download confere tamanho/hash antes de devolver bytes. Não há exclusão de arquivos referenciados.
+- Storage e Firestore não têm transação conjunta. Primeiro grava-se o objeto com precondição de inexistência; depois metadados e auditoria transacionais, com nova verificação de acesso. Falha deixa no máximo objeto órfão reutilizável pelo retry, sem anunciar upload confirmado. Limpeza futura de órfãos exige conferir referências; não apagar por idade sem análise.
+- O backend usa `FIREBASE_STORAGE_BUCKET` e a identidade de serviço configurada. Sem storage disponível, responde erro explícito. **Antes de ativar:** aplicar/revisar `storage.rules` (cliente sem acesso direto), IAM sem leitura pública e permissões mínimas do servidor. Rules permissivas sobrepostas concedem acesso; não basta adicionar um deny específico a um allow global. O arquivo entregue é deny-all para clientes, compatível com acesso novo exclusivamente pela API. Não foi aplicado ao bucket real.
+- Validação de assinatura/formato não substitui antivírus nem valida a geometria de STL/3MF. Nenhum conteúdo é executado ou extraído pelo servidor; arquivos são baixados como anexos.
+
+### Migração explícita
+
+Na ficha, a opção de migração procura `products/{id}.imageUrl` e `files[].url` incorporados. No orçamento com solicitação de origem, procura `customRequests/{id}.referenceImageUrl` e `quoteMediaImageUrl`. O responsável confere a prévia e importa cada arquivo. A operação exige hash da origem e o reconfere na confirmação: mudança concorrente impede publicar o vínculo. `assetMigrations` registra origem, hash, arquivo, ator e data. O documento antigo é preservado; a nova referência entra no rascunho e só passa à ficha/proposta ao salvar/emitir. Histórico e valores antigos não são reescritos.
+
+Conteúdos não suportados ou base64 malformado são recusados, sem migração silenciosa. A migração não busca URLs remotas nem copia arquivos de terceiros automaticamente. Importar históricos de outras estruturas exige mapeamento explícito. Backup operacional deve agora incluir os objetos do bucket e seus metadados, além de Firestore/Auth/configurações; o ensaio E0 continua sendo de Firestore isolado.
+
+### Qualidade B13
+
+Sete testes de integração exercitam API/Firestore com adaptador de objetos isolado: upload/retry, download/hash, isolamento/rules, limites/formato, falhas de storage/auditoria, migração e vínculo no orçamento. Três testes de interface verificam upload autenticado, ausência de sucesso fictício e download privado. O adaptador real do bucket e suas permissões dependem de homologação; nenhum teste enviou arquivo para um bucket real. Barreira integral aprovada: **293 testes** (152 unitários/interface e 141 de integração), tipos, build e auditoria de produção. Os 283 casos anteriores passaram. [Evidência B13](./evidencias-b13-quality.txt).
