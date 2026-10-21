@@ -388,11 +388,21 @@ export function registerAssistantRoutes(
   app.post(
     "/api/assistant/draft",
     publicRoute(async (req, res, key) => {
-      const body = fields(req.body, ["message", "attachments", "guided"]);
+      const body = fields(req.body, ["message", "attachments", "guided", "conversation", "requestId"]);
       const message = text(body.message, 4000);
       const ids = attachments(body.attachments ?? []);
       if (body.guided !== undefined && typeof body.guided !== "boolean") fail(422, "Modo inválido.");
-      const fallback = (notice: string) => res.json({ draft: suggestIntake(message), mode: "guided", transcript: "", message: notice });
+      if (body.conversation !== undefined && typeof body.conversation !== "boolean") fail(422, "Modo inválido.");
+      if (body.requestId !== undefined && (!body.conversation || !validId(body.requestId))) fail(422, "Pedido inválido.");
+      const fallback = (notice: string) => res.json(body.conversation && !body.guided
+        ? { draft: null, action: { intent: "clarify" }, mode: "guided", transcript: "", message: "Não consegui interpretar esta mensagem. Use a lista para consultar ou complementar um pedido, ou marque Novo pedido manual para cadastrar. " + notice }
+        : { draft: suggestIntake(message), mode: "guided", transcript: "", message: notice });
+      // Selected context is always authorized before sending any data to the provider.
+      if (body.requestId) await db!.runTransaction(async tx => {
+        const link = await access(tx, key);
+        if (!link.sharedRequests && !(await tx.get(ref(`assistantLinks/${key}/requests/${body.requestId}`))).exists) fail(404, "Pedido não encontrado.");
+        if (!(await tx.get(ref(`tenants/${link.tenantId}/customRequests/${body.requestId}`))).exists) fail(404, "Pedido não encontrado.");
+      });
       // Check ownership even when the fallback is selected.
       const enabled = await db!.runTransaction(async tx => { const link = await access(tx, key); await ownedFiles(tx, key, ids); return aiEnabled(link.tenantId); });
       if (!enabled || body.guided) return fallback("Confira título, cliente e quantidade. Modo guiado: imagens e áudios ficam anexados para análise da equipe.");
@@ -429,7 +439,7 @@ export function registerAssistantRoutes(
         });
         let result;
         try {
-          result = await ai.interpret({ message, attachments: aiFiles }, async () => {
+          result = await ai.interpret({ message, attachments: aiFiles, ...(body.conversation ? { conversation: true, selectedRequest: !!body.requestId } : {}) }, async () => {
             await db!.runTransaction(tx => access(tx, key));
           });
         } catch {
@@ -439,6 +449,38 @@ export function registerAssistantRoutes(
         }
         // Revalidate access independently of the adapter, including test/alternate adapters.
         await db!.runTransaction(tx => access(tx, key));
+        if (body.conversation && result.action?.intent !== "create") {
+          const action = result.action;
+          if (!action || action.intent === "clarify" || (!action.query && !body.requestId))
+            return res.json({ draft: null, action: { intent: "clarify" }, transcript: result.transcript, message: action?.question || "Informe o nome do cliente ou código do pedido e o que deseja consultar ou acrescentar." });
+          const found = await db!.runTransaction(async tx => {
+            const link = await access(tx, key);
+            const normalized = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+            const query = normalized(action.query), tokens = query.split(/\s+/).filter(Boolean);
+            if (action.query && !query) return { candidates: [], truncated: false };
+            let rows;
+            let truncated = false;
+            if (!query && body.requestId) {
+              if (!link.sharedRequests && !(await tx.get(ref(`assistantLinks/${key}/requests/${body.requestId}`))).exists) fail(404, "Pedido não encontrado.");
+              rows = [await tx.get(ref(`tenants/${link.tenantId}/customRequests/${body.requestId}`))];
+            } else if (link.sharedRequests) {
+              const page = await tx.get(db!.collection(`tenants/${link.tenantId}/customRequests`).orderBy(FieldPath.documentId()).limit(1001));
+              truncated = page.size > 1000; rows = page.docs.slice(0, 1000);
+            } else {
+              const mappings = await tx.get(db!.collection(`assistantLinks/${key}/requests`).orderBy(FieldPath.documentId()).limit(1001));
+              truncated = mappings.size > 1000;
+              rows = mappings.empty ? [] : await tx.getAll(...mappings.docs.slice(0, 1000).map(d => ref(`tenants/${link.tenantId}/customRequests/${d.id}`)));
+            }
+            const matches = rows.filter(d => d.exists).filter(d => {
+              const r = d.data()!;
+              const haystack = normalized([d.id, r.title, r.customerName, r.code, r.requestNumber].filter(Boolean).join(" "));
+              return !query || tokens.length > 0 && tokens.every(t => haystack.includes(t));
+            });
+            return { candidates: matches.slice(0, 20).map(d => ({ id: d.id, title: d.data()!.title || "Pedido sem título", customerName: d.data()!.customerName || "", status: d.data()!.status })), truncated: truncated || matches.length > 20 };
+          });
+          return res.json({ draft: null, action, ...found, transcript: result.transcript,
+            message: found.candidates.length ? (action.intent === "update" ? "Escolha o pedido e confira o complemento antes de registrar. Quantidade, preço e status não são alterados por este envio." : "Escolha o pedido para ver os dados atuais do LabLayer.") + (found.truncated ? " Exibindo resultados parciais; use a lista para localizar os demais." : "") : found.truncated ? "A busca foi parcial. Use a lista de pedidos para continuar a consulta." : "Não encontrei um pedido com essa referência. Confira o nome ou código; nenhum novo pedido foi criado." });
+        }
         res.json({ ...result, mode: "ai", message: "Sugestão da IA: confira todos os dados antes de cadastrar. " + result.warnings.join(" ") });
       } finally { aiBusy.delete(key); }
     }),

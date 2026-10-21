@@ -64,3 +64,60 @@ it('rejeita chamadas simultâneas do mesmo vendedor',async()=>{
  const first=call({message:'Pedido'}).then(r=>r);await ready;
  await call({message:'Pedido'}).expect(429);release!();expect((await first).status).toBe(200);
 });
+
+const actionResult = (intent: string, query = '', note = '') => ({draft:null,action:{intent,query,note,question:''},transcript:'',warnings:[]});
+it('consulta somente pedidos autorizados e não cria rascunho nem modifica dados', async()=>{
+ await db.doc(`tenants/${tenant}`).update({assistantSharedRequests:true});
+ await db.doc(`tenants/${tenant}/customRequests/ORC-013`).set({title:'Botom NFC',customerName:'Arte Santista',requestedQuantity:5,status:'orcado',quotedPrice:80});
+ await db.doc(`tenants/outra/customRequests/ORC-013`).set({title:'Segredo',customerName:'Arte Santista'});
+ interpret.mockResolvedValue(actionResult('lookup','ORC-013'));
+ const result=await call({message:'Como está o ORC-013?',conversation:true}).expect(200);
+ expect(result.body.draft).toBeNull();expect(result.body.candidates).toHaveLength(1);
+ expect(result.body.candidates[0]).toMatchObject({id:'ORC-013',title:'Botom NFC',status:'orcado'});
+ expect(JSON.stringify(interpret.mock.calls[0][0])).not.toContain('quotedPrice');
+ expect((await db.collection(`tenants/${tenant}/customRequests`).get()).size).toBe(1);
+ const detail=await request(app).get('/api/assistant/requests/ORC-013').set('Authorization',`Bearer ${token}`).expect(200);
+ expect(detail.body.quotedPrice).toBe(80);
+});
+it('consulta de link restrito não revela pedidos de outros vendedores nem aceita contexto alheio',async()=>{
+ await db.doc(`tenants/${tenant}/customRequests/secret`).set({title:'Pedido Zalma',customerName:'Zalma'});
+ interpret.mockResolvedValue(actionResult('lookup','Zalma'));
+ const result=await call({message:'Como está Zalma?',conversation:true}).expect(200);
+ expect(result.body.candidates).toEqual([]);
+ await call({message:'Qual valor?',conversation:true,requestId:'secret'}).expect(404);
+ expect(interpret).toHaveBeenCalledTimes(1);
+});
+it('complemento com múltiplos resultados exige seleção e não escreve até confirmação explícita',async()=>{
+ await db.doc(`tenants/${tenant}`).update({assistantSharedRequests:true});
+ for(const id of ['a','b']) await db.doc(`tenants/${tenant}/customRequests/${id}`).set({title:'Chaveiro',customerName:'Zalma',requestedQuantity:10,status:'aguardando-orcamento'});
+ interpret.mockResolvedValue(actionResult('update','Zalma','Cliente pediu 20 unidades azuis.'));
+ const result=await call({message:'Zalma quer 20 azuis',conversation:true}).expect(200);
+ expect(result.body.candidates).toHaveLength(2);
+ expect((await db.collection(`tenants/${tenant}/assistantRequests/a/notes`).get()).empty).toBe(true);
+ const payload={operationId:randomUUID(),message:result.body.action.note,attachments:[]};
+ for(let i=0;i<2;i++) await request(app).post('/api/assistant/requests/a/notes').set('Authorization',`Bearer ${token}`).send(payload).expect(200);
+ expect((await db.collection(`tenants/${tenant}/assistantRequests/a/notes`).get()).size).toBe(1);
+ expect((await db.doc(`tenants/${tenant}/customRequests/a`).get()).data()?.requestedQuantity).toBe(10);
+});
+it('usa contexto selecionado e referência explícita prevalece; perguntas sem referência pedem esclarecimento',async()=>{
+ await db.doc(`tenants/${tenant}`).update({assistantSharedRequests:true});
+ await db.doc(`tenants/${tenant}/customRequests/a`).set({title:'Primeiro'});
+ await db.doc(`tenants/${tenant}/customRequests/b`).set({title:'Segundo'});
+ interpret.mockResolvedValue(actionResult('lookup'));
+ let r=await call({message:'E o valor?',conversation:true,requestId:'a'}).expect(200);
+ expect(r.body.candidates[0].id).toBe('a');
+ interpret.mockResolvedValue(actionResult('lookup','Segundo'));
+ r=await call({message:'E o segundo?',conversation:true,requestId:'a'}).expect(200);
+ expect(r.body.candidates[0].id).toBe('b');
+ interpret.mockResolvedValue(actionResult('lookup'));
+ r=await call({message:'Como está?',conversation:true}).expect(200);
+ expect(r.body.action.intent).toBe('clarify');expect(r.body.draft).toBeNull();
+});
+it('falha de IA ou resposta sem intenção nunca converte consulta em novo orçamento',async()=>{
+ interpret.mockRejectedValue(Error('offline'));
+ let r=await call({message:'Qual valor?',conversation:true}).expect(200);
+ expect(r.body.draft).toBeNull();expect(r.body.action.intent).toBe('clarify');
+ interpret.mockResolvedValue({draft,transcript:'',warnings:[]});
+ r=await call({message:'Qual valor?',conversation:true}).expect(200);expect(r.body.draft).toBeNull();
+ r=await call({message:'Boneco 12cm',conversation:true,guided:true}).expect(200);expect(r.body.draft).toBeTruthy();
+});

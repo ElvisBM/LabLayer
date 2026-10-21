@@ -283,6 +283,8 @@ export function AssistantChat() {
     [notice, setNotice] = useState(""),
     [transcript, setTranscript] = useState(""),
     [guided, setGuided] = useState(false),
+    [answer, setAnswer] = useState<any>(null),
+    [pendingNote, setPendingNote] = useState(false),
     [detail, setDetail] = useState<any>(null),
     [tab, setTab] = useState<"new" | "list">("new");
   const operation = useRef(crypto.randomUUID());
@@ -321,6 +323,9 @@ export function AssistantChat() {
   }
   function reset() {
     setDraft(null);
+    setAnswer(null);
+    setPendingNote(false);
+    setGuided(false);
     setTranscript("");
     setMessage("");
     setFiles([]);
@@ -380,23 +385,61 @@ export function AssistantChat() {
       setDetail(await api(token, `/api/assistant/requests/${result.id}`));
     });
   }
+  async function converse() {
+    await run(async () => {
+      setAnswer(null);
+      const result = await api(token, "/api/assistant/draft", {
+        message: message.trim() || "Pedido recebido por anexos.",
+        attachments: files.map(f => f.id), guided: !detail && guided,
+        conversation: true, ...(detail ? { requestId: detail.id } : {}),
+      });
+      setTranscript(result.transcript || "");
+      setNotice(result.message);
+      if (result.draft) {
+        setDetail(null); setTab("new");
+        setDraft({ ...result.draft, description: result.transcript ? `${result.draft.description}\n\nTranscrição do áudio:\n${result.transcript}`.slice(0, 4000) : result.draft.description });
+      } else setAnswer(result);
+    });
+  }
+  async function chooseRequest(id: string) {
+    await run(async () => {
+      const selected = await api(token, `/api/assistant/requests/${id}`);
+      const updating = answer?.action?.intent === "update";
+      const note = answer?.action?.note || "";
+      setDetail(selected); setDraft(null); setAnswer(null);
+      setPendingNote(updating); setMessage(updating ? note : "");
+      if (!updating) setFiles([]);
+      operation.current = crypto.randomUUID(); lockedPayload.current = null;
+      setNotice(updating ? "Confira o texto abaixo e confirme para registrar no histórico deste pedido. Os campos do orçamento continuam iguais." : "Informações atuais do pedido. Você pode continuar perguntando sobre ele abaixo.");
+    });
+  }
+  async function saveNote() {
+    await run(async () => {
+      const payload = lockedPayload.current || { operationId: operation.current, message, attachments: files.map(f => f.id) };
+      lockedPayload.current = payload;
+      const result = await api(token, `/api/assistant/requests/${detail.id}/notes`, payload);
+      const id = detail.id;
+      reset(); setNotice(result.message);
+      setDetail(await api(token, `/api/assistant/requests/${id}`));
+    });
+  }
   const composer = (
     <div className="space-y-3">
       <label className="block font-medium" htmlFor="assistant-message">
-        {detail ? "Complementar este pedido" : "Conte o pedido do cliente"}
+        {pendingNote ? "Confira o complemento" : "Criar, consultar ou atualizar um pedido"}
       </label>
       <textarea
         id="assistant-message"
         rows={5}
-        maxLength={detail ? 2000 : 4000}
+        maxLength={pendingNote ? 2000 : 4000}
         className={field}
         value={message}
         disabled={busy || !!draft || !!lockedPayload.current}
-        onChange={(e) => setMessage(e.target.value)}
+        onChange={(e) => { setMessage(e.target.value); setAnswer(null); }}
         placeholder={
           detail
-            ? "Ex.: o cliente confirmou a cor azul…"
-            : "Ex.: Chaveiro com logo NFC\nCliente: Zalma Joias\n10 unidades, tamanho pequeno, verde e branco."
+            ? "Ex.: Qual o valor deste pedido? Ou: o cliente confirmou a cor azul."
+            : "Ex.: Como está o pedido da Zalma?\nOu: Novo orçamento para Zalma, 10 chaveiros NFC.\nOu: Acrescente ao pedido da Zalma que a cor será verde."
         }
       />
       <input
@@ -436,56 +479,27 @@ export function AssistantChat() {
           ))}
         </ul>
       )}
-      {!detail && !draft && state?.mode === "ai" && (
+      {!detail && !draft && (
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={guided} disabled={busy} onChange={e => setGuided(e.target.checked)} />
-          Preencher manualmente, sem usar IA
+          Novo pedido manual, sem usar IA
         </label>
       )}
       {!draft && (
         <button
           className={`${button} w-full`}
           disabled={busy || (!message.trim() && (detail || !files.length))}
-          onClick={() =>
-            detail
-              ? run(async () => {
-                  const payload = lockedPayload.current || {
-                    operationId: operation.current,
-                    message,
-                    attachments: files.map((f) => f.id),
-                  };
-                  lockedPayload.current = payload;
-                  const result = await api(
-                    token,
-                    `/api/assistant/requests/${detail.id}/notes`,
-                    payload,
-                  );
-                  setNotice(result.message);
-                  reset();
-                  setDetail(
-                    await api(token, `/api/assistant/requests/${detail.id}`),
-                  );
-                })
-              : run(async () => {
-                  const result = await api(token, "/api/assistant/draft", {
-                    message: message.trim() || "Pedido recebido por anexos.",
-                    attachments: files.map(f => f.id),
-                    guided,
-                  });
-                  setDraft({ ...result.draft, description: result.transcript ? `${result.draft.description}\n\nTranscrição do áudio:\n${result.transcript}`.slice(0, 4000) : result.draft.description });
-                  setTranscript(result.transcript || "");
-                  setNotice(result.message);
-                })
-          }
+          onClick={pendingNote ? saveNote : converse}
         >
           <Send size={18} />
-          {busy
-            ? "Aguarde…"
-            : detail
-              ? "Salvar complemento"
-              : "Preparar solicitação"}
+          {busy ? "Aguarde…" : pendingNote ? (lockedPayload.current ? "Reenviar o mesmo complemento" : "Confirmar complemento") : "Enviar mensagem"}
         </button>
       )}
+      {detail && !draft && !pendingNote && <button className={secondary} disabled={busy || !message.trim() || message.length > 2000} onClick={() => {
+        setAnswer(null); setPendingNote(true);
+        setNotice("Confira o texto e confirme para registrar como complemento. Isso não altera quantidade, preço ou status.");
+      }}>Preparar complemento manual</button>}
+      {pendingNote && !lockedPayload.current && <button className={secondary} disabled={busy} onClick={() => { setPendingNote(false); setNotice(""); }}>Voltar à conversa</button>}
     </div>
   );
   return (
@@ -530,7 +544,7 @@ export function AssistantChat() {
                     setNotice("");
                   }}
                 >
-                  Novo pedido
+                  Conversar
                 </button>
                 <button
                   disabled={busy}
@@ -555,6 +569,13 @@ export function AssistantChat() {
                 {notice}
               </p>
             )}
+            {answer?.candidates?.length > 0 && <section className="rounded-xl border bg-white p-4 space-y-3">
+              <h2 className="font-semibold">Pedidos encontrados — selecione um</h2>
+              {answer.candidates.map((candidate: any) => <button key={candidate.id} className={`${secondary} w-full text-left justify-start`} disabled={busy} onClick={() => chooseRequest(candidate.id)}>
+                {candidate.title} · {candidate.customerName || "Cliente a confirmar"} · {statusLabels[candidate.status] || candidate.status}
+              </button>)}
+              <p className="text-sm">Só serão exibidos os pedidos permitidos por este link.</p>
+            </section>}
             {transcript && <section className="rounded-xl border bg-white p-4">
               <h2 className="font-semibold">Transcrição do áudio — confira</h2>
               <p className="whitespace-pre-wrap">{transcript}</p>
@@ -582,7 +603,7 @@ export function AssistantChat() {
                   <p className="font-medium text-indigo-700">
                     {statusLabels[detail.status] || detail.status}
                   </p>
-                  {detail.quotedPrice != null && <p>Valor do orçamento: {Number(detail.quotedPrice).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>}
+                  {detail.quotedPrice != null ? <p>Valor do orçamento: {Number(detail.quotedPrice).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p> : <p>Valor ainda não informado ou indisponível neste acesso.</p>}
                   <p className="whitespace-pre-wrap">{detail.description}</p>
                   <Files files={detail.attachments || []} load={loadFile} />
                   {detail.notes?.map((note: any) => (
@@ -605,9 +626,9 @@ export function AssistantChat() {
                 <div className="flex items-start gap-3">
                   <MessageSquare className="shrink-0 mt-1 text-indigo-700" />
                   <p>
-                    Olá! Envie um pedido de cada vez. Vou organizar o texto e os
-                    anexos para cadastrar na fila de orçamentos. Depois você
-                    acompanha a situação em <strong>{state.requestScope === "tenant" ? "Todos os pedidos" : "Meus pedidos"}</strong>.
+                    Olá! Você pode criar um orçamento, consultar um pedido pelo nome do cliente ou código,
+                    ou registrar uma atualização no histórico. Vou buscar as informações no LabLayer
+                    e pedir sua conferência antes de salvar. A lista completa está em <strong>{state.requestScope === "tenant" ? "Todos os pedidos" : "Meus pedidos"}</strong>.
                   </p>
                 </div>
                 <section className="bg-white rounded-2xl border p-5 space-y-5">

@@ -59,3 +59,7 @@ Cobertura nova: resposta estruturada, unidade provisória, campos indevidos, res
 Resultados finais e situação da publicação: consultar `docs/implementacao/assistente-ia-20261021.md`.
 
 Referências oficiais: [OpenAI GPT-4.1 mini](https://developers.openai.com/api/docs/models/gpt-4.1-mini), [Transcrição](https://developers.openai.com/api/docs/guides/speech-to-text), [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs), [n8n HTTP Request](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.httprequest/), [n8n workflow settings](https://docs.n8n.io/workflows/settings/).
+
+## Conversa com consulta e complemento (21/10/2026)
+
+O modo `conversation` estende `suggestion` com `intent`, `query`, `note` e `question` obrigatórios no esquema estrito. `title`, `customerName`, `description`, `quantity` e `warnings` continuam presentes para compatibilidade do workflow. Consulta e complemento são resolvidos pelo servidor com autorização; n8n não recebe acesso ao banco. Veja [regras e validação](../implementacao/assistente-conversa-20261021.md).

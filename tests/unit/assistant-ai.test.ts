@@ -49,3 +49,13 @@ it('limita resposta, falhas não vazam segredo e tickets são eliminados ao falh
  });
  await expect(ai.interpret(input,async()=>{})).rejects.toThrow('Resposta excessiva'); await expect(ai.exchange(ticket)).rejects.toThrow();
 });
+it('contrato conversacional separa consulta, complemento e criação; rejeita intenção inválida',()=>{
+ const r=openAiRequest({...input,conversation:true,selectedRequest:true});
+ expect(r.text.format.schema.required).toContain('intent');
+ const s={...suggestion,title:'',description:'',intent:'lookup',query:'ORC-013',note:'',question:''};
+ expect(validateAiResponse({...output(),suggestion:s},'id',true)).toMatchObject({draft:null,action:{intent:'lookup',query:'ORC-013'}});
+ for(const patch of [{intent:'delete'},{note:'x'.repeat(2001)},{query:'x'.repeat(151)},{intent:'update',note:''}])
+   expect(()=>validateAiResponse({...output(),suggestion:{...s,...patch}},'id',true)).toThrow();
+ expect(()=>validateAiResponse(output(),'id',true)).toThrow();
+ expect(validateAiResponse({...output(),suggestion:{...suggestion,intent:'create',query:'',note:'',question:''}},'id',true).draft?.quantity).toBe(1);
+});
