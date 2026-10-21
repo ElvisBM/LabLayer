@@ -1,3 +1,4 @@
+import { AssistantRequestNotes } from '../features/assistant/Assistant';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { ArrowLeft, Calculator, CheckCircle2, Clock3, Edit2, FileText, ImagePlus, LayoutGrid, List, Link as LinkIcon, Package, Plus, Printer, Trash2 } from 'lucide-react';
@@ -489,6 +490,7 @@ export function EncomendasOrcamentos() {
             <h2 ref={detailHeading} tabIndex={-1} className="font-headline font-bold text-lg break-words">{editingId ? 'Editar Solicitação' : 'Nova Solicitação'}</h2>
           </div>
 
+          {editingId?.startsWith("bot-") && <AssistantRequestNotes requestId={editingId} />}
           <form onSubmit={handleSave} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="space-y-1.5 md:col-span-2">

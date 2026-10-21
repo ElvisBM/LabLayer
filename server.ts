@@ -1,3 +1,4 @@
+import { registerAssistantRoutes } from './server/assistant';
 import { registerInventoryRoutes } from './server/inventory';
 import { registerQuoteRoutes } from './server/quotes';
 import { registerFinanceRoutes } from './server/finance';
@@ -520,6 +521,7 @@ const hasCollectionFilters = (query: express.Request["query"]) => {
     },
     async get(objectPath) { return (await storageBucket.file(objectPath).download())[0]; },
   } : null;
+  registerAssistantRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)), assetStore);
   registerAssetRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)), assetStore);
 
   // API routes FIRST

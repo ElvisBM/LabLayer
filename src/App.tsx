@@ -1,3 +1,4 @@
+import { AssistantChat, AssistantLinks } from './features/assistant/Assistant';
 import { useInventoryPhase } from './features/inventory/useInventoryPhase';
 import { lazy, useState } from 'react';
 import { ViewBoundary } from './components/ViewBoundary';
@@ -61,6 +62,7 @@ function MainApp() {
   }
 
   const renderView = () => {
+    if (currentView === 'assistente') return <AssistantLinks />;
     if (currentView === 'usuarios') return <TeamPage />;
     if (inventory.phase === 'loading') return <p>Conferindo estado do estoque...</p>;
     if (inventory.phase === 'error') return <p role="alert">Não foi possível conferir o estado do estoque. Recarregue antes de operar.</p>;
@@ -156,6 +158,7 @@ function MainApp() {
       case 'fornecedores': return 'Cadastro de Fornecedores';
       case 'impressoras': return 'Frota de Impressoras';
       case 'insumos': return 'Insumos e Componentes';
+      case 'assistente': return 'Assistente';
       case 'usuarios': return 'Usuários e empresa';
       case 'configuracoes': return 'Configurações do Sistema';
       case 'superadmin': return 'Administração Global';
@@ -210,6 +213,7 @@ function MainApp() {
 }
 
 export default function App() {
+  if (window.location.pathname === "/assistente") return <AssistantChat />;
   return (
     <AuthProvider>
       <MainApp />
