@@ -128,6 +128,7 @@ function MainApp() {
       case 'impressoras': return 'Frota de Impressoras';
       case 'insumos': return 'Insumos e Componentes';
       case 'configuracoes': return 'Configurações do Sistema';
+      case 'assistente': return 'Assistente';
       case 'usuarios': return 'Usuários';
       case 'superadmin': return 'Administração Global';
       default: return 'Painel Operacional';
