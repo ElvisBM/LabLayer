@@ -20,8 +20,8 @@
 
  Test Files  3 passed (3)
       Tests  12 passed (12)
-   Start at  12:50:52
-   Duration  1.46s (transform 291ms, setup 0ms, import 769ms, tests 720ms, environment 2.10s)
+   Start at  13:07:19
+   Duration  1.97s (transform 419ms, setup 0ms, import 1.11s, tests 922ms, environment 2.88s)
 
 
 > react-example@0.0.0 test:integration
@@ -36,15 +36,15 @@ i  Running script: vitest run --config vitest.integration.config.ts
 
  RUN  v4.1.11 /private/tmp/lablayer-users-release-20261021
 
-(node:24722) MetadataLookupWarning: received unexpected error = All promises were rejected code = ETIMEDOUT, ENOTFOUND
+(node:26923) MetadataLookupWarning: received unexpected error = All promises were rejected code = ETIMEDOUT, ENOTFOUND
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:24730) MetadataLookupWarning: received unexpected error = All promises were rejected code = ETIMEDOUT, ENOTFOUND
+(node:26932) MetadataLookupWarning: received unexpected error = All promises were rejected code = ETIMEDOUT, ENOTFOUND
 (Use `node --trace-warnings ...` to show where the warning was created)
 
  Test Files  3 passed (3)
-      Tests  27 passed (27)
-   Start at  12:50:57
-   Duration  17.66s (transform 84ms, setup 20ms, import 867ms, tests 16.52s, environment 0ms)
+      Tests  28 passed (28)
+   Start at  13:07:23
+   Duration  19.82s (transform 125ms, setup 22ms, import 1.22s, tests 18.04s, environment 0ms)
 
 ✔  Script exited successfully (code 0)
 i  emulators: Shutting down emulators.
@@ -62,13 +62,13 @@ rendering chunks...
 computing gzip size...
 dist/index.html                     0.39 kB │ gzip:   0.27 kB
 dist/assets/index-BLK3cIhU.css     50.15 kB │ gzip:   8.97 kB
-dist/assets/index-KgStHp0H.js   1,080.54 kB │ gzip: 253.03 kB
+dist/assets/index-DSsW_4aI.js   1,080.62 kB │ gzip: 253.05 kB
 
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
-✓ built in 2.12s
+✓ built in 2.15s
 
 > react-example@0.0.0 audit:production
 > npm audit --omit=dev --audit-level=high

@@ -1,6 +1,6 @@
 # Release B21 — usuários sobre a instalação publicada
 
-**Preparada e testada, não publicada.** Base: `1879949`, release/quote-view-modes. Aguardando escolha da empresa: Elvis está vinculado ao tenant inativo com 27 solicitações; sua empresa própria está ativa e vazia. Nenhum vínculo, status ou pedido real foi alterado.
+**Publicada em 21/10/2026, após autorização explícita para reativar a empresa e publicar.** Base: `1879949`, release/quote-view-modes. A empresa com 27 solicitações foi reativada; perfil e vínculo de Elvis foram preservados. O administrador global é identificado como Administrador da plataforma no menu.
 
 ## Conteúdo
 
@@ -14,7 +14,7 @@ Preservadas as chaves administrativas por tenant já existentes na VPS. Hash do 
 
 ## Validação
 
-`npm run quality`, Node 22/Java 21: **39 testes** (12 unitários/interface + 27 integração), tipos e build aprovados, **zero vulnerabilidades de produção**. Log: [evidência](./evidencias-users-release-quality.txt). O bundle legado mantém aviso de tamanho acima de 500 kB.
+`npm run quality`, Node 22/Java 21: **40 testes** (12 unitários/interface + 28 integração), tipos e build aprovados, **zero vulnerabilidades de produção**. Log: [evidência](./evidencias-users-release-quality.txt). O bundle legado mantém aviso de tamanho acima de 500 kB.
 
 Testes cobrem três visualizações dos orçamentos, sessão, formulário, falhas e regras de acesso. Auth é simulado nos testes de falhas; nenhuma identidade real de terceiro foi criada. Login real com conta controlada permanece conferência operacional após publicação.
 

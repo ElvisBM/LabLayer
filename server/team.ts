@@ -44,7 +44,7 @@ export function registerTeamRoutes(app: Express, db: Firestore | null, verify: (
     const snapshots = await tx.getAll(...ids.map(id => ref(`tenants/${id}`)));
     const companies = snapshots.filter(s => s.exists && s.data()?.status !== 'inactive').map(s => {
       const role = s.id === identity.uid && s.data()?.ownerUid === identity.uid ? 'owner'
-        : s.id === profile?.tenantId ? (profile?.tenantRole === 'admin' ? 'admin' : 'member')
+        : s.id === profile?.tenantId ? (identity.superadmin === true ? 'platform-admin' : profile?.tenantRole === 'admin' ? 'admin' : 'member')
         : links.docs.find(d => d.id === s.id)?.data().role;
       return { id: s.id, name: s.data()?.companyName || 'Minha Empresa', role };
     });
@@ -69,6 +69,7 @@ export function registerTeamRoutes(app: Express, db: Firestore | null, verify: (
         if (user.data().active) result.set(user.id, { uid: user.id, email: user.data().email, name: user.data().name || '', role: user.data().role, revision: user.data().revision });
         else result.delete(user.id);
       }
+      if (identity.superadmin === true && result.has(identity.uid)) result.set(identity.uid, { ...result.get(identity.uid), platformAdmin: true });
       result.set(tenant, { uid: tenant, email: company.ownerEmail || identity.email || '', name: legacy.docs.find(d => d.id === tenant)?.data().name || (identity.uid === tenant ? identity.name || '' : ''), role: 'owner', revision: 0 });
       return { tenantId: tenant, companyName: company.companyName, isOwner: true, members: [...result.values()], requests: requests.docs.map(d => ({ uid: d.id, email: d.data().email, revision: d.data().revision, requestedAt: d.data().requestedAt })) };
     });

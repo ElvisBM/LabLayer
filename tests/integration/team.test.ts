@@ -8,12 +8,13 @@ import request from 'supertest';
 import express from 'express';
 import { registerTeamRoutes } from '../../server/team';
 const createApp = async ({ database, verifyIdToken }: any) => { const app = express(); app.use(express.json()); registerTeamRoutes(app, database, verifyIdToken); return app; };
+
 import { provisionSession } from '../../server/session';
 import { CONTENTION_TIMEOUT_MS } from '../contention-timeout';
 const firebase = initializeApp({ projectId: 'demo-lablayer-test' }, 'team-test');
 const db = getFirestore(firebase);
 let app: Awaited<ReturnType<typeof createApp>>, rules: RulesTestEnvironment;
-const identity = (uid: string) => ({ uid, email: `${uid}@example.test`, email_verified: uid !== 'unverified' } as any);
+const identity = (uid: string) => ({ uid, email: `${uid}@example.test`, email_verified: uid !== 'unverified', superadmin: uid === 'platform', name: uid === 'platform' ? 'Admin Plataforma' : undefined } as any);
 const post = (route: string, body: object, uid = 'a') => request(app).post(route).set('Authorization', `Bearer ${uid}`).send(body);
 const get = (route: string, uid = 'a') => request(app).get(route).set('Authorization', `Bearer ${uid}`);
 const join = (uid = 'b') => post('/api/team/request-access', { tenantId: 'a' }, uid);
@@ -131,4 +132,15 @@ it('cliente não cria vínculos, concede papel ou lê solicitações diretamente
     await assertFails(setDoc(doc(client, p), { active: true, role: 'admin' }));
     await assertFails(getDoc(doc(client, p)));
   }
+});
+
+it('administrador global gerencia sem atribuir seu nome ao proprietário de outra empresa', async () => {
+  await db.doc('users/platform').set({ tenantId: 'a', tenantRole: 'owner', role: 'user' });
+  const team = (await get('/api/tenants/a/team', 'platform').expect(200)).body;
+  expect(team.members.find((m: any) => m.uid === 'platform').platformAdmin).toBe(true);
+  expect((await get('/api/team/companies', 'platform').expect(200)).body.companies.find((c: any) => c.id === 'a').role).toBe('platform-admin');
+  expect(team.isOwner).toBe(true);
+  expect(team.members.find((m: any) => m.uid === 'a').name).toBe('');
+  await join().expect(200);
+  await decide('approve', 'b', 'member', 'platform').expect(200);
 });
