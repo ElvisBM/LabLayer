@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { formatCustomerQuote, type CustomerQuote as Quote } from '../../../shared/requests/quote';
-export function CustomerQuotePreview({ quote }: { quote?: Quote | null }) {
+export function CustomerQuotePreview({ quote, image }: { quote?: Quote | null; image?: React.ReactNode }) {
   const [notice, setNotice] = useState('');
   const text = quote ? formatCustomerQuote(quote) : '';
   if (!text) return null;
   return <section aria-label="Orçamento para o cliente" className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 text-sm space-y-3 font-normal text-slate-900 min-w-0">
+    {image}
     <p className="whitespace-pre-wrap break-words">{text}</p>
     <button type="button" className="min-h-11 rounded-lg border border-indigo-300 bg-white px-3 font-semibold text-indigo-700" onClick={async () => {
       try { await navigator.clipboard.writeText(text); setNotice('Orçamento copiado!'); }

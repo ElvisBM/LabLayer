@@ -1,5 +1,6 @@
+import { TenantQuoteImage } from '../features/requests/QuoteImage';
 import { CustomerQuoteEditor, CustomerQuotePreview } from '../features/requests/CustomerQuote';
-import { validCustomerQuote, optionTotal, type CustomerQuote } from '../../shared/requests/quote';
+import { formatCustomerQuote, validCustomerQuote, optionTotal, type CustomerQuote } from '../../shared/requests/quote';
 import { compareRequests, REQUEST_SORT_OPTIONS, type RequestSortField, type RequestSortDirection } from "../features/requests/sort";
 import { changeRequestStatuses, MAX_BULK_REQUESTS } from "../features/requests/bulk-status";
 import { AssistantRequestNotes } from '../features/assistant/Assistant';
@@ -982,7 +983,7 @@ export function EncomendasOrcamentos() {
                   <th scope="row" className="p-3 max-w-sm font-normal">
                     <button id={`request-title-${request.id}`} type="button" onClick={() => handleEdit(request)} className="block min-h-11 text-left font-semibold text-primary break-words hover:underline focus-visible:ring-2 focus-visible:ring-primary rounded">{request.title}</button>
                     <span className="text-xs text-on-surface-variant">{REQUEST_TYPE_OPTIONS.find(option => option.value === request.type)?.label || 'Solicitação'}</span>
-                    <CustomerQuotePreview quote={request.customerQuote} />
+                    <CustomerQuotePreview quote={request.customerQuote} image={<TenantQuoteImage reference={request.quoteMediaImageUrl || request.referenceImageUrl} text={request.customerQuote ? formatCustomerQuote(request.customerQuote) : ''} />} />
                   </th>
                   <td className="p-3 text-on-surface-variant">{request.customerName || 'Não informado'}</td>
                   <td className="p-3 tabular-nums whitespace-nowrap">{request.requestedQuantity > 0 ? `${request.requestedQuantity} un` : 'A confirmar'}</td>
@@ -1050,7 +1051,7 @@ export function EncomendasOrcamentos() {
                   </div>
                 )}
 
-                <CustomerQuotePreview quote={request.customerQuote} />
+                <CustomerQuotePreview quote={request.customerQuote} image={<TenantQuoteImage reference={request.quoteMediaImageUrl || request.referenceImageUrl} text={request.customerQuote ? formatCustomerQuote(request.customerQuote) : ''} />} />
                 <div className={`grid grid-cols-2 gap-3 ${displayMode === 'cards-2' ? '2xl:grid-cols-4' : ''}`}>
                   <div className="bg-surface-container p-3 rounded-lg border border-outline-variant/10">
                     <div className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Filamento</div>

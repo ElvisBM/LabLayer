@@ -1,3 +1,5 @@
+import { AssistantQuoteImage } from '../requests/QuoteImage';
+import { formatCustomerQuote } from '../../../shared/requests/quote';
 import { CustomerQuotePreview } from '../requests/CustomerQuote';
 import { useEffect, useRef, useState } from "react";
 import {
@@ -606,7 +608,7 @@ export function AssistantChat() {
                     {statusLabels[detail.status] || detail.status}
                   </p>
                   {detail.quotedPrice != null ? <p>Valor do orçamento: {Number(detail.quotedPrice).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p> : <p>Valor ainda não informado ou indisponível neste acesso.</p>}
-                  <CustomerQuotePreview quote={detail.customerQuote} />
+                  <CustomerQuotePreview quote={detail.customerQuote} image={<AssistantQuoteImage id={detail.quoteImageId} requestId={detail.id} token={token} text={detail.customerQuote ? formatCustomerQuote(detail.customerQuote) : ''} />} />
                   <p className="whitespace-pre-wrap">{detail.description}</p>
                   <Files files={detail.attachments || []} load={loadFile} />
                   {detail.notes?.map((note: any) => (
@@ -762,7 +764,7 @@ export function AssistantChat() {
                     <p className="text-sm text-indigo-700">
                       {statusLabels[row.status] || row.status}
                     </p>
-                  </button><CustomerQuotePreview quote={row.customerQuote} /></article>
+                  </button><CustomerQuotePreview quote={row.customerQuote} image={<AssistantQuoteImage id={row.quoteImageId} requestId={row.id} token={token} text={row.customerQuote ? formatCustomerQuote(row.customerQuote) : ''} />} /></article>
                 ))}
                 {state.nextCursor && <button className={secondary} disabled={busy} onClick={() => run(loadMore)}>Carregar mais pedidos</button>}
               </section>

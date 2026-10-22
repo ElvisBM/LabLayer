@@ -1,3 +1,4 @@
+import { assetId } from '../shared/assets/model';
 import { publicCustomerQuote } from '../shared/requests/quote';
 import { assistantAiFromEnvironment, AI_MAX_BYTES, type AssistantAi, type AiFile } from "./assistant-ai";
 import express, { type Express, type Request, type Response } from "express";
@@ -352,6 +353,7 @@ export function registerAssistantRoutes(
             requests: rows.map(d => ({ id: d.id, title: d.data().title || "Pedido sem título",
               customerName: d.data().customerName || "", quantity: d.data().requestedQuantity ?? 1,
               customerQuote: publicCustomerQuote(d.data().customerQuote),
+              quoteImageId: assetId(d.data().quoteMediaImageUrl || d.data().referenceImageUrl || ""),
               createdAt: d.data().createdAt || null, status: d.data().status || "aguardando-orcamento" })) };
         }
         const mappings = await tx.get(
@@ -717,7 +719,7 @@ export function registerAssistantRoutes(
             customerName: link.sharedRequests ? row.customerName || "" : mapping.customerName,
             quantity: link.sharedRequests ? row.requestedQuantity ?? 1 : mapping.quantity,
             status: row.status,
-            ...(link.sharedRequests ? { customerQuote: publicCustomerQuote(row.customerQuote), quotedPrice: typeof row.quotedPrice === "number" && row.quotedPrice > 0 ? row.quotedPrice : null } : {}),
+            ...(link.sharedRequests ? { quoteImageId: assetId(row.quoteMediaImageUrl || row.referenceImageUrl || ""), customerQuote: publicCustomerQuote(row.customerQuote), quotedPrice: typeof row.quotedPrice === "number" && row.quotedPrice > 0 ? row.quotedPrice : null } : {}),
             ...info, attachments: files,
           };
         }),
