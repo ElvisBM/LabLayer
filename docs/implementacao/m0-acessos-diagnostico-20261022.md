@@ -2,6 +2,14 @@
 
 Data: 22/10/2026. Status: **diagnóstico interno realizado; acessos externos pendentes**. Este documento acompanha o [plano de marketplaces](./plano-marketplaces-20261022.md). M0 ainda não está concluído: falta validar as contas por chamadas autenticadas somente de leitura.
 
+## Atualização de configuração do Mercado Livre
+
+Às 20:37:51 UTC de 22/10/2026, o App ID `2379102902840747`, informado pelo proprietário, foi gravado em `ML_CLIENT_ID` no arquivo `/var/www/lablayer/app/.env.production`. O identificador ainda não foi conferido no DevCenter. O usuário cadastrará o novo `ML_CLIENT_SECRET` diretamente no servidor; nenhum segredo enviado na conversa foi aplicado.
+
+A gravação alterou somente `ML_CLIENT_ID`, com comparação contra alteração concorrente, substituição atômica e permissão `0600`. Cópia anterior protegida em `/home/lablayer/deploy-backups/m0-ml-clientid-20261022T203751Z/env.production.before`. Leitura posterior confirmou o ID e a preservação das demais configurações. Nenhum processo foi reiniciado: o valor está salvo para carregamento futuro, não ativado no processo atual.
+
+Cadastrar o segredo não conclui a conexão. Antes de recarregar a configuração e iniciar OAuth, corrigir o callback conforme a seção Mercado Livre abaixo. Os resultados de credenciais vazias nas seções seguintes são a fotografia do diagnóstico anterior a esta gravação.
+
 ## Resultado por canal
 
 | Canal | Evidência na LabLayer publicada | Conta e aplicativo externo | Decisão M0 |
