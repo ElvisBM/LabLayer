@@ -49,3 +49,13 @@ it('compatibilidade não aceita observação inválida nem campos desconhecidos'
   expect((await getDoc(doc(db,'tenants/a/customRequests/one'))).data()).toEqual(quote);
  }
 });
+
+it('opções comerciais e peso interno permitem salvar e finalizar sem perder dados',async()=>{
+ const db=env.authenticatedContext('a').firestore();
+ const data={...quote,customerQuote:{name:'Zalma',size:'5 cm',options:[{quantity:1,unitPrice:22,deliveryDays:2},{quantity:10,unitPrice:14.5,deliveryDays:2}]},productionWeightGrams:10};
+ await assertSucceeds(setDoc(doc(db,'tenants/a/customRequests/options'),data));
+ await assertSucceeds(changeRequestStatuses(db as any,'a',['options','one'],'finalizado'));
+ expect((await getDoc(doc(db,'tenants/a/customRequests/options'))).data()).toMatchObject({...data,status:'finalizado',updatedAt:expect.any(String)});
+ for(const extra of [{customerQuote:{...data.customerQuote,options:[data.customerQuote.options[0],data.customerQuote.options[0]]}},{customerQuote:{...data.customerQuote,options:[{quantity:1,unitPrice:1.001,deliveryDays:null}]}},{productionWeightGrams:-1},{customerQuote:{...data.customerQuote,options:[{quantity:0,unitPrice:22,deliveryDays:2}]}},{customerQuote:{...data.customerQuote,options:Array(6).fill(data.customerQuote.options[0])}},{customerQuote:{...data.customerQuote,private:'no'}}])await assertFails(setDoc(doc(db,'tenants/a/customRequests/bad'),{...data,...extra}));
+ await assertFails(setDoc(doc(env.authenticatedContext('outsider').firestore(),'tenants/a/customRequests/options'),data));
+});

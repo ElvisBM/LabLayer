@@ -1,3 +1,4 @@
+import { CustomerQuotePreview } from '../requests/CustomerQuote';
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -605,6 +606,7 @@ export function AssistantChat() {
                     {statusLabels[detail.status] || detail.status}
                   </p>
                   {detail.quotedPrice != null ? <p>Valor do orçamento: {Number(detail.quotedPrice).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p> : <p>Valor ainda não informado ou indisponível neste acesso.</p>}
+                  <CustomerQuotePreview quote={detail.customerQuote} />
                   <p className="whitespace-pre-wrap">{detail.description}</p>
                   <Files files={detail.attachments || []} load={loadFile} />
                   {detail.notes?.map((note: any) => (
@@ -747,9 +749,8 @@ export function AssistantChat() {
                   </div>
                 )}
                 {state.requests.map((row: any) => (
-                  <button
-                    key={row.id}
-                    className="w-full text-left rounded-2xl border bg-white p-4 space-y-2"
+                  <article key={row.id} className="bg-white border rounded-2xl p-4 space-y-3"><button
+                    className="w-full text-left rounded-lg space-y-2 focus-visible:ring-2 focus-visible:ring-indigo-500"
                     disabled={busy}
                     onClick={() => open(row.id)}
                   >
@@ -761,7 +762,7 @@ export function AssistantChat() {
                     <p className="text-sm text-indigo-700">
                       {statusLabels[row.status] || row.status}
                     </p>
-                  </button>
+                  </button><CustomerQuotePreview quote={row.customerQuote} /></article>
                 ))}
                 {state.nextCursor && <button className={secondary} disabled={busy} onClick={() => run(loadMore)}>Carregar mais pedidos</button>}
               </section>

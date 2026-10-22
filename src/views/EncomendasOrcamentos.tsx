@@ -1,3 +1,5 @@
+import { CustomerQuoteEditor, CustomerQuotePreview } from '../features/requests/CustomerQuote';
+import { validCustomerQuote, optionTotal, type CustomerQuote } from '../../shared/requests/quote';
 import { compareRequests, REQUEST_SORT_OPTIONS, type RequestSortField, type RequestSortDirection } from "../features/requests/sort";
 import { changeRequestStatuses, MAX_BULK_REQUESTS } from "../features/requests/bulk-status";
 import { AssistantRequestNotes } from '../features/assistant/Assistant';
@@ -42,6 +44,8 @@ interface CustomRequest {
   estimatedUnitCost?: number;
   suggestedUnitPrice?: number;
   quotedPrice?: number;
+  customerQuote?: CustomerQuote | null;
+  productionWeightGrams?: number;
   createdAt?: string;
   quoteSentAt?: string;
   approvedAt?: string;
@@ -398,6 +402,10 @@ export function EncomendasOrcamentos() {
     e.preventDefault();
     if (!tenantId || isUploadingImage) return;
 
+    const quote = formData.customerQuote;
+    if (quote && !validCustomerQuote(quote)) { toast.error('Confira nome, quantidades únicas, preços com até 2 casas decimais e prazos do orçamento.'); return; }
+    const selectedOption = quote?.options.find(o => o.quantity === Number(formData.requestedQuantity));
+    if (quote && !selectedOption) { toast.error('Adicione uma opção para a quantidade pedida ou ajuste a quantidade do pedido.'); return; }
     try {
       if (!Number.isSafeInteger(Number(formData.requestedQuantity)) || Number(formData.requestedQuantity) <= 0) throw new Error('Quantidade deve ser inteira e positiva.');
       if (!Number.isFinite(Number(formData.quotedPrice)) || Number(formData.quotedPrice) < 0) throw new Error('Preço inválido.');
@@ -424,7 +432,9 @@ export function EncomendasOrcamentos() {
         quoteMediaUrl: formData.quoteMediaUrl?.trim() || '',
         estimatedUnitCost: pricingPreview.estimatedUnitCost,
         suggestedUnitPrice: pricingPreview.suggestedUnitPrice,
-        quotedPrice: Number(formData.quotedPrice ?? pricingPreview.totalSuggestedPrice),
+        quotedPrice: selectedOption ? optionTotal(selectedOption) : Number(formData.quotedPrice ?? pricingPreview.totalSuggestedPrice),
+        customerQuote: quote || null,
+        productionWeightGrams: Number(formData.productionWeightGrams) || 0,
         createdAt: formData.createdAt || new Date().toISOString(),
         quoteSentAt: formData.quoteSentAt || '',
         approvedAt: formData.approvedAt || '',
@@ -798,7 +808,8 @@ export function EncomendasOrcamentos() {
                     type="number"
                     min="0"
                     step="0.01"
-                    value={formData.quotedPrice || ''}
+                    readOnly={!!formData.customerQuote}
+                    value={formData.customerQuote ? optionTotal(formData.customerQuote.options.find(o => o.quantity === Number(formData.requestedQuantity)) || { quantity: 1, unitPrice: 0, deliveryDays: null }) : formData.quotedPrice || ''}
                     onChange={e => {
                       setIsQuotePriceManual(true);
                       setFormData(prev => ({ ...prev, quotedPrice: Number(e.target.value) || 0 }));
@@ -808,6 +819,10 @@ export function EncomendasOrcamentos() {
                 </div>
               </div>
 
+              <label className="block text-sm">Peso de produção informado (g, referência interna)
+                <input type="number" min="0" step="0.1" className="block rounded border p-2" value={formData.productionWeightGrams ?? ''} onChange={e => setFormData(prev => ({...prev, productionWeightGrams: Number(e.target.value) || 0}))} />
+              </label>
+              <CustomerQuoteEditor quote={formData.customerQuote || null} onChange={quote => { setIsQuotePriceManual(true); setFormData(prev => ({...prev, customerQuote: quote})); }} />
               <div className="space-y-3">
                 {formData.filaments.map(entry => (
                   <div key={entry.id} className="grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_160px_auto] gap-3 items-end bg-surface-container rounded-xl p-4 border border-outline-variant/10">
@@ -967,6 +982,7 @@ export function EncomendasOrcamentos() {
                   <th scope="row" className="p-3 max-w-sm font-normal">
                     <button id={`request-title-${request.id}`} type="button" onClick={() => handleEdit(request)} className="block min-h-11 text-left font-semibold text-primary break-words hover:underline focus-visible:ring-2 focus-visible:ring-primary rounded">{request.title}</button>
                     <span className="text-xs text-on-surface-variant">{REQUEST_TYPE_OPTIONS.find(option => option.value === request.type)?.label || 'Solicitação'}</span>
+                    <CustomerQuotePreview quote={request.customerQuote} />
                   </th>
                   <td className="p-3 text-on-surface-variant">{request.customerName || 'Não informado'}</td>
                   <td className="p-3 tabular-nums whitespace-nowrap">{request.requestedQuantity > 0 ? `${request.requestedQuantity} un` : 'A confirmar'}</td>
@@ -987,7 +1003,7 @@ export function EncomendasOrcamentos() {
         )}
 
         {filteredRequests.map(request => {
-          const totalFilamentGrams = (request.filaments || []).reduce((sum, entry) => sum + (Number(entry.weightGrams) || 0), 0);
+          const totalFilamentGrams = request.productionWeightGrams || (request.filaments || []).reduce((sum, entry) => sum + (Number(entry.weightGrams) || 0), 0);
           const typeLabel = REQUEST_TYPE_OPTIONS.find(option => option.value === request.type)?.label || 'Solicitação';
           const statusLabel = STATUS_OPTIONS.find(option => option.value === request.status)?.label || request.status;
 
@@ -1034,6 +1050,7 @@ export function EncomendasOrcamentos() {
                   </div>
                 )}
 
+                <CustomerQuotePreview quote={request.customerQuote} />
                 <div className={`grid grid-cols-2 gap-3 ${displayMode === 'cards-2' ? '2xl:grid-cols-4' : ''}`}>
                   <div className="bg-surface-container p-3 rounded-lg border border-outline-variant/10">
                     <div className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Filamento</div>

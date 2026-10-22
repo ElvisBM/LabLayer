@@ -168,3 +168,16 @@ it('cabeçalhos ordenam sem salvar, preservam seleção e mantêm finalizados no
  expect((screen.getByRole('combobox',{name:'Ordenar orçamentos por'}) as HTMLSelectElement).value).toBe('requestedQuantity');
  expect(state.commit).not.toHaveBeenCalled();expect(state.writes).not.toHaveBeenCalled();
 });
+
+it('exibe orçamento por quantidade em todos os modos e salva o total da opção selecionada',async()=>{
+ state.requests[1].customerQuote={name:'Chaveiro 6cm',size:'6 cm',options:[{quantity:1,unitPrice:24.99,deliveryDays:1},{quantity:10,unitPrice:16.6,deliveryDays:2}]};
+ state.requests[1].quotedPrice=166;
+ render(<EncomendasOrcamentos/>);
+ for(const mode of ['Lista simplificada','2 caixas','3 caixas']){
+  fireEvent.click(screen.getByRole('button',{name:mode}));expect(screen.getByRole('region',{name:'Orçamento para o cliente'}).textContent).toContain('Total: R$ 166,00');
+ }
+ fireEvent.click(screen.getByRole('button',{name:'Organizador'}));
+ fireEvent.click(screen.getByRole('button',{name:'Atualizar'}));
+ await waitFor(()=>expect(state.writes).toHaveBeenCalledTimes(1));
+ expect(state.writes.mock.calls[0][1]).toMatchObject({quotedPrice:166,customerQuote:state.requests[1].customerQuote});
+});

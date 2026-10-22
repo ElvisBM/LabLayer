@@ -166,3 +166,13 @@ it('lista inicia aguardando e orçado; mudança de filtro reinicia paginação e
  expect(screen.queryByText('Pendente')).toBeNull();
  expect(screen.queryByRole('button',{name:'Carregar mais pedidos'})).toBeNull();
 });
+
+it('lista do bot mostra opções e copia sem abrir pedido nem enviar mensagem',async()=>{
+ const customerQuote={name:'Bonequinha ProFaby',size:'15 cm + base de 4 cm',options:[{quantity:1,unitPrice:189.99,deliveryDays:4}]};
+ const copy=vi.fn().mockResolvedValue(undefined);Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:copy}});
+ fake.mockResolvedValue(reply({company:'Empresa',seller:'Equipe',requestScope:'tenant',requests:[{id:'x',title:'ProFaby',quantity:1,status:'orcado',customerQuote}]}));
+ render(<AssistantChat/>);fireEvent.click(await screen.findByRole('button',{name:'Todos os pedidos'}));
+ fireEvent.click(await screen.findByRole('button',{name:'Copiar orçamento'}));await screen.findByText('Orçamento copiado!');
+ expect(copy.mock.calls[0][0]).toContain('Prazo de entrega: 4 dias.');expect(copy.mock.calls[0][0]).toContain('R$ 189,99');
+ expect(fake.mock.calls.every(c=>c[0]==='/api/assistant?status=active')).toBe(true);
+});

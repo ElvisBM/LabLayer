@@ -13,3 +13,7 @@ Validação: 27 testes direcionados de comparação e UI, TypeScript e build. Os
 Implementação da release: `df7432e`. 27 testes e TypeScript aprovados também no repositório principal. Pacote construído em `/tmp/lablayer-sort-release.tar.gz`; script de publicação `/tmp/lablayer-sort-publish.sh` com checagem dos hashes anteriores, backup e troca atômica do índice.
 
 **Publicação pendente.** O acesso SSH à VPS falhou com reset e, na última tentativa com timeout explícito, autenticou por chave mas não abriu sessão de comando e encerrou com `server not responding`. O processo de upload bloqueado foi encerrado; o script de publicação não foi executado. Não houve troca do HTML nem alterações nos pedidos. O endpoint público `/api/health` segue retornando `status: ok`. Retomar somente após restabelecer a sessão SSH e conferir novamente os hashes da versão publicada. Não afirmar que a ordenação já está disponível no site.
+
+## Atualização em 22/10/2026
+
+A ordenação foi publicada junto com as opções comerciais de orçamento. Conferido no aplicativo publicado: seletor e cabeçalhos de ordenação disponíveis. Ver `orcamentos-opcoes-cliente-20261022.md` para testes e evidências da publicação.

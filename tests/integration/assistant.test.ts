@@ -413,3 +413,16 @@ it('filtro de link individual usa status atual sem incluir pedidos de outro link
  const done=await call('get','?status=finalizado').expect(200);
  expect(done.body.requests.map((r:any)=>r.id)).toEqual([result.body.id]);
 });
+
+it('lista e detalhe compartilhados trazem apenas opções comerciais autorizadas',async()=>{
+ await db.doc(`tenants/${tenant}`).update({assistantSharedRequests:true});
+ const customerQuote={name:'Zalma',size:'5 cm',options:[{quantity:10,unitPrice:14.5,deliveryDays:2}]};
+ await db.doc(`tenants/${tenant}/customRequests/commercial`).set({title:'Zalma',status:'orcado',requestedQuantity:10,quotedPrice:145,customerQuote,productionWeightGrams:10,productionTimeHours:1,estimatedUnitCost:5,description:'Descrição'});
+ const list=await call('get','?status=orcado');expect(list.status).toBe(200);
+ const item=list.body.requests.find((r:any)=>r.id==='commercial');expect(item.customerQuote).toEqual(customerQuote);
+ expect(item).not.toHaveProperty('productionWeightGrams');expect(item).not.toHaveProperty('estimatedUnitCost');
+ const detail=await call('get','/requests/commercial');expect(detail.status).toBe(200);expect(detail.body.customerQuote).toEqual(customerQuote);
+ expect(detail.body).not.toHaveProperty('productionWeightGrams');
+ await db.doc(`tenants/${tenant}`).update({assistantSharedRequests:false});
+ const hidden=await call('get','?status=orcado');expect(hidden.body.requests.some((r:any)=>r.id==='commercial')).toBe(false);
+});
