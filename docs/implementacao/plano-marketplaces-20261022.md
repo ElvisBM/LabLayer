@@ -2,6 +2,8 @@
 
 Data da pesquisa: 22/10/2026 (America/Sao_Paulo). Situação: plano de implementação; nenhuma conexão, autorização, publicação de anúncio ou alteração de estoque foi realizada nesta pesquisa.
 
+Execução iniciada: [M0 — acessos e diagnóstico](./m0-acessos-diagnostico-20261022.md). Diagnóstico interno registrado; autorização e testes somente de leitura das três lojas permanecem pendentes. M0 ainda não concluído.
+
 ## 1. Decisão proposta e limites da verificação
 
 Construir integrações no backend da LabLayer para cadastrar anúncios de produtos, importar pedidos e sincronizar disponibilidade. Começar pelo Mercado Livre, habilitar Shopee e TikTok Shop conforme acesso e homologação de cada conta. Iniciar a verificação dos três aplicativos em paralelo, sem condicionar o primeiro piloto à aprovação dos outros.
