@@ -127,3 +127,7 @@ Perguntas de acesso e operação foram enviadas ao usuário. Na inspeção das a
 Verificados: processo publicado, presença de configuração sem revelar valores, hashes dos arquivos, estado de migração e contagens por coleção. Resultado coerente entre código publicado e dados legados. Revisar links locais e `git diff --check` antes do commit.
 
 Esta entrega altera documentação, não runtime. Não houve implantação, criação de aplicativo, renovação de token, anúncio, pedido, movimentação de estoque ou envio ao cliente. Não foram executadas as suítes E0–E5: não houve mudança funcional a testar. A regressão de consolidação continua obrigatória em M1.
+
+## Cadastro pela interface disponibilizado
+
+Atualização posterior ao diagnóstico: [cadastro protegido de credenciais ML pela interface](./mercado-livre-credenciais-ui-20261022.md) publicado. O proprietário não precisa editar `.env`: administradores cadastram o segredo em Configurações > Integrações > Mercado Livre. O App ID está preenchido na empresa. O callback simulado foi bloqueado, e o cofre por tenant está preparado; autorização OAuth e consultas à loja continuam pendentes. As tabelas anteriores representam a fotografia anterior à publicação.

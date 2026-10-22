@@ -5,7 +5,9 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { Configuracoes } from '../../src/views/Configuracoes';
 
 vi.mock('../../src/firebase', () => ({ db: {} }));
-vi.mock('../../src/contexts/AuthContext', () => ({ useAuth: () => ({ tenantId: 'a', user: { uid: 'a' } }) }));
+const identity = vi.hoisted(() => ({ uid: 'a' }));
+vi.mock('../../src/contexts/AuthContext', () => ({ useAuth: () => ({ tenantId: 'a', user: identity }) }));
+vi.mock('../../src/features/catalog/client', () => ({ catalogRequest: vi.fn(async () => { throw Error('Somente administradores'); }) }));
 vi.mock('firebase/firestore', () => ({
   collection: (_: unknown, path: string) => ({ path }), doc: (_: unknown, path: string) => ({ path }),
   onSnapshot: (_: unknown, callback: any) => { callback({ docs: [], exists: () => false }); return () => {}; },
@@ -15,9 +17,10 @@ import { ValoresSugeridos } from '../../src/views/ValoresSugeridos';
 import { Vendas } from '../../src/views/Vendas';
 afterEach(cleanup);
 
-it('E0.6 integrações em desenvolvimento não pedem credenciais nem simulam conexão', () => {
+it('E0.6 integrações não simulam conexão; credenciais ML exigem autorização do servidor', async () => {
   render(<Configuracoes />);
-  expect(screen.getAllByText('Em desenvolvimento')).toHaveLength(4);
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Somente administradores');
+  expect(screen.getAllByText('Em desenvolvimento')).toHaveLength(3);
   expect(screen.queryByRole('button', { name: /autorizar|salvar credenciais/i })).toBeNull();
   expect(document.querySelector('input[type=password]')).toBeNull();
 });

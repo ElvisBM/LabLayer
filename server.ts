@@ -1,3 +1,4 @@
+import { registerMarketplaceCredentialRoutes, loadMarketplaceKey } from './server/marketplace-credentials';
 import { registerAssistantRoutes } from './server/assistant';
 import { registerInventoryRoutes } from './server/inventory';
 import { registerQuoteRoutes } from './server/quotes';
@@ -507,6 +508,7 @@ const hasCollectionFilters = (query: express.Request["query"]) => {
     getUser: uid => getAuth().getUser(uid), createUser: input => getAuth().createUser(input), updateUser: (uid, input) => getAuth().updateUser(uid, input),
   });
   registerTeamRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
+  registerMarketplaceCredentialRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)), loadMarketplaceKey(env.LABLAYER_MARKETPLACE_KEY_FILE || path.resolve(process.cwd(), '../shared/marketplace-credentials.key')));
   registerSessionRoute(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
   registerPricingRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
   registerCatalogRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
