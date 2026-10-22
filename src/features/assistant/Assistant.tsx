@@ -41,7 +41,7 @@ async function api(token: string, path: string, body?: unknown) {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const data = await response.json();
-  if (!response.ok) throw Error(data.error || "Não foi possível concluir.");
+  if (!response.ok) throw Object.assign(Error(data.error || "Não foi possível concluir."), { status: response.status });
   return data;
 }
 function Files({
@@ -293,6 +293,7 @@ export function AssistantChat() {
     [listStatus, setListStatus] = useState("active");
   const operation = useRef(crypto.randomUUID());
   const lockedPayload = useRef<any>(null);
+  const conversationPayload = useRef<any>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const load = async (status = listStatus) => setState(await api(token, `/api/assistant?status=${encodeURIComponent(status)}`));
   async function loadMore() {
@@ -335,6 +336,7 @@ export function AssistantChat() {
     setFiles([]);
     operation.current = crypto.randomUUID();
     lockedPayload.current = null;
+    conversationPayload.current = null;
   }
   async function upload(selected: FileList | null) {
     if (!selected) return;
@@ -392,11 +394,26 @@ export function AssistantChat() {
   async function converse() {
     await run(async () => {
       setAnswer(null);
-      const result = await api(token, "/api/assistant/draft", {
+      const payload = conversationPayload.current || {
         message: message.trim() || "Pedido recebido por anexos.",
         attachments: files.map(f => f.id), guided: !detail && guided,
-        conversation: true, ...(detail ? { requestId: detail.id } : {}),
-      });
+        conversation: true, operationId: crypto.randomUUID(), ...(detail ? { requestId: detail.id } : {}),
+      };
+      conversationPayload.current = payload;
+      let result;
+      try { result = await api(token, "/api/assistant/draft", payload); }
+      catch (e) {
+        const status = (e as any).status;
+        if (status >= 400 && status < 500 && status !== 429) conversationPayload.current = null;
+        throw e;
+      }
+      if (result.updatedRequestId) {
+        const updated = await api(token, `/api/assistant/requests/${result.updatedRequestId}`);
+        await load();
+        reset(); setDetail(updated); setNotice(result.message);
+        return;
+      }
+      conversationPayload.current = null;
       setTranscript(result.transcript || "");
       setNotice(result.message);
       if (result.draft) {
@@ -438,7 +455,7 @@ export function AssistantChat() {
         maxLength={pendingNote ? 2000 : 4000}
         className={field}
         value={message}
-        disabled={busy || !!draft || !!lockedPayload.current}
+        disabled={busy || !!draft || !!lockedPayload.current || !!conversationPayload.current}
         onChange={(e) => { setMessage(e.target.value); setAnswer(null); }}
         placeholder={
           detail
@@ -456,7 +473,7 @@ export function AssistantChat() {
       />
       <button
         className={secondary}
-        disabled={busy || !!draft || !!lockedPayload.current}
+        disabled={busy || !!draft || !!lockedPayload.current || !!conversationPayload.current}
         onClick={() => fileInput.current?.click()}
       >
         <Paperclip size={18} /> Fotos ou áudios
@@ -472,7 +489,7 @@ export function AssistantChat() {
             <li key={f.id} className="flex justify-between gap-2 break-all">
               <span>✓ {f.name}</span>
               <button
-                disabled={busy || !!draft || !!lockedPayload.current}
+                disabled={busy || !!draft || !!lockedPayload.current || !!conversationPayload.current}
                 onClick={() =>
                   setFiles((current) => current.filter((x) => x.id !== f.id))
                 }
@@ -496,7 +513,7 @@ export function AssistantChat() {
           onClick={pendingNote ? saveNote : converse}
         >
           <Send size={18} />
-          {busy ? "Aguarde…" : pendingNote ? (lockedPayload.current ? "Reenviar o mesmo complemento" : "Confirmar complemento") : "Enviar mensagem"}
+          {busy ? "Aguarde…" : conversationPayload.current ? "Reenviar a mesma mensagem" : pendingNote ? (lockedPayload.current ? "Reenviar o mesmo complemento" : "Confirmar complemento") : "Enviar mensagem"}
         </button>
       )}
       {detail && !draft && !pendingNote && <button className={secondary} disabled={busy || !message.trim() || message.length > 2000} onClick={() => {
@@ -611,16 +628,7 @@ export function AssistantChat() {
                   <CustomerQuotePreview quote={detail.customerQuote} image={<AssistantQuoteImage id={detail.quoteImageId} requestId={detail.id} token={token} text={detail.customerQuote ? formatCustomerQuote(detail.customerQuote) : ''} />} />
                   <p className="whitespace-pre-wrap">{detail.description}</p>
                   <Files files={detail.attachments || []} load={loadFile} />
-                  {detail.notes?.map((note: any) => (
-                    <div key={note.id} className="border-t pt-3 space-y-2">
-                      <p className="text-xs text-slate-500">
-                        Complemento · {note.seller || "Equipe"} ·{" "}
-                        {new Date(note.createdAt).toLocaleString("pt-BR")}
-                      </p>
-                      <p className="whitespace-pre-wrap">{note.message}</p>
-                      <Files files={note.attachments || []} load={loadFile} />
-                    </div>
-                  ))}
+                  <RequestTimeline notes={detail.notes || []} load={loadFile} />
                 </article>
                 <section className="bg-white rounded-2xl border p-5">
                   {composer}
@@ -633,7 +641,7 @@ export function AssistantChat() {
                   <p>
                     Olá! Você pode criar um orçamento, consultar um pedido pelo nome do cliente ou código,
                     ou registrar uma atualização no histórico. Vou buscar as informações no LabLayer
-                    e pedir sua conferência antes de salvar. A lista completa está em <strong>{state.requestScope === "tenant" ? "Todos os pedidos" : "Meus pedidos"}</strong>.
+                    e pedir sua conferência quando houver dúvida. Comandos explícitos como “ORC 11 pago, pode produzir” atualizam a fila e o histórico ao enviar. A lista completa está em <strong>{state.requestScope === "tenant" ? "Todos os pedidos" : "Meus pedidos"}</strong>.
                   </p>
                 </div>
                 <section className="bg-white rounded-2xl border p-5 space-y-5">
@@ -808,25 +816,41 @@ export function AssistantRequestNotes({ requestId }: { requestId: string }) {
     return response.blob();
   }
   if (error) return <p role="alert">Anexos do assistente: {error}</p>;
-  if (!data?.seller) return null;
+  if (!data) return <p className="text-sm">Carregando linha do tempo…</p>;
   return (
     <section className="rounded-xl border border-indigo-200 p-4 space-y-3">
       <h3 className="font-semibold">
-        Atendimento · {data.seller}
+        Histórico do atendimento{data.seller ? ` · ${data.seller}` : ""}
       </h3>
       {data.provisionalQuantity && (
         <p>Quantidade inicial provisória: confirmar com o cliente.</p>
       )}
       <Files files={data.attachments || []} load={load} />
-      {data.notes.map((note: any) => (
-        <div key={note.id} className="border-t pt-3 space-y-2">
-          <p className="text-sm">
-            Complemento · {new Date(note.createdAt).toLocaleString("pt-BR")}
-          </p>
-          <p className="whitespace-pre-wrap">{note.message}</p>
-          <Files files={note.attachments || []} load={load} />
-        </div>
-      ))}
+      <RequestTimeline notes={data.notes || []} load={load} />
     </section>
   );
+}
+
+export function RequestTimeline({ notes, load }: { notes: any[]; load: (id: string) => Promise<Blob> }) {
+  const names: Record<string, string> = { status: 'Status', approvedAt: 'Autorização para produção', paidAt: 'Pagamento informado', requestedQuantity: 'Quantidade', quotedPrice: 'Total da opção escolhida' };
+  function value(field: string, data: any) {
+    if (data === '' || data == null) return 'Não informado';
+    if (field === 'status') return statusLabels[data] || String(data);
+    if (field === 'quotedPrice') return Number(data).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    if (field.endsWith('At')) return new Date(data).toLocaleString('pt-BR');
+    return String(data);
+  }
+  return <section aria-label="Linha do tempo do orçamento" className="space-y-3">
+    <h3 className="font-semibold">Linha do tempo</h3>
+    {!notes.length && <p className="text-sm text-slate-500">Nenhuma atualização registrada.</p>}
+    <ol className="border-l-2 border-indigo-200 pl-4 space-y-5">
+      {notes.map(note => <li key={note.id} className="space-y-2 break-words">
+        <p className="text-xs text-slate-500">{note.kind === 'workflow-update' ? 'Atualização do pedido' : 'Complemento'} · {note.seller || 'Equipe'} · <time dateTime={note.createdAt}>{new Date(note.createdAt).toLocaleString('pt-BR')}</time></p>
+        <p className="whitespace-pre-wrap">{note.message}</p>
+        {!!note.changes?.length && <ul className="text-sm space-y-1">{note.changes.map((c: any) => <li key={c.field}>{names[c.field] || c.field}: {value(c.field, c.before)} → {value(c.field, c.after)}</li>)}</ul>}
+        {note.paymentReported && <p className="text-xs text-slate-500">Pagamento informado pelo atendimento; não representa conciliação bancária.</p>}
+        <Files files={note.attachments || []} load={load} />
+      </li>)}
+    </ol>
+  </section>;
 }

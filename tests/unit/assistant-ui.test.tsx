@@ -8,7 +8,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { AssistantChat } from "../../src/features/assistant/Assistant";
+import { AssistantChat, RequestTimeline } from "../../src/features/assistant/Assistant";
 vi.mock("../../src/contexts/AuthContext", () => ({ useAuth: () => ({}) }));
 const fake = vi.fn();
 const reply = (body: any, ok = true) => ({ ok, json: async () => body });
@@ -37,6 +37,38 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+});
+it('comando explícito confirmado pelo servidor abre a fila e a linha do tempo sem criar orçamento', async () => {
+  fake.mockImplementation(async (path: string) => {
+    if (path === '/api/assistant?status=active') return reply({ company: 'Empresa', seller: 'Equipe', requests: [] });
+    if (path === '/api/assistant/draft') return reply({ updatedRequestId: 'manual', message: 'Pedido encaminhado para a fila de produção.' });
+    if (path === '/api/assistant/requests/manual') return reply({ id: 'manual', title: 'ORC-011', status: 'fila-producao', quantity: 10, notes: [{ id: 'event', createdAt: '2026-10-22T12:00:00Z', kind: 'workflow-update', seller: 'Equipe', message: '5 Viviane Rodriguero; 5 Daniella Maglio Löw', changes: [{ field: 'status', before: 'orcado', after: 'fila-producao' }] }] });
+    throw Error('Unexpected path');
+  });
+  render(<AssistantChat />);
+  fireEvent.change(await screen.findByLabelText('Criar, consultar ou atualizar um pedido'), { target: { value: 'ORC 11 pago pode produzir' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
+  expect(await screen.findByText('ORC-011')).toBeTruthy();
+  expect(screen.getByRole('region', { name: 'Linha do tempo do orçamento' })).toBeTruthy();
+  expect(screen.getByText('5 Viviane Rodriguero; 5 Daniella Maglio Löw')).toBeTruthy();
+  expect(JSON.parse(fake.mock.calls.find(c => c[0] === '/api/assistant/draft')![1].body).operationId).toBeTruthy();
+  expect(fake.mock.calls.some(c => c[0] === '/api/assistant/requests')).toBe(false);
+});
+it('falha de rede reenvia o mesmo comando com o mesmo identificador', async () => {
+  render(<AssistantChat />);
+  fireEvent.change(await screen.findByLabelText('Criar, consultar ou atualizar um pedido'), { target: { value: 'ORC 11 pago pode produzir' } });
+  fake.mockRejectedValue(Error('Conexão perdida'));
+  fireEvent.click(screen.getByRole('button', { name: 'Enviar mensagem' }));
+  await screen.findByText('Conexão perdida');
+  fireEvent.click(screen.getByRole('button', { name: 'Reenviar a mesma mensagem' }));
+  await waitFor(() => expect(fake.mock.calls.filter(c => c[0] === '/api/assistant/draft')).toHaveLength(2));
+  const calls = fake.mock.calls.filter(c => c[0] === '/api/assistant/draft');
+  expect(calls[1][1].body).toBe(calls[0][1].body);
+});
+it('timeline apresenta complementos antigos e eventos novos sem descartar o texto', () => {
+  render(<RequestTimeline notes={[{ id: 'old', message: 'Cor azul', createdAt: '2026-10-20T12:00:00Z' }, { id: 'new', kind: 'workflow-update', message: 'Nome com acento: Löw', createdAt: '2026-10-22T12:00:00Z', paymentReported: true, changes: [] }]} load={async () => new Blob()} />);
+  expect(screen.getByText('Cor azul')).toBeTruthy(); expect(screen.getByText('Nome com acento: Löw')).toBeTruthy();
+  expect(screen.getAllByRole('listitem')).toHaveLength(2);
 });
 it("exige conferência, não anuncia sucesso com falha e reenvia exatamente o mesmo pedido", async () => {
   render(<AssistantChat />);

@@ -1,4 +1,5 @@
 import { assetId } from '../shared/assets/model';
+import { matchesRequestQuery, parseProductionCommand, productionUpdate, requestCodes } from '../shared/assistant/workflow';
 import { publicCustomerQuote } from '../shared/requests/quote';
 import { assistantAiFromEnvironment, AI_MAX_BYTES, type AssistantAi, type AiFile } from "./assistant-ai";
 import express, { type Express, type Request, type Response } from "express";
@@ -160,7 +161,7 @@ export function registerAssistantRoutes(
     const company = (await tx.get(ref(`tenants/${link.tenantId}`))).data();
     if (!company || company.status === "inactive")
       fail(403, "Empresa indisponível.");
-    return { ...link, companyName: company.companyName || "LabLayer", sharedRequests: company.assistantSharedRequests === true };
+    return { ...link, companyName: company.companyName || "LabLayer", sharedRequests: company.assistantSharedRequests === true, workflowUpdates: company.assistantWorkflowUpdates === true };
   }
   const errors = (res: Response, e: any) => {
     if (e instanceof BusinessError)
@@ -394,15 +395,65 @@ export function registerAssistantRoutes(
     }),
   );
   const aiBusy = new Set<string>();
+  async function applyProductionMessage(key: string, body: any, message: string, ids: string[]) {
+    const command = parseProductionCommand(message);
+    if (!command || (!command.code && !body.requestId)) return null;
+    const fingerprint = hash(JSON.stringify({ message, ids, requestId: body.requestId || null }));
+    return db!.runTransaction(async tx => {
+      const link = await access(tx, key);
+      if (!link.workflowUpdates) fail(403, 'Atualização de produção pelo bot não está habilitada nesta empresa.');
+      const receiptRef = ref(`assistantLinks/${key}/messageUpdates/${body.operationId}`);
+      const receipt = await tx.get(receiptRef);
+      if (receipt.exists) {
+        if (receipt.data()!.fingerprint !== fingerprint) fail(409, 'Envio já utilizado com outros dados.');
+        return receipt.data()!.result;
+      }
+      let requestId = body.requestId;
+      if (command.code) {
+        const index = await tx.get(db!.collection(link.sharedRequests ? `tenants/${link.tenantId}/customRequests` : `assistantLinks/${key}/requests`).orderBy(FieldPath.documentId()).limit(1001));
+        if (index.size > 1000) fail(409, 'Busca excede o limite. Selecione o pedido e envie o comando sem código.');
+        const rows = link.sharedRequests ? index.docs : index.empty ? [] : await tx.getAll(...index.docs.map(d => ref(`tenants/${link.tenantId}/customRequests/${d.id}`)));
+        const matches = rows.filter(d => d.exists).filter(d => [d.id, d.data()!.title, d.data()!.code, d.data()!.requestNumber].filter(v => typeof v === 'string').some(v => requestCodes(v).includes(command.code!)));
+        if (matches.length !== 1) fail(409, matches.length ? 'Mais de um pedido tem esse código. Selecione o pedido correto antes de atualizar.' : 'Pedido não encontrado. Confira o código; nada foi alterado.');
+        requestId = matches[0].id;
+      }
+      const mapping = await tx.get(ref(`assistantLinks/${key}/requests/${requestId}`));
+      const requestRef = ref(`tenants/${link.tenantId}/customRequests/${requestId}`);
+      const row = await tx.get(requestRef);
+      if ((!link.sharedRequests && !mapping.exists) || !row.exists) fail(404, 'Pedido não encontrado neste acesso.');
+      const phase = await tx.get(ref(`tenants/${link.tenantId}/inventoryControl/state`));
+      if (phase.exists && phase.data()?.phase !== 'legacy') fail(409, 'A produção desta empresa usa o fluxo novo. Atualize pelo módulo de pedidos.');
+      const files = await ownedFiles(tx, key, ids);
+      const notes = await tx.get(db!.collection(`tenants/${link.tenantId}/assistantRequests/${requestId}/notes`).limit(101));
+      if (notes.size >= 100) fail(409, 'Limite de 100 atualizações atingido.');
+      const now = new Date().toISOString();
+      let update;
+      try { update = productionUpdate(row.data(), command, now); }
+      catch (error) { fail(409, (error as Error).message); }
+      const noteId = `update-${hash(`${key}:${body.operationId}`)}`;
+      const result = { draft: null, action: { intent: 'updated' }, updatedRequestId: requestId, transcript: '',
+        message: `Pedido encaminhado para a fila de produção. ${command.paid ? 'Pagamento informado como recebido. ' : ''}Informações registradas na linha do tempo.${command.personalization.length ? ' Quantidade e opção de orçamento conferidas.' : ''}` };
+      tx.update(requestRef, update!.patch);
+      tx.create(ref(`tenants/${link.tenantId}/assistantRequests/${requestId}/notes/${noteId}`), {
+        message, attachments: files, seller: link.name, linkId: key, createdAt: now, fingerprint,
+        kind: 'workflow-update', changes: update!.changes, paymentReported: command.paid,
+        personalization: command.personalization,
+      });
+      tx.create(receiptRef, { fingerprint, requestId, result, createdAt: now });
+      audit(tx, link.tenantId, `assistant:${key}`, 'assistant.workflow-updated', requestId);
+      return result;
+    });
+  }
   app.post(
     "/api/assistant/draft",
     publicRoute(async (req, res, key) => {
-      const body = fields(req.body, ["message", "attachments", "guided", "conversation", "requestId"]);
+      const body = fields(req.body, ["message", "attachments", "guided", "conversation", "requestId", "operationId"]);
       const message = text(body.message, 4000);
       const ids = attachments(body.attachments ?? []);
       if (body.guided !== undefined && typeof body.guided !== "boolean") fail(422, "Modo inválido.");
       if (body.conversation !== undefined && typeof body.conversation !== "boolean") fail(422, "Modo inválido.");
       if (body.requestId !== undefined && (!body.conversation || !validId(body.requestId))) fail(422, "Pedido inválido.");
+      if (body.operationId !== undefined && !operationId(body.operationId)) fail(422, 'Identificador de envio inválido.');
       const fallback = (notice: string) => res.json(body.conversation && !body.guided
         ? { draft: null, action: { intent: "clarify" }, mode: "guided", transcript: "", message: "Não consegui interpretar esta mensagem. Use a lista para consultar ou complementar um pedido, ou marque Novo pedido manual para cadastrar. " + notice }
         : { draft: suggestIntake(message), mode: "guided", transcript: "", message: notice });
@@ -412,6 +463,10 @@ export function registerAssistantRoutes(
         if (!link.sharedRequests && !(await tx.get(ref(`assistantLinks/${key}/requests/${body.requestId}`))).exists) fail(404, "Pedido não encontrado.");
         if (!(await tx.get(ref(`tenants/${link.tenantId}/customRequests/${body.requestId}`))).exists) fail(404, "Pedido não encontrado.");
       });
+      if (body.conversation && !body.guided && body.operationId) {
+        const updated = await applyProductionMessage(key, body, message, ids);
+        if (updated) return res.json(updated);
+      }
       // Check ownership even when the fallback is selected.
       const enabled = await db!.runTransaction(async tx => { const link = await access(tx, key); await ownedFiles(tx, key, ids); return aiEnabled(link.tenantId); });
       if (!enabled || body.guided) return fallback("Confira título, cliente e quantidade. Modo guiado: imagens e áudios ficam anexados para análise da equipe.");
@@ -482,8 +537,7 @@ export function registerAssistantRoutes(
             }
             const matches = rows.filter(d => d.exists).filter(d => {
               const r = d.data()!;
-              const haystack = normalized([d.id, r.title, r.customerName, r.code, r.requestNumber].filter(Boolean).join(" "));
-              return !query || tokens.length > 0 && tokens.every(t => haystack.includes(t));
+              return !query || matchesRequestQuery(action.query, [d.id, r.title, r.customerName, r.code, r.requestNumber].filter(v => typeof v === 'string'));
             });
             return { candidates: matches.slice(0, 20).map(d => ({ id: d.id, title: d.data()!.title || "Pedido sem título", customerName: d.data()!.customerName || "", status: d.data()!.status })), truncated: truncated || matches.length > 20 };
           });
@@ -680,6 +734,10 @@ export function registerAssistantRoutes(
         seller: d.data().seller || "Equipe",
         attachments: d.data().attachments,
         createdAt: d.data().createdAt,
+        kind: d.data().kind || 'note',
+        changes: d.data().changes || [],
+        paymentReported: d.data().paymentReported === true,
+        personalization: d.data().personalization || [],
       })),
     };
   }

@@ -539,7 +539,7 @@ export function EncomendasOrcamentos() {
             <h2 ref={detailHeading} tabIndex={-1} className="font-headline font-bold text-lg break-words">{editingId ? 'Editar Solicitação' : 'Nova Solicitação'}</h2>
           </div>
 
-          {editingId?.startsWith("bot-") && <AssistantRequestNotes requestId={editingId} />}
+          {editingId && <AssistantRequestNotes requestId={editingId} />}
           <form onSubmit={handleSave} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="space-y-1.5 md:col-span-2">
