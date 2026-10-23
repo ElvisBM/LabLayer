@@ -3,7 +3,9 @@ import type { DecodedIdToken } from 'firebase-admin/auth';
 import type { Firestore } from 'firebase-admin/firestore';
 import { createHash, randomBytes } from 'node:crypto';
 import { BusinessError, validId } from './session';
-import { marketplaceAccess, openMarketplaceSecret, sealMarketplaceSecret } from './marketplace-security';
+import { marketplaceAccess, marketplaceViewerAccess, openMarketplaceSecret, sealMarketplaceSecret } from './marketplace-security';
+
+import { registerMarketplaceListingRoutes } from './marketplace-listings';
 
 export const ML_REDIRECT = 'https://app.lablayer.com.br/api/integrations/mercadolivre/callback';
 const RETURN_TO = '/?view=configuracoes&mercadolivre=';
@@ -177,13 +179,13 @@ export function registerMarketplaceOAuthRoutes(
 
   app.get('/api/integrations/mercadolivre/auth', (_req, res) => res.status(409).set('Cache-Control', 'no-store').json({ error: 'Use Conectar Mercado Livre nas Integrações da empresa.' }));
 
-  app.post(`${base}/check`, async (req, res) => {
-    res.set('Cache-Control', 'no-store');
-    let tenant: string | undefined, lease: string | undefined;
+  async function connectionToken(tenant: string, actor: DecodedIdToken, viewer = false) {
+    ready(tenant);
+    let lease: string | undefined;
+    const access = viewer ? marketplaceViewerAccess : marketplaceAccess;
     try {
-      const actor = await identity(req); const candidate = req.params.tenantId; ready(candidate); tenant = candidate;
       const context = await db!.runTransaction(async tx => {
-        await marketplaceAccess(db!, tx, tenant!, actor);
+        await access(db!, tx, tenant!, actor);
         const creds = (await tx.get(db!.doc(`privateMarketplaceCredentials/${tenant}`))).data();
         const ref = db!.doc(`privateMarketplaceConnections/${tenant}`), connection = (await tx.get(ref)).data();
         if (!connection || connectionMetadata(creds, connection).status !== 'connected') throw new BusinessError(409, 'Conecte novamente a conta do Mercado Livre.');
@@ -209,7 +211,7 @@ export function registerMarketplaceOAuthRoutes(
         await db!.runTransaction(async tx => {
           const ref = db!.doc(`privateMarketplaceConnections/${tenant}`), current = (await tx.get(ref)).data();
           const creds = (await tx.get(db!.doc(`privateMarketplaceCredentials/${tenant}`))).data();
-          await marketplaceAccess(db!, tx, tenant!, actor);
+          await access(db!, tx, tenant!, actor);
           if (current?.refreshLease !== lease || creds?.revision !== context.creds.revision) throw new BusinessError(409, 'Conexão alterada. Recarregue.');
           tx.update(ref, { tokens: sealMarketplaceSecret(key!, `${tenant}:oauth`, JSON.stringify(storedTokens)), expiresAt: renewed.expiresAt,
             refreshLease: null, refreshLeaseUntil: null, updatedAt: new Date().toISOString() });
@@ -217,7 +219,24 @@ export function registerMarketplaceOAuthRoutes(
         });
         lease = undefined;
       }
-      const seller = await provider('/users/me', { headers: { Authorization: `Bearer ${storedTokens.accessToken}` } });
+      return { context, accessToken: storedTokens.accessToken as string };
+    } catch (error) {
+      if (tenant && lease && db) await db.runTransaction(async tx => {
+        const ref = db!.doc(`privateMarketplaceConnections/${tenant}`), current = (await tx.get(ref)).data();
+        if (current?.refreshLease === lease) tx.update(ref, { status: 'reconnect-required', refreshLease: null, refreshLeaseUntil: null });
+      }).catch(() => {});
+      throw error;
+    }
+  }
+  registerMarketplaceListingRoutes(app, db, verify, connectionToken, fetcher);
+
+  app.post(`${base}/check`, async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    let tenant: string | undefined;
+    try {
+      const actor = await identity(req); const candidate = req.params.tenantId; ready(candidate); tenant = candidate;
+      const { context, accessToken } = await connectionToken(tenant, actor);
+      const seller = await provider('/users/me', { headers: { Authorization: `Bearer ${accessToken}` } });
       if (userId(seller.id) !== context.connection.userId || !scalar(seller.nickname, 160)) throw new ProviderError('invalid-response');
       const result = await db!.runTransaction(async tx => {
         const ref = db!.doc(`privateMarketplaceConnections/${tenant}`), current = (await tx.get(ref)).data();
@@ -231,10 +250,6 @@ export function registerMarketplaceOAuthRoutes(
       });
       return res.json({ connection: result });
     } catch (error) {
-      if (tenant && lease && db) await db.runTransaction(async tx => {
-        const ref = db!.doc(`privateMarketplaceConnections/${tenant}`), current = (await tx.get(ref)).data();
-        if (current?.refreshLease === lease) tx.update(ref, { status: 'reconnect-required', refreshLease: null, refreshLeaseUntil: null });
-      }).catch(() => {});
       if (error instanceof ProviderError) return res.status(502).json({ error: 'Mercado Livre não confirmou o acesso. Tente verificar novamente ou reconecte a conta.' });
       return fail(res, error);
     }

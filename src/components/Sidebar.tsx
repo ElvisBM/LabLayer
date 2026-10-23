@@ -1,4 +1,4 @@
-import { LayoutDashboard, Package, Printer, Settings, Wrench, Box, Store, Calculator, ShoppingCart, AlertOctagon, Layers, Wallet, ShieldAlert, Cable, CalendarDays, Tag, X, PanelLeftClose, FileText, Users, Bot } from 'lucide-react';
+import { Megaphone, LayoutDashboard, Package, Printer, Settings, Wrench, Box, Store, Calculator, ShoppingCart, AlertOctagon, Layers, Wallet, ShieldAlert, Cable, CalendarDays, Tag, X, PanelLeftClose, FileText, Users, Bot } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
@@ -40,6 +40,7 @@ export function Sidebar({
     {
       title: 'Vendas',
       items: [
+        { id: 'anuncios', label: 'Anúncios', icon: Megaphone },
         { id: 'vendas', label: 'Vendas', icon: ShoppingCart },
         { id: 'financeiro', label: 'Financeiro', icon: Wallet },
         { id: 'estoque', label: 'Estoque Inteligente', icon: Layers },

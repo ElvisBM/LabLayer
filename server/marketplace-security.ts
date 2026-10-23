@@ -38,3 +38,15 @@ export async function marketplaceAccess(db: Firestore, tx: Transaction, tenant: 
     if (!company || company.status === 'inactive' || !(owner || admin || (identity.superadmin === true && (!recheckPlatform || profile?.role === 'superadmin'))))
       throw new BusinessError(403, 'Somente administradores da empresa podem configurar esta integração.');
   }
+
+// Listing reads are available to active company members; integration writes remain admin-only.
+export async function marketplaceViewerAccess(db: Firestore, tx: Transaction, tenant: string, identity: { uid: string; superadmin?: boolean }) {
+  const company = (await tx.get(db.doc(`tenants/${tenant}`))).data();
+  const profile = (await tx.get(db.doc(`users/${identity.uid}`))).data();
+  const member = await tx.get(db.doc(`tenants/${tenant}/members/${identity.uid}`));
+  const belongs = profile?.tenantId === tenant && (member.exists
+    ? member.data()?.active === true
+    : ['admin', 'member'].includes(profile?.tenantRole));
+  if (!company || company.status === 'inactive' || !(company.ownerUid === identity.uid || belongs || (identity.superadmin === true && profile?.role === 'superadmin')))
+    throw new BusinessError(403, 'Você não tem acesso aos anúncios desta empresa.');
+}

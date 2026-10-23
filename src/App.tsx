@@ -22,6 +22,7 @@ const Fornecedores = lazy(() => import('./views/Fornecedores').then(module => ({
 const Impressoras = lazy(() => import('./views/Impressoras').then(module => ({ default: module.Impressoras })));
 const Insumos = lazy(() => import('./views/Insumos').then(module => ({ default: module.Insumos })));
 const Produtos = lazy(() => import('./views/Produtos').then(module => ({ default: module.Produtos })));
+const MarketplaceListings = lazy(() => import('./features/integrations/MarketplaceListings').then(module => ({ default: module.MarketplaceListings })));
 const Marketplaces = lazy(() => import('./views/Marketplaces').then(module => ({ default: module.Marketplaces })));
 const Precificacao = lazy(() => import('./views/Precificacao').then(module => ({ default: module.Precificacao })));
 const ValoresSugeridos = lazy(() => import('./views/ValoresSugeridos').then(module => ({ default: module.ValoresSugeridos })));
@@ -35,7 +36,7 @@ const SuperAdmin = lazy(() => import('./views/SuperAdmin').then(module => ({ def
 const TeamPage = lazy(() => import('./features/team/TeamPage').then(module => ({ default: module.TeamPage })));
 
 function MainApp() {
-  const [currentView, setCurrentView] = useState(() => new URLSearchParams(window.location.search).get('view') === 'configuracoes' ? 'configuracoes' : 'dashboard');
+  const [currentView, setCurrentView] = useState(() => ['configuracoes', 'anuncios'].includes(new URLSearchParams(window.location.search).get('view') || '') ? new URLSearchParams(window.location.search).get('view')! : 'dashboard');
   const [isSidebarMobileOpen, setIsSidebarMobileOpen] = useState(false);
   const [isSidebarDesktopOpen, setIsSidebarDesktopOpen] = useState(true);
   const [productEditorState, setProductEditorState] = useState<{ mode: 'new' | 'edit'; productId: string | null }>({
@@ -109,6 +110,7 @@ function MainApp() {
         return <Precificacao />;
       case 'valores-sugeridos':
         return <ValoresSugeridos />;
+      case 'anuncios': return <MarketplaceListings />;
       case 'marketplaces':
         return <Marketplaces />;
       case 'perdas':
@@ -149,6 +151,7 @@ function MainApp() {
       case 'produto-editor': return productEditorState.mode === 'edit' ? 'Editar Produto' : 'Novo Produto';
       case 'precificacao': return 'Simulador de Precificação';
       case 'valores-sugeridos': return 'Valores Sugeridos';
+      case 'anuncios': return 'Anúncios';
       case 'marketplaces': return 'Canais de Venda';
       case 'perdas': return 'Controle de Perdas';
       case 'estoque': return 'Estoque Inteligente';
