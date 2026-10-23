@@ -23,6 +23,8 @@ export function MarketplaceListings() {
 function Listings({ user, tenant }: { user: { getIdToken(): Promise<string> }; tenant: string }) {
   const [selected, setSelected] = useState<{ id: string; action: ListingAction } | null>(null);
   const [notice, setNotice] = useState('');
+  const [tikTok, setTikTok] = useState<(ListingResult & { status: string }) | null>(null);
+  const [tikTokError, setTikTokError] = useState(''), [tikTokBusy, setTikTokBusy] = useState(true);
   const [data, setData] = useState<ListingResult | null>(null);
   const [busy, setBusy] = useState(true), [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0), [search, setSearch] = useState('');
@@ -36,42 +38,54 @@ function Listings({ user, tenant }: { user: { getIdToken(): Promise<string> }; t
       .finally(() => { if (alive) setBusy(false); });
     return () => { alive = false; };
   }, [user, tenant, refresh]);
+  useEffect(() => {
+    let alive = true; setTikTokBusy(true); setTikTok(null); setTikTokError('');
+    catalogRequest(user, `/api/tenants/${encodeURIComponent(tenant)}/integrations/tiktokshop/listings${refresh ? '?refresh=1' : ''}`)
+      .then(result => { if (alive) { setTikTok(result); setPage(1); } })
+      .catch(e => { if (alive) setTikTokError(e instanceof Error ? e.message : 'Consulta TikTok indisponível.'); })
+      .finally(() => { if (alive) setTikTokBusy(false); });
+    return () => { alive = false; };
+  }, [user, tenant, refresh]);
+  const allListings = [...(data?.listings || []), ...(tikTok?.status === 'connected' ? tikTok.listings : [])];
   const clean = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  const rows = (data?.listings || []).filter(item => (platform === 'all' || item.platform === platform) &&
+  const rows = allListings.filter(item => (platform === 'all' || item.platform === platform) &&
     (status === 'all' || item.status === status) && clean(`${item.title} ${item.id}`).includes(clean(search)));
   const pages = Math.max(1, Math.ceil(rows.length / 25));
   const currentPage = Math.min(page, pages);
-  const unavailable = platform === 'shopee' || platform === 'tiktok';
+  const unavailable = platform === 'shopee';
   if (selected) return <MarketplaceListingEditor key={`${selected.id}:${selected.action}`} user={user} tenant={tenant} id={selected.id} action={selected.action}
     onBack={() => { setSelected(null); setRefresh(n => n + 1); }} onSaved={() => { setSelected(null); setNotice('Alteração confirmada no Mercado Livre.'); setRefresh(n => n + 1); }} />;
   return <section className="space-y-6" aria-label="Anúncios nas plataformas">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div><h2 className="text-2xl font-bold flex items-center gap-2"><Megaphone className="w-6 h-6" />Anúncios</h2>
         <p className="text-sm text-slate-600 mt-1">Acompanhe os anúncios e a quantidade disponível em cada canal.</p></div>
-      <button disabled={busy} onClick={() => setRefresh(n => n + 1)} className="inline-flex items-center gap-2 bg-white border rounded-xl px-4 py-2 disabled:opacity-50">
-        <RefreshCw className={`w-4 h-4 ${busy ? 'animate-spin' : ''}`} />{busy ? 'Consultando…' : 'Atualizar anúncios'}</button>
+      <button disabled={busy || tikTokBusy} onClick={() => setRefresh(n => n + 1)} className="inline-flex items-center gap-2 bg-white border rounded-xl px-4 py-2 disabled:opacity-50">
+        <RefreshCw className={`w-4 h-4 ${busy || tikTokBusy ? 'animate-spin' : ''}`} />{busy || tikTokBusy ? 'Consultando…' : 'Atualizar anúncios'}</button>
     </div>
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       {(Object.keys(platformNames) as Platform[]).map(key => <div key={key} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
         <PlatformTag platform={key} />
-        <p className="text-sm text-slate-600">{key !== 'mercadolivre' ? 'Integração pendente' : data ? `${data.total} anúncios na conta · ${data.listings.filter(i => i.status === 'active').length} ativos${data.complete ? '' : ' na amostra'}` : busy ? 'Consultando conta…' : 'Consulta indisponível'}</p>
+        <p className="text-sm text-slate-600">{key === 'tiktok' ? (tikTokBusy ? 'Consultando TikTok Shop…' : tikTokError ? 'TikTok Shop: consulta indisponível' : tikTok?.status === 'connected' ? `${tikTok.total} anúncios na loja · ${tikTok.listings.filter(i => i.status === 'active').length} ativos${tikTok.complete ? '' : ' na amostra'}` : tikTok?.status === 'select-shop' ? 'Selecione a loja nas Configurações' : tikTok?.status === 'reconnect-required' ? 'Reconecte nas Configurações' : 'Conecte nas Configurações') : key === 'shopee' ? 'Integração pendente' : data ? `${data.total} anúncios na conta · ${data.listings.filter(i => i.status === 'active').length} ativos${data.complete ? '' : ' na amostra'}` : busy ? 'Consultando conta…' : 'Consulta indisponível'}</p>
         {key === 'mercadolivre' && data && <p className="text-xs text-slate-500 break-all">Conta: {data.seller}</p>}
       </div>)}
     </div>
     <div className="flex flex-col md:flex-row gap-3">
       <label className="flex items-center gap-2 bg-white border rounded-xl px-3 flex-1"><Search className="w-4 h-4 text-slate-400" /><input aria-label="Buscar anúncio" placeholder="Buscar por título ou código do anúncio" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} className="py-3 w-full bg-transparent outline-none" /></label>
       <label className="text-sm">Plataforma<select aria-label="Plataforma" value={platform} onChange={e => { setPlatform(e.target.value); setPage(1); }} className="block w-full border rounded-xl bg-white p-2.5"><option value="all">Todas as plataformas</option>{Object.entries(platformNames).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
-      <label className="text-sm">Status<select aria-label="Status" value={status} onChange={e => { setStatus(e.target.value); setPage(1); }} className="block w-full border rounded-xl bg-white p-2.5"><option value="all">Todos os status</option>{[...new Set([...Object.keys(listingStatus), ...(data?.listings.map(i => i.status) || [])])].map(id => <option key={id} value={id}>{listingStatus[id] || id}</option>)}</select></label>
+      <label className="text-sm">Status<select aria-label="Status" value={status} onChange={e => { setStatus(e.target.value); setPage(1); }} className="block w-full border rounded-xl bg-white p-2.5"><option value="all">Todos os status</option>{[...new Set([...Object.keys(listingStatus), ...allListings.map(i => i.status)])].map(id => <option key={id} value={id}>{listingStatus[id] || id}</option>)}</select></label>
     </div>
     {notice && <p role="status" className="bg-emerald-50 text-emerald-900 p-4 rounded-xl">{notice}</p>}
     {data && !data.canManage && <p className="text-sm text-slate-500">Somente administradores podem publicar, editar ou despublicar anúncios.</p>}
     {error && <div role="alert" className="bg-amber-50 text-amber-950 p-4 rounded-xl">{error} <a href="/?view=configuracoes" className="underline">Abrir Configurações</a></div>}
+    {tikTokError && <p role="alert" className="bg-amber-50 p-4 rounded-xl">TikTok Shop: {tikTokError}</p>}
+    {tikTok?.status === 'connected' && <div className="text-xs text-slate-500"><p>TikTok Shop · {tikTok.seller} · Consulta em {new Date(tikTok.fetchedAt).toLocaleString('pt-BR')}. Quantidade no canal; não altera o estoque do LabLayer.</p>{!tikTok.complete && <p role="status">Consulta parcial TikTok: {tikTok.listings.length} de {tikTok.total} anúncios.</p>}<p>Preços diferentes entre variações aparecem como indisponíveis nesta etapa.</p></div>}
+    {platform === 'tiktok' && tikTok && tikTok.status !== 'connected' && <p>Conclua a conexão do TikTok Shop em <a href="/?view=configuracoes" className="underline">Configurações</a>.</p>}
     {data && <div className="text-xs text-slate-500 space-y-1"><p>Atualizado em {new Date(data.fetchedAt).toLocaleString('pt-BR')}. Quantidade informada pela plataforma; não representa o estoque consolidado do LabLayer.</p>
       {!data.complete && <p role="status" className="text-amber-800">Consulta parcial: {data.listings.length} de {data.total} anúncios. Os filtros e a contagem de ativos consideram apenas os anúncios carregados.</p>}</div>}
     {unavailable ? <p className="rounded-xl bg-white border p-6">{platformNames[platform as Platform]} ainda não está integrado. Os anúncios aparecerão aqui após a conexão dessa plataforma.</p> : <>
       {busy && !data && <p role="status">Carregando anúncios do Mercado Livre…</p>}
-      {!busy && data && rows.length === 0 && <p className="bg-white border rounded-xl p-6">Nenhum anúncio encontrado com os filtros selecionados.</p>}
-      <div className="space-y-3" aria-busy={busy}>
+      {!busy && !tikTokBusy && (platform === 'mercadolivre' ? !!data : platform === 'tiktok' ? tikTok?.status === 'connected' : !!data || tikTok?.status === 'connected') && rows.length === 0 && <p className="bg-white border rounded-xl p-6">Nenhum anúncio encontrado com os filtros selecionados.</p>}
+      <div className="space-y-3" aria-busy={busy || tikTokBusy}>
         {rows.slice((currentPage - 1) * 25, currentPage * 25).map(item => <article key={`${item.platform}:${item.id}`} className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row gap-4">
           {item.thumbnail ? <img src={item.thumbnail} alt="" loading="lazy" referrerPolicy="no-referrer" className="w-20 h-20 object-contain rounded-lg bg-slate-50 shrink-0" /> : <div className="w-20 h-20 bg-slate-50 rounded-lg flex items-center justify-center shrink-0"><Megaphone className="text-slate-300" /></div>}
           <div className="flex-1 min-w-0 space-y-2"><div className="flex flex-wrap items-center gap-2"><PlatformTag platform={item.platform} /><span className={`text-xs rounded-full px-3 py-1 ${item.status === 'active' ? 'bg-emerald-100 text-emerald-900' : 'bg-slate-100 text-slate-700'}`}>{listingStatus[item.status] || item.status}</span></div>
@@ -87,7 +101,7 @@ function Listings({ user, tenant }: { user: { getIdToken(): Promise<string> }; t
           <div className="sm:text-right shrink-0"><p className="font-bold text-lg">{money(item.price, item.currency)}</p><p className="text-sm text-slate-600">Quantidade no canal: {item.quantity ?? 'indisponível'}</p></div>
         </article>)}
       </div>
-      {data && rows.length > 0 && <nav aria-label="Paginação dos anúncios" className="flex flex-wrap justify-between items-center gap-3 text-sm"><span>{rows.length} anúncios encontrados · Página {currentPage} de {pages}</span><div className="flex gap-2"><button className="border rounded-lg px-4 py-2 disabled:opacity-40" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Anterior</button><button className="border rounded-lg px-4 py-2 disabled:opacity-40" disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)}>Próxima</button></div></nav>}
+      {rows.length > 0 && <nav aria-label="Paginação dos anúncios" className="flex flex-wrap justify-between items-center gap-3 text-sm"><span>{rows.length} anúncios encontrados · Página {currentPage} de {pages}</span><div className="flex gap-2"><button className="border rounded-lg px-4 py-2 disabled:opacity-40" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Anterior</button><button className="border rounded-lg px-4 py-2 disabled:opacity-40" disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)}>Próxima</button></div></nav>}
     </>}
   </section>;
 }

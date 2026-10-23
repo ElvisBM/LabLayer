@@ -4,6 +4,8 @@ Pesquisa de viabilidade e plano de integração, conferidos em 23/10/2026.
 
 É viável centralizar produtos à venda, edição, ativação/desativação, pedidos e estoque do TikTok Shop no LabLayer. A liberação depende da loja brasileira, aplicativo e permissões concedidas no Partner Center. A conta do usuário ainda não foi autorizada nem homologada nesta investigação. O cadastro de produtos e a operação da loja são a primeira entrega proposta; publicidade paga é um módulo separado.
 
+Atualização: a preparação de T1 está documentada em [TikTok Shop — conexão e consulta](tiktok-shop-t1-20261023.md). O diagnóstico abaixo registra o estado anterior à implementação.
+
 ## Situação do LabLayer
 
 O código atual já tem a etiqueta TikTok Shop no menu Anúncios, mas mostra integração pendente. Não há conector TikTok no backend inspecionado. Mercado Livre tem OAuth, consulta e ações próprias; esses padrões podem orientar a nova integração, porém os contratos não são intercambiáveis.

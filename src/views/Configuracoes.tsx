@@ -1,3 +1,4 @@
+import { TikTokCredentials } from '../features/integrations/TikTokCredentials';
 import { MercadoLivreCredentials } from '../features/integrations/MercadoLivreCredentials';
 import { useState } from 'react';
 import { Settings, Link as LinkIcon, ShoppingBag, Store, Globe, AlertCircle } from 'lucide-react';
@@ -27,10 +28,11 @@ export function Configuracoes() {
         <div className="space-y-6">
           <div role="note" className="bg-primary-container/30 border border-primary/20 p-4 rounded-lg flex gap-3">
             <AlertCircle className="w-5 h-5 flex-shrink-0" />
-            <p className="text-sm">Administradores podem cadastrar as credenciais do Mercado Livre nesta tela. O cadastro e a autorização da conta são etapas separadas. As demais plataformas ainda estão em preparação.</p>
+            <p className="text-sm">Administradores podem cadastrar as credenciais do Mercado Livre e TikTok Shop nesta tela. O cadastro e a autorização da conta são etapas separadas. As demais plataformas ainda estão em preparação.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <MercadoLivreCredentials />
+            <TikTokCredentials />
             {plannedIntegrations.map(({ name, Icon, description }) => (
               <div key={name} className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm">
                 <div className="flex items-center gap-3 mb-3"><Icon className="w-6 h-6" /><h3 className="font-bold text-lg">{name}</h3></div>

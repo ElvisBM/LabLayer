@@ -7,7 +7,7 @@ import { Sidebar } from '../../src/components/Sidebar';
 import { normalizeMLListing, safeListingUrl } from '../../shared/marketplaces/listings';
 const mock = vi.hoisted(() => ({ call: vi.fn(), user: { uid: 'member', getIdToken: vi.fn() }, tenantId: 'a' }));
 vi.mock('../../src/contexts/AuthContext', () => ({ useAuth: () => ({ user: mock.user, tenantId: mock.tenantId }) }));
-vi.mock('../../src/features/catalog/client', () => ({ catalogRequest: (...args: any[]) => mock.call(...args) }));
+vi.mock('../../src/features/catalog/client', () => ({ catalogRequest: (...args: any[]) => args[1].includes('/tiktokshop/') ? Promise.resolve({ status: 'not-connected', listings: [], total: null }) : mock.call(...args) }));
 const listing = (id: string, status = 'active') => ({ id, platform: 'mercadolivre', title: `Anúncio ${id}`, status, price: 29.9, currency: 'BRL', quantity: 3, url: 'https://produto.mercadolivre.com.br/'+id, thumbnail: null });
 const data = { listings: [listing('MLB1'), listing('MLB2', 'paused'), listing('MLB3', 'closed')], total: 3, complete: true, seller: 'LOJA', fetchedAt: '2026-10-23T17:00:00Z' };
 beforeEach(() => { mock.tenantId = 'a'; mock.call.mockReset().mockResolvedValue(data); }); afterEach(cleanup);
@@ -17,7 +17,7 @@ it('menu abre Anúncios como página separada', () => {
 });
 it('exibe tags, preço, quantidade e link seguro; plataformas pendentes são explícitas', async () => {
   render(<MarketplaceListings />); await screen.findByText('Anúncio MLB1');
-  expect(screen.getAllByText('Integração pendente')).toHaveLength(2);
+  expect(screen.getAllByText('Integração pendente')).toHaveLength(1);
   const row = screen.getAllByRole('article')[0]; expect(within(row).getByText('Mercado Livre')).toBeTruthy();
   expect(within(row).getByText(/29,90/)).toBeTruthy(); expect(within(row).getByText('Quantidade no canal: 3')).toBeTruthy();
   expect(within(row).getByRole('link').getAttribute('rel')).toBe('noopener noreferrer');

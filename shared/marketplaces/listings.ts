@@ -10,7 +10,7 @@ export interface ListingResult {
   listings: ChannelListing[]; total: number; complete: boolean; fetchedAt: string; seller: string;
 }
 export const listingStatus: Record<string, string> = {
-  active: 'Ativo', paused: 'Pausado', closed: 'Encerrado', under_review: 'Em análise', inactive: 'Inativo', payment_required: 'Pagamento pendente',
+  draft: 'Rascunho', rejected: 'Reprovado', frozen: 'Congelado', scheduled: 'Agendado', platform_inactive: 'Desativado pela plataforma', unknown: 'Não informado', active: 'Ativo', paused: 'Pausado', closed: 'Encerrado', under_review: 'Em análise', inactive: 'Inativo', payment_required: 'Pagamento pendente',
 };
 export function safeListingUrl(value: unknown, domain: string): string | null {
   try {

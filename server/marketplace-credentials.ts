@@ -1,3 +1,4 @@
+import { registerTikTokRoutes } from './tiktok';
 import type { Express } from 'express';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import type { Firestore } from 'firebase-admin/firestore';
@@ -68,4 +69,5 @@ export function registerMarketplaceCredentialRoutes(
   app.get(route, handler(false));
   app.post(route, handler(true));
   registerMarketplaceOAuthRoutes(app, db, verify, key);
+  registerTikTokRoutes(app, db, verify, key);
 }
