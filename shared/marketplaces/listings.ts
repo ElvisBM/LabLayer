@@ -6,6 +6,7 @@ export interface ChannelListing {
   url: string | null; thumbnail: string | null;
 }
 export interface ListingResult {
+  canManage?: boolean;
   listings: ChannelListing[]; total: number; complete: boolean; fetchedAt: string; seller: string;
 }
 export const listingStatus: Record<string, string> = {
@@ -26,4 +27,9 @@ export function normalizeMLListing(item: any): ChannelListing {
     url: safeListingUrl(item.permalink, 'mercadolivre.com.br'),
     thumbnail: safeListingUrl(item.secure_thumbnail, 'mlstatic.com') || safeListingUrl(item.pictures?.[0]?.secure_url, 'mlstatic.com'),
   };
+}
+
+export interface ListingDetail {
+  listing: ChannelListing; revision: string;
+  capabilities: { title: boolean; price: boolean; titleReason: string; priceReason: string; publish: boolean; unpublish: boolean };
 }

@@ -87,7 +87,7 @@ it('cofre indisponível não grava nem aceita cadastro', async () => {
 it('bloqueia leitura e escrita direta no Firestore mesmo para plataforma e proprietário', async () => {
   await post().expect(200);
   for (const client of [rules.unauthenticatedContext(), rules.authenticatedContext('owner'), rules.authenticatedContext('platform', { superadmin: true })]) {
-    for (const collection of ['privateMarketplaceCredentials', 'privateMarketplaceConnections', 'privateMarketplaceOAuthStates', 'privateMarketplaceOAuthAttempts']) {
+    for (const collection of ['privateMarketplaceCredentials', 'privateMarketplaceConnections', 'privateMarketplaceOAuthStates', 'privateMarketplaceOAuthAttempts', 'privateMarketplaceActions', 'privateMarketplaceActionLocks']) {
       const target = doc(client.firestore(), `${collection}/a`);
       await assertFails(getDoc(target)); await assertFails(setDoc(target, { clientId: 'override' }));
     }

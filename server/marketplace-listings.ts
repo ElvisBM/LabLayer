@@ -1,19 +1,22 @@
+import { registerMarketplaceListingActions } from './marketplace-listing-actions';
 import type { Express } from 'express';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import type { Firestore } from 'firebase-admin/firestore';
 import { BusinessError, validId } from './session';
-import { marketplaceViewerAccess } from './marketplace-security';
+import { marketplaceAccess, marketplaceViewerAccess } from './marketplace-security';
 import { normalizeMLListing, type ListingResult } from '../shared/marketplaces/listings';
 
-type TokenLoader = (tenant: string, actor: DecodedIdToken, viewer: boolean) => Promise<{
+export type TokenLoader = (tenant: string, actor: DecodedIdToken, viewer: boolean) => Promise<{
   accessToken: string; context: { creds: any; connection: any };
 }>;
 
-// Read-only projection. No listing, price, mapping or inventory writes.
+// Listing projection and administrator actions; no local inventory writes.
 export function registerMarketplaceListingRoutes(app: Express, db: Firestore | null,
   verify: (token: string) => Promise<DecodedIdToken>, loadToken: TokenLoader, fetcher: typeof fetch = fetch) {
   const cache = new Map<string, { at: number; result: ListingResult }>();
   const pending = new Map<string, Promise<ListingResult>>();
+  let generation = 0;
+  registerMarketplaceListingActions(app, db, verify, loadToken, () => { generation++; cache.clear(); pending.clear(); }, fetcher);
   app.get('/api/tenants/:tenantId/marketplace-listings', async (req, res) => {
     res.set('Cache-Control', 'no-store');
     try {
@@ -26,6 +29,7 @@ export function registerMarketplaceListingRoutes(app: Express, db: Firestore | n
       if (!validId(tenant)) throw new BusinessError(400, 'Empresa inválida.');
       if (!db) throw new BusinessError(503, 'Consulta indisponível.');
       const { context, accessToken } = await loadToken(tenant, actor, true);
+      const startedGeneration = generation;
       const sellerId = String(context.connection.userId);
       if (!/^[1-9]\d{0,19}$/.test(sellerId)) throw Error();
       const cacheKey = JSON.stringify([tenant, sellerId, context.connection.connectedAt, context.creds.revision]);
@@ -75,8 +79,8 @@ export function registerMarketplaceListingRoutes(app: Express, db: Firestore | n
           work.then(value => {
             // Bound process memory across companies and connection revisions.
             if (cache.size >= 100) cache.delete(cache.keys().next().value!);
-            cache.set(cacheKey, { at: Date.now(), result: value });
-          }).finally(() => pending.delete(cacheKey)).catch(() => {});
+            if (generation === startedGeneration) cache.set(cacheKey, { at: Date.now(), result: value });
+          }).finally(() => { if (pending.get(cacheKey) === work) pending.delete(cacheKey); }).catch(() => {});
         }
         result = await work;
       }
@@ -89,7 +93,11 @@ export function registerMarketplaceListingRoutes(app: Express, db: Firestore | n
             creds?.revision !== context.creds.revision || current?.credentialRevision !== creds?.revision)
           throw new BusinessError(409, 'Conexão alterada. Recarregue a lista.');
       });
-      return res.json(result);
+      if (generation !== startedGeneration) throw new BusinessError(409, 'Anúncio alterado durante a consulta. Atualize novamente.');
+      let canManage = false;
+      try { await db.runTransaction(tx => marketplaceAccess(db, tx, tenant, actor, true)); canManage = true; }
+      catch (e) { if (!(e instanceof BusinessError && e.status === 403)) throw e; }
+      return res.json({ ...result, canManage });
     } catch (error) {
       return res.status(error instanceof BusinessError ? error.status : 502).json({
         error: error instanceof BusinessError ? error.message : 'Não foi possível consultar os anúncios. Tente atualizar novamente.',

@@ -1,3 +1,4 @@
+import { MarketplaceListingEditor, type ListingAction } from './MarketplaceListingEditor';
 import { useEffect, useState } from 'react';
 import { ExternalLink, Megaphone, RefreshCw, Search } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -20,6 +21,8 @@ export function MarketplaceListings() {
   return <Listings key={`${user.uid}:${tenantId}`} user={user} tenant={tenantId} />;
 }
 function Listings({ user, tenant }: { user: { getIdToken(): Promise<string> }; tenant: string }) {
+  const [selected, setSelected] = useState<{ id: string; action: ListingAction } | null>(null);
+  const [notice, setNotice] = useState('');
   const [data, setData] = useState<ListingResult | null>(null);
   const [busy, setBusy] = useState(true), [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0), [search, setSearch] = useState('');
@@ -39,6 +42,8 @@ function Listings({ user, tenant }: { user: { getIdToken(): Promise<string> }; t
   const pages = Math.max(1, Math.ceil(rows.length / 25));
   const currentPage = Math.min(page, pages);
   const unavailable = platform === 'shopee' || platform === 'tiktok';
+  if (selected) return <MarketplaceListingEditor key={`${selected.id}:${selected.action}`} user={user} tenant={tenant} id={selected.id} action={selected.action}
+    onBack={() => { setSelected(null); setRefresh(n => n + 1); }} onSaved={() => { setSelected(null); setNotice('Alteração confirmada no Mercado Livre.'); setRefresh(n => n + 1); }} />;
   return <section className="space-y-6" aria-label="Anúncios nas plataformas">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div><h2 className="text-2xl font-bold flex items-center gap-2"><Megaphone className="w-6 h-6" />Anúncios</h2>
@@ -58,6 +63,8 @@ function Listings({ user, tenant }: { user: { getIdToken(): Promise<string> }; t
       <label className="text-sm">Plataforma<select aria-label="Plataforma" value={platform} onChange={e => { setPlatform(e.target.value); setPage(1); }} className="block w-full border rounded-xl bg-white p-2.5"><option value="all">Todas as plataformas</option>{Object.entries(platformNames).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
       <label className="text-sm">Status<select aria-label="Status" value={status} onChange={e => { setStatus(e.target.value); setPage(1); }} className="block w-full border rounded-xl bg-white p-2.5"><option value="all">Todos os status</option>{[...new Set([...Object.keys(listingStatus), ...(data?.listings.map(i => i.status) || [])])].map(id => <option key={id} value={id}>{listingStatus[id] || id}</option>)}</select></label>
     </div>
+    {notice && <p role="status" className="bg-emerald-50 text-emerald-900 p-4 rounded-xl">{notice}</p>}
+    {data && !data.canManage && <p className="text-sm text-slate-500">Somente administradores podem publicar, editar ou despublicar anúncios.</p>}
     {error && <div role="alert" className="bg-amber-50 text-amber-950 p-4 rounded-xl">{error} <a href="/?view=configuracoes" className="underline">Abrir Configurações</a></div>}
     {data && <div className="text-xs text-slate-500 space-y-1"><p>Atualizado em {new Date(data.fetchedAt).toLocaleString('pt-BR')}. Quantidade informada pela plataforma; não representa o estoque consolidado do LabLayer.</p>
       {!data.complete && <p role="status" className="text-amber-800">Consulta parcial: {data.listings.length} de {data.total} anúncios. Os filtros e a contagem de ativos consideram apenas os anúncios carregados.</p>}</div>}
@@ -69,6 +76,12 @@ function Listings({ user, tenant }: { user: { getIdToken(): Promise<string> }; t
           {item.thumbnail ? <img src={item.thumbnail} alt="" loading="lazy" referrerPolicy="no-referrer" className="w-20 h-20 object-contain rounded-lg bg-slate-50 shrink-0" /> : <div className="w-20 h-20 bg-slate-50 rounded-lg flex items-center justify-center shrink-0"><Megaphone className="text-slate-300" /></div>}
           <div className="flex-1 min-w-0 space-y-2"><div className="flex flex-wrap items-center gap-2"><PlatformTag platform={item.platform} /><span className={`text-xs rounded-full px-3 py-1 ${item.status === 'active' ? 'bg-emerald-100 text-emerald-900' : 'bg-slate-100 text-slate-700'}`}>{listingStatus[item.status] || item.status}</span></div>
             <h3 className="font-semibold break-words">{item.title}</h3><p className="text-xs text-slate-500">{item.id}</p>
+            {data?.canManage && item.platform === 'mercadolivre' && <div className="flex flex-wrap gap-2 pt-2">
+              <button disabled={busy} onClick={() => { setNotice(''); setSelected({ id: item.id, action: 'edit' }); }} className="border rounded-lg px-3 py-2 text-sm disabled:opacity-40">Editar</button>
+              {item.status === 'active' && <button disabled={busy} onClick={() => { setNotice(''); setSelected({ id: item.id, action: 'unpublish' }); }} className="border border-amber-300 text-amber-900 rounded-lg px-3 py-2 text-sm disabled:opacity-40">Despublicar</button>}
+              {item.status === 'paused' && <button disabled={busy} onClick={() => { setNotice(''); setSelected({ id: item.id, action: 'publish' }); }} className="bg-indigo-700 text-white rounded-lg px-3 py-2 text-sm disabled:opacity-40">Publicar</button>}
+              {item.status === 'closed' && <span className="text-xs text-slate-500 self-center">Encerrado: republicação pelo Mercado Livre</span>}
+            </div>}
             {item.url && <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-700 inline-flex gap-1 items-center">Ver anúncio <ExternalLink className="w-3.5 h-3.5" /></a>}
           </div>
           <div className="sm:text-right shrink-0"><p className="font-bold text-lg">{money(item.price, item.currency)}</p><p className="text-sm text-slate-600">Quantidade no canal: {item.quantity ?? 'indisponível'}</p></div>
