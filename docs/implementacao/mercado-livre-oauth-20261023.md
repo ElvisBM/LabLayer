@@ -46,6 +46,11 @@ Restaurar o módulo de credenciais e o build anteriores e reiniciar o serviço. 
 
 Release `30f7813` publicado. Backup anterior em `/home/lablayer/deploy-backups/ml-oauth-30f7813`. Processo reiniciado e online; hashes de `server.ts` e do módulo do bot permanecem iguais aos anteriores. Build servido: `index-kpqIQDqz.js`, CSS `index-DBI7MLHx.css`; assets antigos preservados para abas já abertas.
 
-HTTPS confirmou página e assets 200, callback inválido retornando à tela de configurações sem simular sucesso, e endpoints credentials/connect/check retornando 401 sem sessão. A credencial existente permanece na revisão 2, sem substituição durante o deploy. Ainda não houve autorização real do vendedor: o consentimento deve ser realizado pelo usuário no Mercado Livre.
+HTTPS confirmou página e assets 200, callback inválido retornando à tela de configurações sem simular sucesso, e endpoints credentials/connect/check retornando 401 sem sessão. A credencial existente permanece na revisão 2, sem substituição durante o deploy. No momento da publicação, o consentimento real ainda estava pendente; a confirmação posterior está registrada abaixo.
 
 Paridade no repositório principal: TypeScript e os mesmos 12 testes unitários passaram. A alteração de navegação foi aplicada isoladamente, preservando o carregamento de telas existente no ramo principal.
+
+
+## Autorização real confirmada
+
+Em 23/10/2026, após o usuário concluir o consentimento, a conexão foi registrada às 14:18 (America/Sao_Paulo) para a conta `CHGACDFBE12458`, vendedor `3382424247`. A revisão das credenciais coincide com a conexão salva. A consulta real somente de leitura a `/users/me` retornou HTTP 200 e o mesmo ID de vendedor, confirmando o acesso. Segredo e tokens não foram exibidos. Nenhum anúncio, venda ou estoque foi alterado nessa verificação.
