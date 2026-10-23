@@ -29,7 +29,7 @@ afterAll(async () => { await rules.cleanup(); await db.terminate(); await delete
 
 it('salva criptografado por empresa; leitura e auditoria nunca retornam segredo ou ciphertext', async () => {
   const saved = await post().expect(200);
-  expect(saved.body).toMatchObject({ clientId: body.clientId, hasSecret: true, revision: 1, status: 'credentials-saved', oauthReady: false });
+  expect(saved.body).toMatchObject({ clientId: body.clientId, hasSecret: true, revision: 1, status: 'credentials-saved', oauthReady: true });
   const stored = (await db.doc('privateMarketplaceCredentials/a').get()).data()!;
   expect(openMarketplaceSecret(key, 'a', stored.secret)).toBe(secret);
   expect(() => openMarketplaceSecret(key, 'b', stored.secret)).toThrow();
@@ -87,13 +87,15 @@ it('cofre indisponível não grava nem aceita cadastro', async () => {
 it('bloqueia leitura e escrita direta no Firestore mesmo para plataforma e proprietário', async () => {
   await post().expect(200);
   for (const client of [rules.unauthenticatedContext(), rules.authenticatedContext('owner'), rules.authenticatedContext('platform', { superadmin: true })]) {
-    const target = doc(client.firestore(), 'privateMarketplaceCredentials/a');
-    await assertFails(getDoc(target)); await assertFails(setDoc(target, { clientId: 'override' }));
+    for (const collection of ['privateMarketplaceCredentials', 'privateMarketplaceConnections', 'privateMarketplaceOAuthStates', 'privateMarketplaceOAuthAttempts']) {
+      const target = doc(client.firestore(), `${collection}/a`);
+      await assertFails(getDoc(target)); await assertFails(setDoc(target, { clientId: 'override' }));
+    }
   }
 });
 it('rotas antigas não redirecionam nem fingem OAuth concluído', async () => {
-  for (const route of ['auth', 'callback?code=test-secret-code']) {
-    const r = await request(app).get(`/api/integrations/mercadolivre/${route}`).expect(409);
-    expect(r.headers.location).toBeUndefined(); expect(r.text).not.toContain('test-secret-code');
-  }
+  await request(app).get('/api/integrations/mercadolivre/auth').expect(409);
+  const r = await request(app).get('/api/integrations/mercadolivre/callback?code=test-secret-code').expect(303);
+  expect(r.headers.location).toBe('/?view=configuracoes&mercadolivre=invalid-state');
+  expect(r.text).not.toContain('test-secret-code');
 });

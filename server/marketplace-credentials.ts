@@ -1,54 +1,20 @@
 import type { Express } from 'express';
 import type { DecodedIdToken } from 'firebase-admin/auth';
-import type { Firestore, Transaction } from 'firebase-admin/firestore';
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { readFileSync, statSync } from 'node:fs';
+import type { Firestore } from 'firebase-admin/firestore';
+import { marketplaceAccess, sealMarketplaceSecret, openMarketplaceSecret } from './marketplace-security';
+export { loadMarketplaceKey, sealMarketplaceSecret, openMarketplaceSecret } from './marketplace-security';
+import { registerMarketplaceOAuthRoutes, connectionMetadata } from './marketplace-oauth';
 import { BusinessError, validId } from './session';
-
-export function loadMarketplaceKey(path: string): Buffer | null {
-  try {
-    const mode = statSync(path).mode;
-    const key = readFileSync(path);
-    return !(mode & 0o077) && key.length === 32 ? key : null;
-  } catch { return null; }
-}
-
-export function sealMarketplaceSecret(key: Buffer, tenant: string, secret: string) {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', key, iv);
-  cipher.setAAD(Buffer.from(`mercadolivre:${tenant}:v1`));
-  const data = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()]);
-  return { version: 1, iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), data: data.toString('base64') };
-}
-
-export function openMarketplaceSecret(key: Buffer, tenant: string, envelope: ReturnType<typeof sealMarketplaceSecret>) {
-  if (envelope.version !== 1) throw Error('Unsupported credential version');
-  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(envelope.iv, 'base64'));
-  decipher.setAAD(Buffer.from(`mercadolivre:${tenant}:v1`));
-  decipher.setAuthTag(Buffer.from(envelope.tag, 'base64'));
-  return Buffer.concat([decipher.update(Buffer.from(envelope.data, 'base64')), decipher.final()]).toString('utf8');
-}
 
 // Private root collection has no client grants. Only sanitized metadata leaves this module.
 export function registerMarketplaceCredentialRoutes(
   app: Express, db: Firestore | null, verify: (token: string) => Promise<DecodedIdToken>, key: Buffer | null,
 ) {
-  async function access(tx: Transaction, tenant: string, identity: DecodedIdToken) {
-    const company = (await tx.get(db!.doc(`tenants/${tenant}`))).data();
-    const profile = (await tx.get(db!.doc(`users/${identity.uid}`))).data();
-    const member = await tx.get(db!.doc(`tenants/${tenant}/members/${identity.uid}`));
-    const owner = company?.ownerUid === identity.uid;
-    const admin = profile?.tenantId === tenant && (member.exists
-      ? member.data()?.active === true && member.data()?.role === 'admin'
-      : profile?.tenantRole === 'admin');
-    if (!company || company.status === 'inactive' || !(owner || admin || identity.superadmin === true))
-      throw new BusinessError(403, 'Somente administradores da empresa podem configurar esta integração.');
-  }
-  const metadata = (data: any) => ({
+  const metadata = (data: any, connection: any) => ({
     clientId: data?.clientId || '', hasSecret: !!data?.secret,
     revision: data?.revision || 0, updatedAt: data?.updatedAt || null,
     storageReady: !!key, status: data?.secret ? 'credentials-saved' : 'not-configured',
-    oauthReady: false,
+    oauthReady: !!key, connection: connectionMetadata(data, connection),
   });
   const handler = (write: boolean) => async (req: any, res: any) => {
     res.set('Cache-Control', 'no-store');
@@ -62,10 +28,11 @@ export function registerMarketplaceCredentialRoutes(
     if (!db) return res.status(503).json({ error: 'Banco indisponível.' });
     try {
       const result = await db.runTransaction(async tx => {
-        await access(tx, tenant, identity);
+        await marketplaceAccess(db!, tx, tenant, identity);
         const ref = db.doc(`privateMarketplaceCredentials/${tenant}`);
         const previous = (await tx.get(ref)).data();
-        if (!write) return metadata(previous);
+        const connection = (await tx.get(db.doc(`privateMarketplaceConnections/${tenant}`))).data();
+        if (!write) return metadata(previous, connection);
         if (!key) throw new BusinessError(503, 'Armazenamento protegido indisponível. Tente novamente mais tarde.');
         const b = req.body;
         if (!b || typeof b !== 'object' || Array.isArray(b) || Object.keys(b).some(k => !['clientId', 'clientSecret', 'expectedRevision'].includes(k)) ||
@@ -88,7 +55,7 @@ export function registerMarketplaceCredentialRoutes(
           operation: 'marketplace.credentials.saved', provider: 'mercadolivre', actor: identity.uid,
           revision: next.revision, secretReplaced: !!b.clientSecret, createdAt: next.updatedAt,
         });
-        return metadata(next);
+        return metadata(next, connection);
       });
       return res.json(result);
     } catch (error) {
@@ -100,7 +67,5 @@ export function registerMarketplaceCredentialRoutes(
   const route = '/api/tenants/:tenantId/integrations/mercadolivre/credentials';
   app.get(route, handler(false));
   app.post(route, handler(true));
-  for (const path of ['/api/integrations/mercadolivre/auth', '/api/integrations/mercadolivre/callback']) {
-    app.get(path, (_req, res) => res.status(409).set('Cache-Control', 'no-store').json({ error: 'Autorização da conta ainda não disponível. Cadastre as credenciais nas Integrações da sua empresa.' }));
-  }
+  registerMarketplaceOAuthRoutes(app, db, verify, key);
 }

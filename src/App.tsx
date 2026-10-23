@@ -35,7 +35,7 @@ const SuperAdmin = lazy(() => import('./views/SuperAdmin').then(module => ({ def
 const TeamPage = lazy(() => import('./features/team/TeamPage').then(module => ({ default: module.TeamPage })));
 
 function MainApp() {
-  const [currentView, setCurrentView] = useState('dashboard');
+  const [currentView, setCurrentView] = useState(() => new URLSearchParams(window.location.search).get('view') === 'configuracoes' ? 'configuracoes' : 'dashboard');
   const [isSidebarMobileOpen, setIsSidebarMobileOpen] = useState(false);
   const [isSidebarDesktopOpen, setIsSidebarDesktopOpen] = useState(true);
   const [productEditorState, setProductEditorState] = useState<{ mode: 'new' | 'edit'; productId: string | null }>({

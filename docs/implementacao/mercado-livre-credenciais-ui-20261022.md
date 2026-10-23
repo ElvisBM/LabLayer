@@ -43,3 +43,8 @@ Próxima etapa: OAuth com `state`, sessão/tenant, troca de código, armazenamen
 Release funcional `e79b649` publicado em 22/10/2026. Backup anterior em `/home/lablayer/deploy-backups/ml-credentials-e79b649`, incluindo cópia protegida da chave. A primeira tentativa parou antes da troca de código por falta de permissão de escrita no diretório shared; a segunda utilizou o caminho privado acima e concluiu. App ID inicializado na empresa sem segredo, com auditoria. Processo online após reinício e configuração PM2 persistida.
 
 Verificação HTTPS: página inicial 200; endpoint de credenciais sem sessão 401; antigas rotas auth/callback 409 sem redirecionamento. Bundle `index-5H2vCA15.js` contém o formulário publicado. Chave de 32 bytes legível pelo serviço e sem permissão para grupo/outros. Não foi realizado cadastro de segredo real nem login em nome do usuário durante a validação.
+
+
+## Evolução em 23/10/2026
+
+O fluxo de autorização e o botão Conectar Mercado Livre foram implementados na etapa seguinte. Consulte [Conexão da conta Mercado Livre](mercado-livre-oauth-20261023.md) para comportamento atual, renovação, testes e publicação. As descrições acima registram a entrega inicial de credenciais.
