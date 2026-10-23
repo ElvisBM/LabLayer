@@ -63,3 +63,15 @@ Ainda falta homologação com App Key/App Secret/Service ID reais e consentiment
 - [Search Products](https://partner.tiktokshop.com/docv2/page/search-products-202309): `seller.product.basic`, paginação, SKUs, preços e inventário.
 
 Próxima etapa T2: homologar a conexão, adicionar perfil de publicação por canal, validar categorias/atributos/imagens/SKUs e criar rascunho com confirmação antes de publicar. Pedidos/webhooks/estoque seguem como T3, com idempotência e reconciliação.
+
+## Publicação e conferência no servidor
+
+Publicado em 23/10/2026 às 18:48 UTC (15:48 Brasília). Commit principal `04835d0`; release `ec804b4`. Backup em `/home/lablayer/deploy-backups/tiktok-ec804b4`. Implantação limitada aos módulos TikTok, registro em marketplace-credentials, normalização compartilhada e build; bootstrap, bot e dados existentes preservados. Assets antigos preservados para sessões abertas.
+
+- Página pública HTTP 200; bundle `/assets/index-Cdr8Eqxk.js` contém a nova configuração TikTok.
+- Credenciais/listagens sem autenticação: HTTP 401, `no-store`. Callback sem state: HTTP 303 para erro controlado, sem dados do provedor.
+- Diagnóstico interno somente de leitura para a empresa do administrador: configuração HTTP 200, armazenamento protegido pronto, `hasSecret=false`, `not-connected`; anúncios TikTok sem conexão retornam `total=null`.
+- Regressão real somente de leitura do Mercado Livre: 44 anúncios, 8 ativos, 35 pausados e 1 encerrado, 44 links/fotos; detalhes de cada estado com HTTP 200 e capacidades mantidas. Nenhuma ação comercial enviada.
+- Hash SHA-256 do index publicado: `5e2dfbc9ad206627d1fabb22f131b33382994fcf0a2b99f13c8f4f748628a9b9`; módulos conferidos contra o pacote local.
+
+A homologação externa do TikTok continua pendente das credenciais e autorização. Este resultado não afirma que a loja TikTok já esteja conectada.
