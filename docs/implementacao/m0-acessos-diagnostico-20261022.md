@@ -131,3 +131,8 @@ Esta entrega altera documentação, não runtime. Não houve implantação, cria
 ## Cadastro pela interface disponibilizado
 
 Atualização posterior ao diagnóstico: [cadastro protegido de credenciais ML pela interface](./mercado-livre-credenciais-ui-20261022.md) publicado. O proprietário não precisa editar `.env`: administradores cadastram o segredo em Configurações > Integrações > Mercado Livre. O App ID está preenchido na empresa. O callback simulado foi bloqueado, e o cofre por tenant está preparado; autorização OAuth e consultas à loja continuam pendentes. As tabelas anteriores representam a fotografia anterior à publicação.
+
+
+## Atualização em 23/10/2026
+
+Mercado Livre autorizado e validado por consulta real da conta. A [conferência dos anúncios e vínculos](mercado-livre-vinculos-20261023.md) encontrou 44 anúncios (8 ativos, 35 pausados, 1 encerrado), 133 produtos locais e nenhum vínculo em channelListings. Os campos de SKU consultados no ML estão vazios; 131 produtos locais não têm SKU base. As pendências antigas de OAuth do Mercado Livre foram resolvidas; Shopee, TikTok e as demais etapas de estoque/publicação permanecem fora desta confirmação. Nenhum anúncio ou saldo foi alterado.
