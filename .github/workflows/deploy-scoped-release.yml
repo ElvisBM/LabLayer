@@ -62,6 +62,14 @@ jobs:
           path: live-snapshot/
           retention-days: 1
 
+      - name: Verify release package
+        if: ${{ inputs.action == 'deploy' }}
+        env:
+          RELEASE_ID: ${{ inputs.release }}
+        run: |
+          cd "releases/$RELEASE_ID"
+          sha256sum --check release.tar.gz.sha256
+
       - name: Upload scoped package
         if: ${{ inputs.action == 'deploy' }}
         env:
