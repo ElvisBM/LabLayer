@@ -3,10 +3,19 @@ name: Deploy scoped LabLayer release
 on:
   workflow_dispatch:
     inputs:
+      action:
+        description: Inspect the live source or deploy the scoped release
+        required: true
+        type: choice
+        default: inspect
+        options:
+          - inspect
+          - deploy
       release:
         description: Release package to publish
         required: true
         type: choice
+        default: approval-review-20261105
         options:
           - approval-review-20261105
 
@@ -32,7 +41,29 @@ jobs:
           printf '%s\n' "$HOSTINGER_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
 
+      - name: Capture current server files for safe rebase
+        if: ${{ inputs.action == 'inspect' }}
+        env:
+          HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST }}
+          HOSTINGER_USER: ${{ secrets.HOSTINGER_USER }}
+        run: |
+          mkdir -p live-snapshot/server live-snapshot/shared/assistant live-snapshot/src/features/assistant live-snapshot/src/views live-snapshot/dist
+          ssh "$HOSTINGER_USER@$HOSTINGER_HOST" "cd /var/www/lablayer/app && sha256sum server/assistant.ts server/assistant-ai.ts shared/assistant/workflow.ts src/features/assistant/AssistantChat.tsx src/features/assistant/AssistantStatusUpdate.tsx src/views/EncomendasOrcamentos.tsx dist/index.html"
+          for path in server/assistant.ts server/assistant-ai.ts shared/assistant/workflow.ts src/features/assistant/AssistantChat.tsx src/features/assistant/AssistantStatusUpdate.tsx src/views/EncomendasOrcamentos.tsx dist/index.html; do
+            mkdir -p "live-snapshot/$(dirname "$path")"
+            scp "$HOSTINGER_USER@$HOSTINGER_HOST:/var/www/lablayer/app/$path" "live-snapshot/$path"
+          done
+
+      - name: Save current server snapshot
+        if: ${{ inputs.action == 'inspect' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: lablayer-live-snapshot-${{ github.run_id }}
+          path: live-snapshot/
+          retention-days: 1
+
       - name: Upload scoped package
+        if: ${{ inputs.action == 'deploy' }}
         env:
           HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST }}
           HOSTINGER_USER: ${{ secrets.HOSTINGER_USER }}
@@ -42,6 +73,7 @@ jobs:
           scp "releases/$RELEASE_ID/release.tar.gz" "$HOSTINGER_USER@$HOSTINGER_HOST:releases/$RELEASE_ID/release.tar.gz"
 
       - name: Apply release with backup and health check
+        if: ${{ inputs.action == 'deploy' }}
         env:
           HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST }}
           HOSTINGER_USER: ${{ secrets.HOSTINGER_USER }}
@@ -50,4 +82,5 @@ jobs:
           ssh "$HOSTINGER_USER@$HOSTINGER_HOST" "set -e; cd \"\$HOME/releases/$RELEASE_ID\"; tar -xzf release.tar.gz; bash ./publish.sh"
 
       - name: Verify public health endpoint
+        if: ${{ inputs.action == 'deploy' }}
         run: curl --fail --silent --show-error https://app.lablayer.com.br/api/health
