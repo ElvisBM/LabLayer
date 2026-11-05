@@ -456,8 +456,8 @@ service cloud.firestore {
 
       match /customRequests/{requestId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && (isTenantAdmin(tenantId) || (request.resource.data.status == 'aguardando-orcamento' && !request.resource.data.keys().hasAny(['approvedAt', 'paidAt']))) && isValidCustomRequest();
-        allow update: if isTenantMember(tenantId) && (isTenantAdmin(tenantId) || (resource.data.status == 'aguardando-orcamento' && request.resource.data.status == 'aguardando-orcamento' && !request.resource.data.keys().hasAny(['approvedAt', 'paidAt']))) && isValidCustomRequest() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+        allow create: if isTenantMember(tenantId) && isValidCustomRequest();
+        allow update: if isTenantMember(tenantId) && isValidCustomRequest() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
         allow delete: if isTenantAdmin(tenantId);
       }
 
