@@ -1,0 +1,53 @@
+name: Deploy scoped LabLayer release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Release package to publish
+        required: true
+        type: choice
+        options:
+          - approval-review-20261105
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release package
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          HOSTINGER_SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          HOSTINGER_KNOWN_HOSTS: ${{ secrets.HOSTINGER_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$HOSTINGER_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$HOSTINGER_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Upload scoped package
+        env:
+          HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST }}
+          HOSTINGER_USER: ${{ secrets.HOSTINGER_USER }}
+          RELEASE_ID: ${{ inputs.release }}
+        run: |
+          ssh "$HOSTINGER_USER@$HOSTINGER_HOST" "mkdir -p \"\$HOME/releases/$RELEASE_ID\""
+          scp "releases/$RELEASE_ID/release.tar.gz" "$HOSTINGER_USER@$HOSTINGER_HOST:releases/$RELEASE_ID/release.tar.gz"
+
+      - name: Apply release with backup and health check
+        env:
+          HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST }}
+          HOSTINGER_USER: ${{ secrets.HOSTINGER_USER }}
+          RELEASE_ID: ${{ inputs.release }}
+        run: |
+          ssh "$HOSTINGER_USER@$HOSTINGER_HOST" "set -e; cd \"\$HOME/releases/$RELEASE_ID\"; tar -xzf release.tar.gz; bash ./publish.sh"
+
+      - name: Verify public health endpoint
+        run: curl --fail --silent --show-error https://app.lablayer.com.br/api/health
