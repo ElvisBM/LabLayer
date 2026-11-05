@@ -311,6 +311,54 @@ service cloud.firestore {
              request.resource.data.updatedAt is string;
     }
 
+    function isValidCustomRequestUpdate() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let allowedFields = [
+        'title', 'code', 'requestNumber', 'type', 'status', 'sourceChannel',
+        'customerName', 'customerPhone', 'sourceMessage', 'description', 'observation',
+        'customerQuote', 'productionWeightGrams', 'requestedQuantity', 'requestedDeliveryDate',
+        'productionTimeHours', 'printerId', 'filaments', 'referenceImageUrl',
+        'quoteMediaImageUrl', 'quoteMediaUrl', 'estimatedUnitCost', 'suggestedUnitPrice',
+        'quotedPrice', 'isGift', 'provisionalQuantity', 'quoteSentAt', 'approvedAt',
+        'paidAt', 'startedAt', 'completedAt', 'updatedAt'
+      ];
+      return changed.hasOnly(allowedFields) &&
+             (!changed.hasAny(['status']) || request.resource.data.status in ['aguardando-orcamento', 'orcado', 'fila-producao', 'produzindo', 'finalizado', 'cancelado']) &&
+             (!changed.hasAny(['title']) || isValidString('title', 1, 150)) &&
+             (!changed.hasAny(['code']) || !('code' in request.resource.data) || request.resource.data.code == null || isValidString('code', 0, 20)) &&
+             (!changed.hasAny(['requestNumber']) || !('requestNumber' in request.resource.data) || request.resource.data.requestNumber == null ||
+               (request.resource.data.requestNumber is number && request.resource.data.requestNumber >= 1 && request.resource.data.requestNumber <= 100000000) ||
+               isValidString('requestNumber', 1, 20)) &&
+             (!changed.hasAny(['type']) || request.resource.data.type in ['orcamento', 'encomenda']) &&
+             (!changed.hasAny(['sourceChannel']) || !('sourceChannel' in request.resource.data) || request.resource.data.sourceChannel in ['manual', 'whatsapp']) &&
+             (!changed.hasAny(['customerName']) || !('customerName' in request.resource.data) || isValidString('customerName', 0, 150)) &&
+             (!changed.hasAny(['customerPhone']) || !('customerPhone' in request.resource.data) || isValidString('customerPhone', 0, 50)) &&
+             (!changed.hasAny(['sourceMessage']) || !('sourceMessage' in request.resource.data) || isValidString('sourceMessage', 0, 10000)) &&
+             (!changed.hasAny(['description']) || !('description' in request.resource.data) || isValidString('description', 0, 5000)) &&
+             (!changed.hasAny(['observation']) || !('observation' in request.resource.data) || isValidString('observation', 0, 5000)) &&
+             (!changed.hasAny(['customerQuote']) || !('customerQuote' in request.resource.data) || validCustomerQuote(request.resource.data.customerQuote)) &&
+             (!changed.hasAny(['productionWeightGrams']) || !('productionWeightGrams' in request.resource.data) || isPositiveNumber('productionWeightGrams')) &&
+             (!changed.hasAny(['requestedQuantity']) || isPositiveNumber('requestedQuantity')) &&
+             (!changed.hasAny(['requestedDeliveryDate']) || !('requestedDeliveryDate' in request.resource.data) || request.resource.data.requestedDeliveryDate == null || isValidString('requestedDeliveryDate', 0, 50)) &&
+             (!changed.hasAny(['productionTimeHours']) || isPositiveNumber('productionTimeHours')) &&
+             (!changed.hasAny(['printerId']) || !('printerId' in request.resource.data) || isValidString('printerId', 0, 100)) &&
+             (!changed.hasAny(['filaments']) || request.resource.data.filaments is list) &&
+             (!changed.hasAny(['referenceImageUrl']) || !('referenceImageUrl' in request.resource.data) || request.resource.data.referenceImageUrl is string) &&
+             (!changed.hasAny(['quoteMediaImageUrl']) || !('quoteMediaImageUrl' in request.resource.data) || request.resource.data.quoteMediaImageUrl is string) &&
+             (!changed.hasAny(['quoteMediaUrl']) || !('quoteMediaUrl' in request.resource.data) || isValidString('quoteMediaUrl', 0, 2000)) &&
+             (!changed.hasAny(['estimatedUnitCost']) || !('estimatedUnitCost' in request.resource.data) || isPositiveNumber('estimatedUnitCost')) &&
+             (!changed.hasAny(['suggestedUnitPrice']) || !('suggestedUnitPrice' in request.resource.data) || isPositiveNumber('suggestedUnitPrice')) &&
+             (!changed.hasAny(['quotedPrice']) || !('quotedPrice' in request.resource.data) || isPositiveNumber('quotedPrice')) &&
+             (!changed.hasAny(['isGift']) || !('isGift' in request.resource.data) || request.resource.data.isGift is bool) &&
+             (!changed.hasAny(['provisionalQuantity']) || !('provisionalQuantity' in request.resource.data) || request.resource.data.provisionalQuantity is bool) &&
+             (!changed.hasAny(['quoteSentAt']) || !('quoteSentAt' in request.resource.data) || request.resource.data.quoteSentAt is string) &&
+             (!changed.hasAny(['approvedAt']) || !('approvedAt' in request.resource.data) || request.resource.data.approvedAt is string) &&
+             (!changed.hasAny(['paidAt']) || !('paidAt' in request.resource.data) || request.resource.data.paidAt is string) &&
+             (!changed.hasAny(['startedAt']) || !('startedAt' in request.resource.data) || request.resource.data.startedAt is string) &&
+             (!changed.hasAny(['completedAt']) || !('completedAt' in request.resource.data) || request.resource.data.completedAt is string) &&
+             (!changed.hasAny(['updatedAt']) || isValidString('updatedAt', 1, 50));
+    }
+
     function isValidInventoryMovement() {
       let allowedFields = ['date', 'filamentId', 'filamentName', 'type', 'amount', 'reason', 'createdAt'];
       return hasOnlyAllowedFields(allowedFields) &&
@@ -457,7 +505,7 @@ service cloud.firestore {
       match /customRequests/{requestId} {
         allow read: if isTenantMember(tenantId);
         allow create: if isTenantMember(tenantId) && isValidCustomRequest();
-        allow update: if isTenantMember(tenantId) && isValidCustomRequest() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+        allow update: if isTenantMember(tenantId) && isValidCustomRequestUpdate() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
         allow delete: if isTenantAdmin(tenantId);
       }
 
