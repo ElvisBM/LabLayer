@@ -34,7 +34,7 @@ service cloud.firestore {
 
     function isSuperAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email == "elvisbmartins@gmail.com" ||
+        request.auth.token.get("superadmin", false) == true ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin')
       );
@@ -45,11 +45,16 @@ service cloud.firestore {
     }
 
     function isTenantMember(tenantId) {
-      return isAuthenticated() && (
+      return isAuthenticated() && get(/databases/$(database)/documents/tenants/$(tenantId)).data.get("status", "active") != "inactive" && (
         isTenantOwner(tenantId) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId == tenantId)
       );
+    }
+
+    function isTenantAdmin(tenantId) {
+      return isTenantMember(tenantId) && (isTenantOwner(tenantId) ||
+        isSuperAdmin() || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('tenantRole', '') == 'admin');
     }
 
     function hasOnlyAllowedFields(allowedFields) {
@@ -212,9 +217,30 @@ service cloud.firestore {
              request.resource.data.createdAt is string;
     }
 
+    function validQuoteOption(o) {
+      return o is map && o.keys().hasOnly(['quantity', 'unitPrice', 'deliveryDays']) &&
+        o.keys().hasAll(['quantity', 'unitPrice', 'deliveryDays']) &&
+        o.quantity is int && o.quantity >= 1 && o.quantity <= 100000 &&
+        o.unitPrice is number && o.unitPrice >= 0 && o.unitPrice <= 1000000 &&
+        o.unitPrice * 100 - int(o.unitPrice * 100 + 0.5) < 0.000001 &&
+        o.unitPrice * 100 - int(o.unitPrice * 100 + 0.5) > -0.000001 &&
+        (o.deliveryDays == null || (o.deliveryDays is int && o.deliveryDays >= 1 && o.deliveryDays <= 3650));
+    }
+    function validCustomerQuote(q) {
+      return q == null || (q is map && q.keys().hasOnly(['name', 'size', 'options']) &&
+        q.keys().hasAll(['name', 'size', 'options']) && q.name is string && q.name.size() > 0 && q.name.size() <= 150 &&
+        q.size is string && q.size.size() <= 250 && q.options is list && q.options.size() >= 1 && q.options.size() <= 5 &&
+        validQuoteOption(q.options[0]) &&
+        (q.options.size() < 2 || (validQuoteOption(q.options[1]) && q.options[1].quantity != q.options[0].quantity)) &&
+        (q.options.size() < 3 || (validQuoteOption(q.options[2]) && q.options[2].quantity != q.options[0].quantity && q.options[2].quantity != q.options[1].quantity)) &&
+        (q.options.size() < 4 || (validQuoteOption(q.options[3]) && q.options[3].quantity != q.options[0].quantity && q.options[3].quantity != q.options[1].quantity && q.options[3].quantity != q.options[2].quantity)) &&
+        (q.options.size() < 5 || (validQuoteOption(q.options[4]) && q.options[4].quantity != q.options[0].quantity && q.options[4].quantity != q.options[1].quantity && q.options[4].quantity != q.options[2].quantity && q.options[4].quantity != q.options[3].quantity)));
+    }
     function isValidCustomRequest() {
       let allowedFields = [
         'title',
+        'code',
+        'requestNumber',
         'type',
         'status',
         'sourceChannel',
@@ -222,7 +248,11 @@ service cloud.firestore {
         'customerPhone',
         'sourceMessage',
         'description',
+        'observation',
+        'customerQuote',
+        'productionWeightGrams',
         'requestedQuantity',
+        'requestedDeliveryDate',
         'productionTimeHours',
         'printerId',
         'filaments',
@@ -232,6 +262,8 @@ service cloud.firestore {
         'estimatedUnitCost',
         'suggestedUnitPrice',
         'quotedPrice',
+        'isGift',
+        'provisionalQuantity',
         'createdAt',
         'quoteSentAt',
         'approvedAt',
@@ -243,14 +275,22 @@ service cloud.firestore {
       return hasOnlyAllowedFields(allowedFields) &&
              hasRequiredFields(['title', 'type', 'status', 'requestedQuantity', 'productionTimeHours', 'filaments', 'updatedAt']) &&
              isValidString('title', 1, 150) &&
+             (!('code' in request.resource.data) || request.resource.data.code == null || isValidString('code', 0, 20)) &&
+             (!('requestNumber' in request.resource.data) || request.resource.data.requestNumber == null ||
+               (request.resource.data.requestNumber is number && request.resource.data.requestNumber >= 1 && request.resource.data.requestNumber <= 100000000) ||
+               isValidString('requestNumber', 1, 20)) &&
              request.resource.data.type in ['orcamento', 'encomenda'] &&
-             request.resource.data.status in ['aguardando-orcamento', 'orcado', 'fila-producao', 'produzindo', 'finalizado'] &&
+             request.resource.data.status in ['aguardando-orcamento', 'orcado', 'fila-producao', 'produzindo', 'finalizado', 'cancelado'] &&
              (!('sourceChannel' in request.resource.data) || request.resource.data.sourceChannel in ['manual', 'whatsapp']) &&
              (!('customerName' in request.resource.data) || isValidString('customerName', 0, 150)) &&
              (!('customerPhone' in request.resource.data) || isValidString('customerPhone', 0, 50)) &&
              (!('sourceMessage' in request.resource.data) || isValidString('sourceMessage', 0, 10000)) &&
              (!('description' in request.resource.data) || isValidString('description', 0, 5000)) &&
+             (!('observation' in request.resource.data) || isValidString('observation', 0, 5000)) &&
+             (!('customerQuote' in request.resource.data) || validCustomerQuote(request.resource.data.customerQuote)) &&
+             (!('productionWeightGrams' in request.resource.data) || isPositiveNumber('productionWeightGrams')) &&
              isPositiveNumber('requestedQuantity') &&
+             (!('requestedDeliveryDate' in request.resource.data) || request.resource.data.requestedDeliveryDate == null || isValidString('requestedDeliveryDate', 0, 50)) &&
              isPositiveNumber('productionTimeHours') &&
              (!('printerId' in request.resource.data) || isValidString('printerId', 0, 100)) &&
              request.resource.data.filaments is list &&
@@ -260,6 +300,8 @@ service cloud.firestore {
              (!('estimatedUnitCost' in request.resource.data) || isPositiveNumber('estimatedUnitCost')) &&
              (!('suggestedUnitPrice' in request.resource.data) || isPositiveNumber('suggestedUnitPrice')) &&
              (!('quotedPrice' in request.resource.data) || isPositiveNumber('quotedPrice')) &&
+             (!('isGift' in request.resource.data) || request.resource.data.isGift is bool) &&
+             (!('provisionalQuantity' in request.resource.data) || request.resource.data.provisionalQuantity is bool) &&
              (!('createdAt' in request.resource.data) || request.resource.data.createdAt is string) &&
              (!('quoteSentAt' in request.resource.data) || request.resource.data.quoteSentAt is string) &&
              (!('approvedAt' in request.resource.data) || request.resource.data.approvedAt is string) &&
@@ -317,9 +359,9 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());
-      allow delete: if isSuperAdmin();
+      // Identity, tenant and privileges are provisioned only through authenticated server routes.
+      allow create, update, delete: if false;
+      match /memberships/{tenantId} { allow read, write: if false; }
     }
 
     match /tenants/{tenantId} {
@@ -337,6 +379,10 @@ service cloud.firestore {
       
       allow delete: if isSuperAdmin();
 
+      match /members/{uid} { allow read, write: if false; }
+      match /accessRequests/{uid} { allow read, write: if false; }
+      match /userCreations/{id} { allow read, write: if false; }
+      match /auditLogs/{id} { allow read, write: if false; }
       // Subcollections
       match /products/{productId} {
         allow read: if isTenantMember(tenantId);
@@ -375,9 +421,9 @@ service cloud.firestore {
 
       match /transactions/{transactionId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && isValidTransaction();
-        allow update: if isTenantMember(tenantId) && isValidTransaction() && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isTenantMember(tenantId);
+        allow create: if isTenantAdmin(tenantId) && isValidTransaction();
+        allow update: if isTenantAdmin(tenantId) && isValidTransaction() && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isTenantAdmin(tenantId);
       }
 
       match /losses/{lossId} {
@@ -410,9 +456,9 @@ service cloud.firestore {
 
       match /customRequests/{requestId} {
         allow read: if isTenantMember(tenantId);
-        allow create: if isTenantMember(tenantId) && isValidCustomRequest();
-        allow update: if isTenantMember(tenantId) && isValidCustomRequest() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
-        allow delete: if isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId) && (isTenantAdmin(tenantId) || (request.resource.data.status == 'aguardando-orcamento' && !request.resource.data.keys().hasAny(['approvedAt', 'paidAt']))) && isValidCustomRequest();
+        allow update: if isTenantMember(tenantId) && (isTenantAdmin(tenantId) || (resource.data.status == 'aguardando-orcamento' && request.resource.data.status == 'aguardando-orcamento' && !request.resource.data.keys().hasAny(['approvedAt', 'paidAt']))) && isValidCustomRequest() && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+        allow delete: if isTenantAdmin(tenantId);
       }
 
       match /inventoryMovements/{movementId} {
@@ -431,7 +477,7 @@ service cloud.firestore {
 
       match /settings/{settingId} {
         allow read: if isTenantMember(tenantId);
-        allow write: if isTenantMember(tenantId);
+        allow write: if isTenantAdmin(tenantId);
       }
     }
   }
