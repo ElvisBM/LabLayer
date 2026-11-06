@@ -23,6 +23,8 @@ on:
           - app-stock-state-fallback-20261106
           - app-stock-state-recovery-20261106
           - marketplace-shipping-search-20261106
+          - marketplace-validation-warnings-20261106
+          - marketplace-warning-only-validation-20261106
 
 permissions:
   contents: read
