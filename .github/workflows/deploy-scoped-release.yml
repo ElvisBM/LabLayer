@@ -19,6 +19,7 @@ on:
         options:
           - approval-review-20261105
           - marketplace-validation-feedback-20261105
+          - marketplace-categories-20261106
 
 permissions:
   contents: read
