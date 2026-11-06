@@ -51,9 +51,9 @@ jobs:
           HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST }}
           HOSTINGER_USER: ${{ secrets.HOSTINGER_USER }}
         run: |
-          mkdir -p live-snapshot/server live-snapshot/shared/assistant live-snapshot/src/features/assistant live-snapshot/src/views live-snapshot/dist
-          ssh "$HOSTINGER_USER@$HOSTINGER_HOST" "cd /var/www/lablayer/app && sha256sum server/assistant.ts server/assistant-ai.ts server/marketplace-drafts.ts shared/assistant/workflow.ts src/features/assistant/AssistantChat.tsx src/features/assistant/AssistantStatusUpdate.tsx src/views/EncomendasOrcamentos.tsx dist/index.html"
-          for path in server/assistant.ts server/assistant-ai.ts server/marketplace-drafts.ts shared/assistant/workflow.ts src/features/assistant/AssistantChat.tsx src/features/assistant/AssistantStatusUpdate.tsx src/views/EncomendasOrcamentos.tsx dist/index.html; do
+          mkdir -p live-snapshot/server live-snapshot/shared/assistant live-snapshot/shared/marketplaces live-snapshot/src/features/assistant live-snapshot/src/views live-snapshot/dist
+          ssh "$HOSTINGER_USER@$HOSTINGER_HOST" "cd /var/www/lablayer/app && sha256sum server/assistant.ts server/assistant-ai.ts server/marketplace-drafts.ts shared/assistant/workflow.ts shared/marketplaces/drafts.ts src/features/assistant/AssistantChat.tsx src/features/assistant/AssistantStatusUpdate.tsx src/views/EncomendasOrcamentos.tsx dist/index.html"
+          for path in server/assistant.ts server/assistant-ai.ts server/marketplace-drafts.ts shared/assistant/workflow.ts shared/marketplaces/drafts.ts src/features/assistant/AssistantChat.tsx src/features/assistant/AssistantStatusUpdate.tsx src/views/EncomendasOrcamentos.tsx dist/index.html; do
             mkdir -p "live-snapshot/$(dirname "$path")"
             scp "$HOSTINGER_USER@$HOSTINGER_HOST:/var/www/lablayer/app/$path" "live-snapshot/$path"
           done
