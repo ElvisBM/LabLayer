@@ -25,6 +25,7 @@ on:
           - marketplace-shipping-search-20261106
           - marketplace-validation-warnings-20261106
           - marketplace-warning-only-validation-20261106
+          - marketplace-net-revenue-calculator-20261106
 
 permissions:
   contents: read
