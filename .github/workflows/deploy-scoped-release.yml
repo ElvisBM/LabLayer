@@ -21,6 +21,7 @@ on:
           - marketplace-validation-feedback-20261105
           - marketplace-categories-20261106
           - app-stock-state-fallback-20261106
+          - app-stock-state-recovery-20261106
 
 permissions:
   contents: read
