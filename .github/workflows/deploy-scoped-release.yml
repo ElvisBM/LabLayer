@@ -22,6 +22,7 @@ on:
           - marketplace-categories-20261106
           - app-stock-state-fallback-20261106
           - app-stock-state-recovery-20261106
+          - marketplace-shipping-search-20261106
 
 permissions:
   contents: read
