@@ -26,6 +26,7 @@ on:
           - marketplace-validation-warnings-20261106
           - marketplace-warning-only-validation-20261106
           - marketplace-net-revenue-calculator-20261106
+          - marketplace-category-required-attributes-20261107
 
 permissions:
   contents: read
