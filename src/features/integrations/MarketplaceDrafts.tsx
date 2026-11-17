@@ -4,6 +4,30 @@ import { draftStatuses, type ListingDraft } from '../../../shared/marketplaces/d
 import { DraftReview, money } from './DraftReview';
 type User = { getIdToken(): Promise<string> };
 const button = 'rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition disabled:opacity-50';
+const primary = 'rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition disabled:opacity-50';
+// Aprovar e publicar direto do card. O servidor valida no Mercado Livre ao aprovar e exige a revisão atual,
+// então o card só envia { action, revision }, como a tela de revisão.
+function CardActions({ draft, user, base, onChange }: { draft: ListingDraft; user: User; base: string; onChange: (d: ListingDraft) => void }) {
+  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [confirm, setConfirm] = useState(false);
+  async function run(action: 'approve' | 'publish') {
+    setBusy(true); setError('');
+    try { onChange(await catalogRequest(user, `${base}/${draft.id}/actions`, { action, revision: draft.revision })); }
+    catch (e) {
+      setError((e as Error).message);
+      if (action === 'publish') { try { onChange(await catalogRequest(user, `${base}/${draft.id}`)); } catch { /* Mantém o erro; o botão Atualizar confere depois. */ } }
+    } finally { setBusy(false); setConfirm(false); }
+  }
+  const title = draft.data.title;
+  return <div className="space-y-2">
+    {draft.status === 'draft' && <button className={`${primary} block w-full`} aria-label={`Aprovar ${title}`} disabled={busy} onClick={() => run('approve')}>{busy ? 'Validando…' : 'Aprovar'}</button>}
+    {draft.status === 'approved' && !confirm && <button className={`${primary} block w-full`} aria-label={`Publicar ${title}`} disabled={busy} onClick={() => setConfirm(true)}>{busy ? 'Publicando…' : 'Publicar'}</button>}
+    {draft.status === 'approved' && confirm && <div role="group" aria-label={`Confirmar publicação de ${title}`} className="border border-indigo-200 bg-indigo-50 rounded-lg p-3 space-y-2 text-sm">
+      <p>Publicar por <strong>{money(draft.data.price)}</strong>, com {draft.data.quantity} unidade(s), no Mercado Livre?</p>
+      <div className="flex gap-2"><button className={primary} disabled={busy} onClick={() => run('publish')}>{busy ? 'Publicando…' : 'Confirmar'}</button><button className={button} disabled={busy} onClick={() => setConfirm(false)}>Cancelar</button></div>
+    </div>}
+    {error && <p role="alert" className="bg-red-50 text-red-800 rounded-lg p-3 text-sm">{error}</p>}
+  </div>;
+}
 export function MarketplaceDrafts({ user, tenant }: { user: User; tenant: string }) {
   const [rows, setRows] = useState<ListingDraft[]>([]), [cursor, setCursor] = useState<string | null>(null);
   const [busy, setBusy] = useState(true), [error, setError] = useState(''), [manage, setManage] = useState(false);
@@ -31,6 +55,8 @@ export function MarketplaceDrafts({ user, tenant }: { user: User; tenant: string
       <div className="flex gap-4">{d.data.pictures[0] && <img src={d.data.pictures[0]} alt="" loading="lazy" referrerPolicy="no-referrer" className="w-20 h-20 object-contain rounded-lg bg-slate-50" />}
         <div className="min-w-0"><p className="text-xs text-slate-500 break-all">{d.data.externalId}</p><h3 className="font-semibold break-words">{d.data.title}</h3><p className="text-slate-600">{money(d.data.price)} · {d.data.quantity} unidade(s)</p></div></div>
       <p className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium ${d.status === 'approved' || d.status === 'published' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'}`}>{draftStatuses[d.status]}</p>
+      {d.message && <p className="bg-slate-50 rounded-lg p-3 text-xs text-slate-600">{d.message}</p>}
+      {manage && <CardActions draft={d} user={user} base={base} onChange={next => setRows(old => old.map(r => r.id === next.id ? next : r))} />}
       <button className={`${button} block w-full text-indigo-700`} onClick={() => setSelected(d)}>Revisar rascunho</button>
     </article>)}</div>
     {cursor && <button className={button} disabled={busy} onClick={more}>Carregar mais rascunhos</button>}

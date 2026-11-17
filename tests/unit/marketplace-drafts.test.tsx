@@ -109,3 +109,28 @@ it('aplica a categoria sugerida e exige os atributos obrigatórios dela',async()
  expect(screen.queryByText(/Preencha: Material/)).toBeNull();
  expect(screen.getByText('Atributos obrigatórios completos')).toBeTruthy();
 });
+it('aprova e publica direto do card, com confirmação antes de publicar',async()=>{
+  api([{drafts:[draft],canManage:true,nextCursor:null},{...draft,status:'approved',revision:1},{...draft,status:'published',itemId:'MLB900'}]);
+  render(<MarketplaceDrafts user={user} tenant="a"/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Aprovar Chaveiro'}));
+  const publish=await screen.findByRole('button',{name:'Publicar Chaveiro'});
+  expect(actionBodies()).toEqual([{action:'approve',revision:1}]);
+  expect(mock.call.mock.calls.at(-1)[1]).toBe('/api/tenants/a/listing-drafts/'+'a'.repeat(64)+'/actions');
+  fireEvent.click(publish);
+  const confirm=screen.getByRole('group',{name:'Confirmar publicação de Chaveiro'});
+  expect(within(confirm).getByText(/R\$\s*15,00/)).toBeTruthy();expect(actionBodies()).toHaveLength(1);
+  fireEvent.click(within(confirm).getByRole('button',{name:'Confirmar'}));
+  await screen.findByText('Enviado ao Mercado Livre');
+  expect(actionBodies().at(-1)).toEqual({action:'publish',revision:1});
+  expect(screen.queryByRole('button',{name:'Publicar Chaveiro'})).toBeNull();
+});
+it('card mostra erro da aprovação e leitor não vê os botões',async()=>{
+  api([{drafts:[draft],canManage:true,nextCursor:null},Error('Atributo obrigatório: MODEL')]);
+  render(<MarketplaceDrafts user={user} tenant="a"/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Aprovar Chaveiro'}));
+  expect((await screen.findByRole('alert')).textContent).toContain('Atributo obrigatório: MODEL');
+  expect(screen.getByRole('button',{name:'Aprovar Chaveiro'})).toBeTruthy();
+  cleanup();api([{drafts:[draft],canManage:false,nextCursor:null}]);render(<MarketplaceDrafts user={user} tenant="a"/>);
+  await screen.findByRole('button',{name:'Revisar rascunho'});
+  expect(screen.queryByRole('button',{name:'Aprovar Chaveiro'})).toBeNull();
+});
