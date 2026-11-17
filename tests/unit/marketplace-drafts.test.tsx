@@ -109,3 +109,26 @@ it('aplica a categoria sugerida e exige os atributos obrigatórios dela',async()
  expect(screen.queryByText(/Preencha: Material/)).toBeNull();
  expect(screen.getByText('Atributos obrigatórios completos')).toBeTruthy();
 });
+it('aprova e publica direto no card da lista, com confirmação antes de publicar',async()=>{
+  api([{drafts:[draft],canManage:true,nextCursor:null},{...draft,status:'approved'},{...draft,status:'published',itemId:'MLB901'}]);
+  render(<MarketplaceDrafts user={user} tenant="a"/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Aprovar'}));
+  await screen.findByText('Aprovado. Confira e clique em Publicar.');
+  expect(actionBodies().at(-1)).toEqual({action:'approve',revision:1});
+  fireEvent.click(screen.getByRole('button',{name:'Publicar'}));
+  expect(actionBodies()).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button',{name:'Confirmar publicação'}));
+  await screen.findByText('Publicado no Mercado Livre (MLB901).');
+  expect(actionBodies().at(-1)).toEqual({action:'publish',revision:1});
+  expect(screen.queryByRole('button',{name:'Aprovar'})).toBeNull();
+});
+it('card mostra o erro do Mercado Livre e leitor não vê os botões rápidos',async()=>{
+  api([{drafts:[draft],canManage:true,nextCursor:null},Error('O Mercado Livre recusou os dados.'),draft]);
+  render(<MarketplaceDrafts user={user} tenant="a"/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Aprovar'}));
+  await screen.findByText('O Mercado Livre recusou os dados.');
+  cleanup(); api([{drafts:[draft],canManage:false,nextCursor:null}]);
+  render(<MarketplaceDrafts user={user} tenant="a"/>);
+  await screen.findByRole('button',{name:'Revisar rascunho'});
+  expect(screen.queryByRole('button',{name:'Aprovar'})).toBeNull();
+});
