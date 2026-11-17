@@ -179,8 +179,11 @@ it.each(['duplicate','missing-price','disabled','frozen','changed-state','eviden
  if(kind==='evidence') input.message='Veja aprovação no anexo';
  if(kind==='wrong-code') interpret.mockResolvedValue({...actionResult('approve','ORC-999'),action:{intent:'approve',query:'ORC-999',note:'',question:'',approval:{quantity:10,deliveryDate:null,paid:false,evidence:input.message,personalization:[]}}});
  if(kind==='restricted') await db.doc(`tenants/${tenant}`).update({assistantSharedRequests:false});
- const expected=['evidence','wrong-code'].includes(kind)?422:kind==='disabled'?403:409;
- await call(input).expect(expected);
+ // Sem total para a quantidade aprovada, o assistente pede conferência (200 + approvalReview)
+ // em vez de recusar com 409; nos dois casos nada é gravado.
+ const expected=['evidence','wrong-code'].includes(kind)?422:kind==='disabled'?403:kind==='missing-price'?200:409;
+ const response=await call(input).expect(expected);
+ if(kind==='missing-price') expect(response.body.action.intent).toBe('approvalReview');
  const row=(await productionRecord().get()).data()!;
  expect(row.status).toBe(kind==='changed-state'?'finalizado':'orcado');
  expect(row.requestedQuantity).toBe(1);expect(row).not.toHaveProperty('requestedDeliveryDate');

@@ -35,6 +35,8 @@ beforeEach(async()=>{
   remote.mockReset().mockImplementation(async(url,init)=>{
     const path=new URL(String(url)).pathname;
     if(path==='/users/me') return response({id:123,tags:userProducts?['user_product_seller']:[]});
+    // A aprovação passou a conferir os modos de envio habilitados na conta.
+    if(path.endsWith('/shipping_preferences'))return response({modes:['me2','me1','custom','not_specified'],logistics:[]});
     if(path==='/items/validate')return response({});
     if(path==='/items')return response(item,201);
     if(path.endsWith('/description')){
@@ -84,7 +86,7 @@ it('conta sem User Products usa título; validação recusada mantém rascunho',
   const d=await draft();userProducts=false;
   const original=remote.getMockImplementation()!;
   remote.mockImplementation(async(u,i)=>String(u).endsWith('/items/validate')?response({cause:[{code:'item.attributes.missing_required',message:'provider-token-secret'}]},400):original(u,i));
-  const r=await act(d.id,'approve').expect(422);expect(r.body.error).toContain('item.attributes.missing_required');expect(JSON.stringify(r.body)).not.toContain('provider-token-secret');
+  const r=await act(d.id,'approve').expect(422);expect(r.body.error).toContain('exige atributo obrigatório');expect(r.body.error).toContain('Atributos obrigatórios da categoria');expect(JSON.stringify(r.body)).not.toContain('provider-token-secret');
   expect((await get(`${base}/${d.id}`)).body.status).toBe('draft');
   const validation=remote.mock.calls.find(([u])=>String(u).endsWith('/items/validate'))!;
   expect(JSON.parse(validation[1]!.body as string)).toHaveProperty('title',data.title);expect(creates()).toHaveLength(0);
