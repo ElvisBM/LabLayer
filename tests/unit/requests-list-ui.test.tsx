@@ -29,6 +29,7 @@ afterEach(cleanup);
 
 it('lista mostra quantidade e preço registrado, distinguindo orçamento pendente de preço zero', () => {
   render(<EncomendasOrcamentos />);
+  fireEvent.click(screen.getByRole('button', { name: 'Lista simplificada' }));
   const table = screen.getByRole('table', { name: /Lista simplificada/ });
   expect(within(table).getByText('1 un')).toBeTruthy();
   expect(within(table).getByText('10 un')).toBeTruthy();
@@ -71,7 +72,7 @@ it('abrir detalhes recupera o descritivo integral e quantidade sem salvar nem re
   expect(screen.getByRole('button', { name: 'Atualizar' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
   expect(screen.queryByRole('heading', { name: 'Editar Solicitação' })).toBeNull();
-  expect(screen.getByRole('table')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Pedidos' }).getAttribute('aria-pressed')).toBe('true');
   expect(state.writes).not.toHaveBeenCalled();
 });
 
@@ -109,7 +110,7 @@ it('nova solicitação também abre tela própria e permite voltar sem criar reg
   expect(screen.getByRole('heading', { name: 'Nova Solicitação' })).toBeTruthy();
   expect(screen.queryByRole('table')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Voltar para orçamentos' }));
-  expect(screen.getByRole('table')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Pedidos' }).getAttribute('aria-pressed')).toBe('true');
   expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Nova Solicitação' }));
   expect(state.writes).not.toHaveBeenCalled();
 });
@@ -152,6 +153,7 @@ it('erro mantém seleção para repetir e bloqueia duplo envio durante salvament
 it('cabeçalhos ordenam sem salvar, preservam seleção e mantêm finalizados no fim em ambos sentidos',()=>{
  state.requests.push({...state.requests[0],id:'done',title:'A finalizado',status:'finalizado',requestedQuantity:100,updatedAt:'2030-01-01T00:00:00Z'});
  render(<EncomendasOrcamentos/>);
+ fireEvent.click(screen.getByRole('button',{name:'Lista simplificada'}));
  const titles=()=>within(screen.getByRole('table')).getAllByRole('row').slice(1).map(row=>within(row).getByRole('rowheader').textContent);
  expect(titles().at(-1)).toContain('A finalizado');
  fireEvent.click(screen.getByRole('checkbox',{name:'Selecionar Chaveiro NFC'}));
@@ -180,4 +182,21 @@ it('exibe orçamento por quantidade em todos os modos e salva o total da opção
  fireEvent.click(screen.getByRole('button',{name:'Atualizar'}));
  await waitFor(()=>expect(state.writes).toHaveBeenCalledTimes(1));
  expect(state.writes.mock.calls[0][1]).toMatchObject({quotedPrice:166,customerQuote:state.requests[1].customerQuote});
+});
+
+it('pedidos usa o resumo do bot e mostra o número independente do título, inclusive na busca e nos detalhes', () => {
+ state.requests[1].code='ORC-002'; state.requests[1].requestedDeliveryDate='2026-11-08';
+ render(<EncomendasOrcamentos/>);
+ expect(screen.getByRole('button',{name:'Pedidos'}).getAttribute('aria-pressed')).toBe('true');
+ expect(screen.getByText('ORC-002')).toBeTruthy();
+ expect(screen.queryByText('Descrição completa do organizador.')).toBeNull();
+ expect(screen.getByText('08/11/2026')).toBeTruthy();
+ fireEvent.change(screen.getByPlaceholderText('Buscar solicitação...'),{target:{value:'ORC 2'}});
+ expect(screen.getByRole('status').textContent).toBe('1 de 2 solicitações');
+ for(const mode of ['Pedidos','Lista simplificada','2 caixas','3 caixas']) {
+  fireEvent.click(screen.getByRole('button',{name:mode})); expect(screen.getByText('ORC-002')).toBeTruthy();
+ }
+ fireEvent.click(screen.getByRole('button',{name:/ORC-002.*Organizador/}));
+ expect(screen.getByText('ORC-002 · Organizador')).toBeTruthy();
+ expect(state.writes).not.toHaveBeenCalled();
 });

@@ -11,7 +11,7 @@ export type RequestSortField = typeof REQUEST_SORT_OPTIONS[number]['value'];
 export type RequestSortDirection = 'asc' | 'desc';
 type SortableRequest = { id: string; title: string; status: string; customerName?: string; requestedQuantity?: number; quotedPrice?: number; createdAt?: string; updatedAt?: string };
 const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true });
-const stages = ['aguardando-orcamento', 'orcado', 'fila-producao', 'produzindo', 'finalizado'];
+const stages = ['aguardando-orcamento', 'orcado', 'fila-producao', 'produzindo', 'finalizado', 'cancelado'];
 function value(row: SortableRequest, field: RequestSortField): string | number | null {
   if (field === 'updatedAt' || field === 'createdAt') {
     const date = Date.parse(field === 'updatedAt' ? row.updatedAt || row.createdAt || '' : row.createdAt || '');
@@ -27,7 +27,7 @@ function value(row: SortableRequest, field: RequestSortField): string | number |
   return row[field]?.trim() || null;
 }
 export function compareRequests(a: SortableRequest, b: SortableRequest, field: RequestSortField, direction: RequestSortDirection) {
-  const completed = Number(a.status === 'finalizado') - Number(b.status === 'finalizado');
+  const completed = Number(['finalizado', 'cancelado'].includes(a.status)) - Number(['finalizado', 'cancelado'].includes(b.status));
   if (completed) return completed; // Never reverse this priority with descending order.
   const av = value(a, field), bv = value(b, field);
   if (av === null || bv === null) {

@@ -1,4 +1,4 @@
-import { AssistantChat, AssistantLinks } from './features/assistant/Assistant';
+import { AssistantLinks } from './features/assistant/Assistant';
 import { useInventoryPhase } from './features/inventory/useInventoryPhase';
 import { lazy, useState } from 'react';
 import { ViewBoundary } from './components/ViewBoundary';
@@ -45,6 +45,7 @@ function MainApp() {
   });
   const { user, tenantId, loading, initializationError } = useAuth();
   const inventory = useInventoryPhase(tenantId);
+  const inventoryAvailable = !['legacy', 'loading', 'error'].includes(inventory.phase);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-surface text-primary font-bold">Carregando...</div>;
@@ -65,12 +66,26 @@ function MainApp() {
   const renderView = () => {
     if (currentView === 'assistente') return <AssistantLinks />;
     if (currentView === 'usuarios') return <TeamPage />;
-    if (inventory.phase === 'loading') return <p>Conferindo estado do estoque...</p>;
-    if (inventory.phase === 'error') return <p role="alert">Não foi possível conferir o estado do estoque. Recarregue antes de operar.</p>;
-    if (currentView === 'estoque-operacoes') return <InventoryPage onCatalog={() => setCurrentView('catalogo-fichas')} />;
-    if (currentView === 'financeiro-conciliacao' || (inventory.phase !== 'legacy' && ['dashboard', 'financeiro'].includes(currentView))) return <FinancePage onOrders={() => setCurrentView('orcamentos-pedidos')} onInventory={() => setCurrentView('estoque-operacoes')} />;
-    if (currentView === 'orcamentos-pedidos' || (inventory.phase !== 'legacy' && ['vendas', 'encomendas', 'precificacao', 'valores-sugeridos'].includes(currentView))) return <QuotesPage onInventory={() => setCurrentView('estoque-operacoes')} onCatalog={() => setCurrentView('catalogo-fichas')} />;
-    if (inventory.phase !== 'legacy') {
+    if (currentView === 'estoque-operacoes') {
+      if (inventory.phase === 'loading' || inventory.phase === 'error') return <section className="mx-auto max-w-xl rounded-xl border border-amber-300 bg-amber-50 p-6 text-amber-950" role={inventory.phase === 'error' ? 'alert' : 'status'}>
+        <h2 className="font-semibold">Estoque indisponível no momento</h2>
+        <p className="mt-2">{inventory.phase === 'loading' ? 'Conferindo o estado do estoque…' : 'Não foi possível conferir o estado do estoque. As demais telas continuam disponíveis.'}</p>
+        {inventory.phase === 'error' && <div className="mt-4 flex flex-wrap gap-2"><button className="rounded-lg bg-amber-950 px-4 py-2 text-white" onClick={() => window.location.reload()}>Tentar novamente</button><button className="rounded-lg border border-amber-700 px-4 py-2" onClick={() => setCurrentView('dashboard')}>Voltar ao painel</button></div>}
+      </section>;
+      return <InventoryPage onCatalog={() => setCurrentView('catalogo-fichas')} />;
+    }
+    if (currentView === 'financeiro-conciliacao') {
+      if (inventory.phase === 'loading' || inventory.phase === 'error') return <section className="mx-auto max-w-xl rounded-xl border border-amber-300 bg-amber-50 p-6 text-amber-950" role={inventory.phase === 'error' ? 'alert' : 'status'}>
+        <h2 className="font-semibold">Conciliação indisponível no momento</h2>
+        <p className="mt-2">{inventory.phase === 'loading' ? 'Conferindo o estado do estoque…' : 'Não foi possível conferir o estado do estoque, necessário para esta tela. As demais áreas continuam disponíveis.'}</p>
+        {inventory.phase === 'error' && <div className="mt-4 flex flex-wrap gap-2"><button className="rounded-lg bg-amber-950 px-4 py-2 text-white" onClick={() => window.location.reload()}>Tentar novamente</button><button className="rounded-lg border border-amber-700 px-4 py-2" onClick={() => setCurrentView('dashboard')}>Voltar ao painel</button></div>}
+      </section>;
+      return <FinancePage onOrders={() => setCurrentView('orcamentos-pedidos')} onInventory={() => setCurrentView('estoque-operacoes')} />;
+    }
+    if (inventoryAvailable && ['dashboard', 'financeiro'].includes(currentView)) return <FinancePage onOrders={() => setCurrentView('orcamentos-pedidos')} onInventory={() => setCurrentView('estoque-operacoes')} />;
+    if (currentView === 'orcamentos-pedidos' && (inventory.phase === 'loading' || inventory.phase === 'error')) return <EncomendasOrcamentos />;
+    if (currentView === 'orcamentos-pedidos' || (inventoryAvailable && ['vendas', 'encomendas', 'precificacao', 'valores-sugeridos'].includes(currentView))) return <QuotesPage onInventory={() => setCurrentView('estoque-operacoes')} onCatalog={() => setCurrentView('catalogo-fichas')} />;
+    if (inventoryAvailable) {
       if (['produtos', 'produto-editor', 'catalogo-fichas'].includes(currentView)) return <CatalogPage operational onBack={() => setCurrentView('estoque-operacoes')} />;
       if (['filamentos', 'insumos', 'estoque', 'agenda', 'perdas'].includes(currentView)) return <InventoryPage onCatalog={() => setCurrentView('catalogo-fichas')} />;
     }
@@ -139,9 +154,9 @@ function MainApp() {
   };
 
   const getTitle = () => {
-    if (currentView === 'financeiro-conciliacao' || (inventory.phase !== 'legacy' && ['dashboard', 'financeiro'].includes(currentView))) return 'Financeiro e conciliação';
-    if (currentView === 'orcamentos-pedidos' || (inventory.phase !== 'legacy' && ['vendas', 'encomendas', 'precificacao', 'valores-sugeridos'].includes(currentView))) return 'Orçamentos e pedidos';
-    if (currentView === 'estoque-operacoes' || (inventory.phase !== 'legacy' && ['dashboard', 'filamentos', 'insumos', 'estoque', 'agenda', 'perdas'].includes(currentView))) return 'Estoque e produção';
+    if (currentView === 'financeiro-conciliacao' || (inventoryAvailable && ['dashboard', 'financeiro'].includes(currentView))) return 'Financeiro e conciliação';
+    if (currentView === 'orcamentos-pedidos' || (inventoryAvailable && ['vendas', 'encomendas', 'precificacao', 'valores-sugeridos'].includes(currentView))) return 'Orçamentos e pedidos';
+    if (currentView === 'estoque-operacoes' || (inventoryAvailable && ['dashboard', 'filamentos', 'insumos', 'estoque', 'agenda', 'perdas'].includes(currentView))) return 'Estoque e produção';
     switch (currentView) {
       case 'dashboard': return 'Painel Financeiro';
       case 'vendas': return 'Gestão de Vendas';
@@ -203,9 +218,6 @@ function MainApp() {
           }}
         />
         <div className="p-4 lg:p-8 flex-1 overflow-x-hidden">
-          <button className="mb-4 rounded border p-2" onClick={() => setCurrentView('estoque-operacoes')}>Estoque e produção — operações e migração</button>
-          <button className="mb-4 ml-3 rounded border p-2" onClick={() => setCurrentView('orcamentos-pedidos')}>Orçamentos e pedidos</button>
-          <button className="mb-4 ml-3 rounded border p-2" onClick={() => setCurrentView('financeiro-conciliacao')}>Financeiro e conciliação</button>
           <ViewBoundary key={`${tenantId}:${inventory.phase}:${currentView}`}>
             {renderView()}
           </ViewBoundary>
@@ -216,7 +228,6 @@ function MainApp() {
 }
 
 export default function App() {
-  if (window.location.pathname === "/assistente") return <AssistantChat />;
   return (
     <AuthProvider>
       <MainApp />

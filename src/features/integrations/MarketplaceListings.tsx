@@ -1,3 +1,4 @@
+import { MarketplaceDrafts } from './MarketplaceDrafts';
 import { MarketplaceListingEditor, type ListingAction } from './MarketplaceListingEditor';
 import { useEffect, useState } from 'react';
 import { ExternalLink, Megaphone, RefreshCw, Search } from 'lucide-react';
@@ -18,7 +19,14 @@ const money = (price: number | null, currency: string) => price === null ? 'Pre�
 export function MarketplaceListings() {
   const { user, tenantId } = useAuth();
   if (!user || !tenantId) return <p>Selecione uma empresa para consultar os anúncios.</p>;
-  return <Listings key={`${user.uid}:${tenantId}`} user={user} tenant={tenantId} />;
+  return <ListingTabs key={`${user.uid}:${tenantId}`} user={user} tenant={tenantId} />;
+}
+function ListingTabs({ user, tenant }: { user: { getIdToken(): Promise<string> }; tenant: string }) {
+  const [tab,setTab] = useState(new URLSearchParams(window.location.search).get('tab') === 'rascunhos' ? 'drafts' : 'live');
+  return <div className="space-y-5"><div className="flex flex-wrap gap-2" role="tablist" aria-label="Origem dos anúncios">
+    <button role="tab" aria-selected={tab === 'drafts'} onClick={()=>setTab('drafts')} className={`px-5 py-3 rounded-xl border font-semibold ${tab === 'drafts' ? 'bg-indigo-700 text-white' : 'bg-white'}`}>Rascunhos para revisar</button>
+    <button role="tab" aria-selected={tab === 'live'} onClick={()=>setTab('live')} className={`px-5 py-3 rounded-xl border font-semibold ${tab === 'live' ? 'bg-indigo-700 text-white' : 'bg-white'}`}>Anúncios nas plataformas</button>
+  </div>{tab === 'drafts' ? <MarketplaceDrafts user={user} tenant={tenant} /> : <Listings user={user} tenant={tenant} />}</div>;
 }
 function Listings({ user, tenant }: { user: { getIdToken(): Promise<string> }; tenant: string }) {
   const [selected, setSelected] = useState<{ id: string; action: ListingAction } | null>(null);

@@ -500,6 +500,7 @@ const hasCollectionFilters = (query: express.Request["query"]) => {
   const app = express();
   const adminApiToken = env.ADMIN_API_TOKEN?.trim();
   const scopedApiKeys = parseScopedApiKeys(env.LABLAYER_API_KEYS_JSON);
+  const quoteApiKeys = parseScopedApiKeys(env.LABLAYER_QUOTE_API_KEYS_JSON);
 
   app.disable("x-powered-by");
   app.use(express.json());
@@ -536,13 +537,23 @@ const hasCollectionFilters = (query: express.Request["query"]) => {
       (typeof req.headers["x-lablayer-admin-token"] === "string" ? req.headers["x-lablayer-admin-token"] : "") ||
       extractBearerToken(typeof req.headers.authorization === "string" ? req.headers.authorization : undefined);
 
-    if (!adminApiToken && scopedApiKeys.length === 0) {
+    if (!adminApiToken && scopedApiKeys.length === 0 && quoteApiKeys.length === 0) {
       return res.status(503).json({ error: "Nenhuma chave da API administrativa está configurada." });
     }
 
-    const scopedKey = providedToken
-      ? scopedApiKeys.find((item) => item.active !== false && item.tokenHash === hashApiToken(providedToken))
-      : undefined;
+    const tokenHash = providedToken ? hashApiToken(providedToken) : "";
+    const quoteKey = quoteApiKeys.find(item => item.active !== false && item.tokenHash === tokenHash);
+    if (quoteKey) {
+      if (req.params.tenantId !== quoteKey.tenantId || req.params.collectionName !== "customRequests" ||
+          !["GET", "POST", "PUT", "PATCH"].includes(req.method)) {
+        return res.status(403).json({ error: "Chave restrita à API de orçamentos da empresa." });
+      }
+      const ids = [req.params.docId, req.body?.id];
+      if (ids.some(id => id !== undefined && (typeof id !== "string" || !/^[a-zA-Z0-9_-]{1,150}$/.test(id)))) {
+        return res.status(400).json({ error: "ID de orçamento inválido." });
+      }
+    }
+    const scopedKey = quoteKey ?? scopedApiKeys.find(item => item.active !== false && item.tokenHash === tokenHash);
     const hasTechnicalAccess = Boolean(providedToken && adminApiToken && timingSafeEqual(Buffer.from(hashApiToken(providedToken)), Buffer.from(hashApiToken(adminApiToken))));
 
     if (!hasTechnicalAccess && !scopedKey) {

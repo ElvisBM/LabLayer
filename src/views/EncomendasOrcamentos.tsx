@@ -1,3 +1,5 @@
+import { PlatformOrderCard } from '../features/requests/PlatformOrderCard';
+import { requestCode, requestNumber, existingRequestNumber, withoutRequestCode } from '../../shared/requests/number';
 import { TenantQuoteImage } from '../features/requests/QuoteImage';
 import { CustomerQuoteEditor, CustomerQuotePreview } from '../features/requests/CustomerQuote';
 import { formatCustomerQuote, validCustomerQuote, optionTotal, type CustomerQuote } from '../../shared/requests/quote';
@@ -6,7 +8,7 @@ import { changeRequestStatuses, MAX_BULK_REQUESTS } from "../features/requests/b
 import { AssistantRequestNotes } from '../features/assistant/Assistant';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { ArrowLeft, Calculator, CheckCircle2, Clock3, Edit2, FileText, ImagePlus, LayoutGrid, List, Link as LinkIcon, Package, Plus, Printer, Trash2 } from 'lucide-react';
+import { ArrowLeft, Calculator, CheckCircle2, Clock3, Edit2, FileText, ImagePlus, Link as LinkIcon, Package, Plus, Printer, Trash2 } from 'lucide-react';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { SearchableSelect, SelectOption } from '../components/SearchableSelect';
@@ -15,7 +17,7 @@ import { RequestImage, uploadRequestImage } from '../components/RequestImage';
 import { DEFAULT_PRICING_SETTINGS, type PricingPrinterLike, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings, suggestedPrice } from '../utils/pricing';
 
 type RequestType = 'orcamento' | 'encomenda';
-type RequestStatus = 'aguardando-orcamento' | 'orcado' | 'fila-producao' | 'produzindo' | 'finalizado';
+type RequestStatus = 'aguardando-orcamento' | 'orcado' | 'fila-producao' | 'produzindo' | 'finalizado' | 'cancelado';
 type RequestSourceChannel = 'manual' | 'whatsapp';
 
 interface RequestFilament {
@@ -28,6 +30,9 @@ interface RequestFilament {
 interface CustomRequest {
   id: string;
   title: string;
+  code?: string;
+  requestNumber?: string | number;
+  requestedDeliveryDate?: string;
   type: RequestType;
   status: RequestStatus;
   sourceChannel?: RequestSourceChannel;
@@ -82,6 +87,7 @@ const STATUS_OPTIONS: Array<{ value: RequestStatus; label: string }> = [
   { value: 'fila-producao', label: 'Fila de produção' },
   { value: 'produzindo', label: 'Produzindo' },
   { value: 'finalizado', label: 'Finalizado' },
+  { value: 'cancelado', label: 'Cancelado' },
 ];
 
 
@@ -121,6 +127,8 @@ const getDefaultFormData = (): Omit<CustomRequest, 'id'> => ({
 
 const getStatusClasses = (status: RequestStatus) => {
   switch (status) {
+    case 'cancelado':
+      return 'bg-red-100 text-red-700';
     case 'finalizado':
       return 'bg-emerald-100 text-emerald-700';
     case 'produzindo':
@@ -170,7 +178,7 @@ export function EncomendasOrcamentos() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [displayMode, setDisplayMode] = useState<'list' | 'cards-2' | 'cards-3'>('list');
+  const [displayMode, setDisplayMode] = useState<'orders' | 'list' | 'cards-2' | 'cards-3'>('orders');
   const [sortField, setSortField] = useState<RequestSortField>('updatedAt');
   const [sortDirection, setSortDirection] = useState<RequestSortDirection>('desc');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -312,7 +320,9 @@ export function EncomendasOrcamentos() {
     return requests
       .filter(item => statusFilter === 'all' || item.status === statusFilter)
       .filter(item => {
-        const haystack = `${item.title} ${item.description} ${item.customerName || ''}`.toLowerCase();
+        const number = requestNumber(search.trim());
+        if (number !== null) return existingRequestNumber(item) === number;
+        const haystack = `${requestCode(item) || ''} ${item.title} ${item.description} ${item.customerName || ''}`.toLowerCase();
         return haystack.includes(search.trim().toLowerCase());
       })
       .sort((a, b) => compareRequests(a, b, sortField, sortDirection));
@@ -498,7 +508,7 @@ export function EncomendasOrcamentos() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
           <h2 className="font-headline text-3xl font-bold text-primary tracking-tighter">Encomendas e Orçamentos</h2>
-          <p className="text-on-surface-variant font-sans text-sm mt-1">Suba a solicitação, anexe referência, calcule o orçamento e acompanhe a fila de produção em um lugar só.</p>
+          <p className="text-on-surface-variant font-sans text-sm mt-1">Acompanhe seus pedidos por número, cliente e entrega. Abra um pedido para conferir ou editar os detalhes.</p>
         </div>
         <button
           id="new-request"
@@ -514,19 +524,6 @@ export function EncomendasOrcamentos() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 xl:grid-cols-6 gap-4">
-        <div className="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/20 shadow-sm">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Total</div>
-          <div className="text-2xl font-headline font-bold text-on-surface">{requests.length}</div>
-        </div>
-        {STATUS_OPTIONS.map(option => (
-          <div key={option.value} className="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/20 shadow-sm">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">{option.label}</div>
-            <div className="text-2xl font-headline font-bold text-on-surface">{statusCounts[option.value] || 0}</div>
-          </div>
-        ))}
-      </div>
-
       </>}
       {showForm && (
         <section aria-label="Detalhes da solicitação" className="space-y-4">
@@ -539,6 +536,7 @@ export function EncomendasOrcamentos() {
             <h2 ref={detailHeading} tabIndex={-1} className="font-headline font-bold text-lg break-words">{editingId ? 'Editar Solicitação' : 'Nova Solicitação'}</h2>
           </div>
 
+          {editingId && <p className="text-sm font-bold text-primary">{requestCode({ ...formData, id: editingId }) || 'Sem número atribuído'} · {withoutRequestCode(formData.title)}</p>}
           {editingId && <AssistantRequestNotes requestId={editingId} />}
           <form onSubmit={handleSave} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -899,37 +897,31 @@ export function EncomendasOrcamentos() {
       )}
 
       {!showForm && <>
-      <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/10">
-        <div className="relative w-full lg:max-w-sm">
+      <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center bg-surface-container-lowest p-3 sm:p-4 rounded-xl border border-outline-variant/10">
+        <div className="relative w-full min-w-0 flex-1">
           <input
             type="text"
             value={search}
             disabled={bulkBusy}
             onChange={e => { setSearch(e.target.value); setSelectedIds([]); }}
             placeholder="Buscar solicitação..."
-            className="w-full bg-surface-container border-none rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+            className="w-full min-h-12 bg-surface-container border-none rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-primary outline-none"
           />
         </div>
-        <select
-          aria-label="Filtrar por status"
-          value={statusFilter}
-          disabled={bulkBusy}
-          onChange={e => { setStatusFilter(e.target.value as 'all' | RequestStatus); setSelectedIds([]); }}
-          className="bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
-        >
-          <option value="all">Todos os status</option>
-          {STATUS_OPTIONS.map(option => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
-        <div role="group" aria-label="Visualização das solicitações" className="flex flex-wrap gap-1 rounded-lg bg-surface-container p-1">
-          {([{ value: 'list', label: 'Lista simplificada', Icon: List }, { value: 'cards-2', label: '2 caixas', Icon: LayoutGrid }, { value: 'cards-3', label: '3 caixas', Icon: LayoutGrid }] as const).map(({ value, label, Icon }) => (
-            <button key={value} type="button" aria-pressed={displayMode === value} onClick={() => setDisplayMode(value)} className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-bold flex-1 whitespace-nowrap ${displayMode === value ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:bg-surface-container-high'}`}>
-              <Icon className="w-4 h-4" aria-hidden="true" />{label}
+        <div role="group" aria-label="Visualização das solicitações" className="grid w-full grid-cols-4 gap-1 rounded-lg bg-surface-container p-1 md:w-auto md:flex-shrink-0">
+          {([{ value: 'orders', label: 'Pedidos', shortLabel: 'Pedidos' }, { value: 'list', label: 'Lista simplificada', shortLabel: 'Lista' }, { value: 'cards-2', label: '2 caixas', shortLabel: '2 col.' }, { value: 'cards-3', label: '3 caixas', shortLabel: '3 col.' }] as const).map(({ value, label, shortLabel }) => (
+            <button key={value} type="button" aria-label={label} title={label} aria-pressed={displayMode === value} onClick={() => setDisplayMode(value)} className={`min-h-10 rounded-md px-2 sm:px-3 text-xs sm:text-sm font-semibold whitespace-nowrap ${displayMode === value ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:bg-surface-container-high'}`}>
+              {shortLabel}
             </button>
           ))}
         </div>
       </div>
+
+      <nav aria-label="Filtrar solicitações por status" className="-mt-5 flex gap-1 overflow-x-auto border-b border-outline-variant/20 px-1">
+        {[{ value: 'all', label: 'Todos' }, ...STATUS_OPTIONS].map(option => <button key={option.value} type="button" disabled={bulkBusy} aria-pressed={statusFilter === option.value} onClick={() => { setStatusFilter(option.value as 'all' | RequestStatus); setSelectedIds([]); }} className={`inline-flex min-h-10 shrink-0 items-center gap-1.5 border-b-2 px-3 text-sm whitespace-nowrap ${statusFilter === option.value ? 'border-primary font-semibold text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'}`}>
+          {option.label}<span className="text-xs opacity-70">{option.value === 'all' ? requests.length : statusCounts[option.value as RequestStatus] || 0}</span>
+        </button>)}
+      </nav>
 
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <label className="flex items-center gap-2">Ordenar por
@@ -951,16 +943,23 @@ export function EncomendasOrcamentos() {
           Selecionar todos os resultados
         </label>
         <span className="text-sm">{visibleSelected.length} selecionado(s)</span>
+        {!!visibleSelected.length && <>
         <label className="flex items-center gap-2 text-sm">Novo status
           <select aria-label="Novo status em lote" value={bulkStatus} disabled={bulkBusy} onChange={e => setBulkStatus(e.target.value as RequestStatus)} className="rounded bg-surface-container p-2">
             {STATUS_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
         <button type="button" disabled={bulkBusy || !visibleSelected.length} onClick={applyBulkStatus} className="rounded bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-50">{bulkBusy ? 'Salvando…' : `Alterar status de ${visibleSelected.length} selecionado(s)`}</button>
-        {!!visibleSelected.length && <button type="button" disabled={bulkBusy} onClick={() => setSelectedIds([])} className="text-sm text-primary underline">Limpar seleção</button>}
+        <button type="button" disabled={bulkBusy} onClick={() => setSelectedIds([])} className="text-sm text-primary underline">Limpar seleção</button>
+        </>}
       </section>
 
-      {displayMode === 'list' ? (
+      {displayMode === 'orders' ? (
+        <div className="space-y-4" aria-label="Pedidos e orçamentos">
+          {!filteredRequests.length && <p className="rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-8 text-center text-on-surface-variant">Nenhuma encomenda ou orçamento encontrado com os filtros atuais.</p>}
+          {filteredRequests.map(request => <PlatformOrderCard key={request.id} order={request} selection={selectionCheckbox(request)} statusLabel={STATUS_OPTIONS.find(option => option.value === request.status)?.label || request.status} statusClass={getStatusClasses(request.status)} onOpen={() => handleEdit(request)} />)}
+        </div>
+      ) : displayMode === 'list' ? (
         <div className="overflow-x-auto rounded-xl border border-outline-variant/20 bg-surface-container-lowest">
           <table className="w-full min-w-[760px] text-sm text-left">
             <caption className="sr-only">Lista simplificada de encomendas e orçamentos</caption>
@@ -981,7 +980,7 @@ export function EncomendasOrcamentos() {
                 <tr key={request.id} className="hover:bg-surface-container/50 align-top">
                   <td className="p-3">{selectionCheckbox(request)}</td>
                   <th scope="row" className="p-3 max-w-sm font-normal">
-                    <button id={`request-title-${request.id}`} type="button" onClick={() => handleEdit(request)} className="block min-h-11 text-left font-semibold text-primary break-words hover:underline focus-visible:ring-2 focus-visible:ring-primary rounded">{request.title}</button>
+                    <button id={`request-title-${request.id}`} aria-label={requestCode(request) ? `${requestCode(request)} — ${withoutRequestCode(request.title) || request.title}` : request.title} type="button" onClick={() => handleEdit(request)} className="block min-h-11 text-left font-semibold text-primary break-words hover:underline focus-visible:ring-2 focus-visible:ring-primary rounded">{requestCode(request) && <span className="block text-xs font-bold text-primary">{requestCode(request)}</span>}{withoutRequestCode(request.title) || request.title}</button>
                     <span className="text-xs text-on-surface-variant">{REQUEST_TYPE_OPTIONS.find(option => option.value === request.type)?.label || 'Solicitação'}</span>
                     <CustomerQuotePreview quote={request.customerQuote} image={<TenantQuoteImage reference={request.quoteMediaImageUrl || request.referenceImageUrl} text={request.customerQuote ? formatCustomerQuote(request.customerQuote) : ''} />} />
                   </th>
@@ -1021,7 +1020,7 @@ export function EncomendasOrcamentos() {
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700">WhatsApp</span>
                       )}
                     </div>
-                    <h3 className="text-lg font-bold leading-tight break-words"><button id={`request-title-${request.id}`} type="button" onClick={() => handleEdit(request)} className="min-h-11 text-left text-primary hover:underline focus-visible:ring-2 focus-visible:ring-primary rounded">{request.title}</button></h3>
+                    <h3 className="text-lg font-bold leading-tight break-words"><button id={`request-title-${request.id}`} aria-label={requestCode(request) ? `${requestCode(request)} — ${withoutRequestCode(request.title) || request.title}` : request.title} type="button" onClick={() => handleEdit(request)} className="min-h-11 text-left text-primary hover:underline focus-visible:ring-2 focus-visible:ring-primary rounded">{requestCode(request) && <span className="block text-xs font-bold tracking-wide mb-1">{requestCode(request)}</span>}{withoutRequestCode(request.title) || request.title}</button></h3>
                     {request.description && <p className="text-sm text-on-surface-variant mt-2 leading-relaxed break-words">{request.description}</p>}
                     {(request.customerName || request.customerPhone) && (
                       <div className="mt-3 flex flex-wrap gap-3 text-xs text-on-surface-variant">

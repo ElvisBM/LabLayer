@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import { afterAll, beforeEach, expect, it } from "vitest";
 import { initializeApp, deleteApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
@@ -90,6 +91,16 @@ beforeEach(async () => {
 afterAll(async () => {
   await db.terminate();
   await deleteApp(firebase);
+});
+it.each([false, true])('resumo de abertura valida acesso sem devolver a lista (compartilhado: %s)', async shared => {
+  await db.doc(`tenants/${tenant}`).update({ assistantSharedRequests: shared });
+  await call('post', '/requests', payload()).expect(200);
+  const summary = await call('get', '?summary=true').expect(200);
+  expect(summary.body).toMatchObject({ seller: 'Vendedor', company: 'Empresa A', requests: [], nextCursor: null, requestScope: shared ? 'tenant' : 'link' });
+  expect((await call('get', '?status=active').expect(200)).body.requests).toHaveLength(1);
+  await call('get', '?summary=other').expect(422);
+  await db.doc(`assistantLinks/${key}`).update({ active: false });
+  await call('get', '?summary=true').expect(403);
 });
 it("somente proprietário ou administrador da plataforma gerencia links; segredo nunca aparece na listagem", async () => {
   const base = `/api/tenants/${tenant}/assistant-links`;
@@ -389,6 +400,26 @@ it('pagina todos os pedidos compartilhados, inclusive registros antigos sem data
   await call('get', '').expect(403);
 });
 
+it('ordena por número antes de paginar nos dois sentidos e mantém pedidos sem número no fim', async () => {
+  await db.doc(`tenants/${tenant}`).update({ assistantSharedRequests: true });
+  const batch = db.batch();
+  for (let n = 1; n <= 102; n++) {
+    const id = 'item-' + String(102 - n).padStart(3, '0');
+    batch.set(db.doc(`tenants/${tenant}/customRequests/${id}`), n % 2 ? { title: 'Pedido', requestNumber: n } : { title: `ORC-${n} Pedido` });
+  }
+  batch.set(db.doc(`tenants/${tenant}/customRequests/antigo`), { title: 'Sem número' });
+  await batch.commit();
+  for (const direction of ['asc', 'desc']) {
+    const path = '?sort=' + direction;
+    const first = (await call('get', path).expect(200)).body;
+    const last = (await call('get', path + '&cursor=' + first.nextCursor).expect(200)).body;
+    const ids = Array.from({ length: 102 }, (_, i) => 'item-' + String(direction === 'asc' ? 101 - i : i).padStart(3, '0'));
+    expect(first.requests).toHaveLength(100);
+    expect([...first.requests, ...last.requests].map(r => r.id)).toEqual([...ids, 'antigo']);
+    expect(last.nextCursor).toBeNull();
+  }
+});
+
 it('filtra status antes de paginar, mantém acesso ao conjunto completo e rejeita filtro inválido',async()=>{
  await db.doc(`tenants/${tenant}`).update({assistantSharedRequests:true});
  const batch=db.batch();
@@ -425,4 +456,88 @@ it('lista e detalhe compartilhados trazem apenas opções comerciais autorizadas
  expect(detail.body).not.toHaveProperty('productionWeightGrams');
  await db.doc(`tenants/${tenant}`).update({assistantSharedRequests:false});
  const hidden=await call('get','?status=orcado');expect(hidden.body.requests.some((r:any)=>r.id==='commercial')).toBe(false);
+});
+
+it('cartões expõem preço, prazo e capacidade autorizados sem dados internos e sem mudar pedidos', async () => {
+  await db.doc(`tenants/${tenant}`).update({ assistantSharedRequests: true, assistantWorkflowUpdates: true });
+  const ref = db.doc(`tenants/${tenant}/customRequests/card`);
+  const row = { title: 'Chaveiro', requestedQuantity: 10, status: 'orcado', quotedPrice: 145, code: 'ORC-008', requestedDeliveryDate: '2026-11-04', updatedAt: '2026-10-28T12:00:00Z', internalCost: 50 };
+  await ref.set(row);
+  const summary = await call('get', '?summary=true').expect(200);
+  expect(summary.body.workflowUpdates).toBe(true);
+  const list = await call('get', '?status=active').expect(200);
+  expect(list.body.requests[0]).toMatchObject({ quotedPrice: 145, code: 'ORC-008', requestedDeliveryDate: '2026-11-04', updatedAt: row.updatedAt });
+  expect(list.body.requests[0]).not.toHaveProperty('internalCost');
+  const detail = await call('get', '/requests/card').expect(200);
+  expect(detail.body.requestedDeliveryDate).toBe('2026-11-04');
+  expect(detail.body).not.toHaveProperty('internalCost');
+  expect((await ref.get()).data()).toEqual(row);
+  await db.doc(`tenants/${tenant}`).update({ assistantWorkflowUpdates: false });
+  expect((await call('get', '?summary=true').expect(200)).body.workflowUpdates).toBe(false);
+});
+
+it('prévia é menor, mantém o original e revalida vínculo e revogação mesmo com cache preenchido', async()=>{
+ const original=await sharp({create:{width:2400,height:1200,channels:3,background:'#7b45ef'}}).png().toBuffer();
+ const image=(await upload(token,original).expect(200)).body;
+ const preview=await call('get',`/assets/${image.id}?preview=true`).expect(200);
+ expect(preview.headers['content-type']).toContain('image/webp');expect(preview.body.length).toBeLessThan(original.length);
+ expect(preview.headers['cache-control']).toBe('private, no-store');
+ expect((await call('get',`/assets/${image.id}`).expect(200)).body.equals(original)).toBe(true);
+ await db.doc(`tenants/${tenant}`).update({assistantSharedRequests:true});
+ const other=(await admin('post',`/api/tenants/${tenant}/assistant-links`,{name:'Outro'}).expect(200)).body.token;
+ await db.doc(`tenants/${tenant}/customRequests/photo-order`).set({title:'Foto',referenceImageUrl:`asset:${image.id}`});
+ await call('get',`/assets/${image.id}?requestId=photo-order&preview=true`,undefined,other).expect(200);
+ await db.doc(`tenants/${tenant}/customRequests/photo-order`).update({referenceImageUrl:''});
+ await call('get',`/assets/${image.id}?requestId=photo-order&preview=true`,undefined,other).expect(404);
+ await db.doc(`assistantLinks/${key}`).update({active:false});
+ await call('get',`/assets/${image.id}?preview=true`).expect(403);
+});
+
+it('numera novos pedidos após os códigos existentes, sem duplicar em concorrência ou reenvio',async()=>{
+ await db.doc(`tenants/${tenant}/customRequests/legacy`).set({title:'ORC-013 — Pedido antigo',status:'orcado'});
+ const one=payload(),two=payload();
+ const [a,b]=await Promise.all([call('post','/requests',one).expect(200),call('post','/requests',two).expect(200)]);
+ const rows=await db.getAll(db.doc(`tenants/${tenant}/customRequests/${a.body.id}`),db.doc(`tenants/${tenant}/customRequests/${b.body.id}`));
+ expect(rows.map(r=>r.data()?.code).sort()).toEqual(['ORC-014','ORC-015']);
+ expect((await call('post','/requests',one).expect(200)).body.id).toBe(a.body.id);
+ expect((await db.doc(`tenants/${tenant}/assistantCounters/requests`).get()).data()?.lastNumber).toBe(15);
+ const list=(await call('get','?status=all').expect(200)).body.requests;
+ expect(list.map((r:any)=>r.code).sort()).toEqual(['ORC-014','ORC-015']);
+ expect((await call('get',`/requests/${a.body.id}`).expect(200)).body.code).toBe(rows[0].data()?.code);
+});
+
+it('pagina aprovados pela entrega combinada nos dois sentidos, com desempate por ORC e sem data no fim', async () => {
+  await db.doc(`tenants/${tenant}`).update({assistantSharedRequests:true});
+  const batch=db.batch();
+  for (let i=0;i<105;i++) batch.set(db.doc(`tenants/${tenant}/customRequests/item-${String(i).padStart(3,'0')}`),{
+    status:'fila-producao',requestNumber:i+1,...(i===1?{}:{requestedDeliveryDate:i===104?'2026-11-04':'2026-11-20'})
+  });
+  await batch.commit();
+  for (const sort of ['delivery-asc','delivery-desc']) {
+    const url='?status=fila-producao&sort='+sort;
+    const page=(await call('get',url).expect(200)).body;
+    const rest=(await call('get',url+'&cursor='+page.nextCursor).expect(200)).body;
+    const tie=Array.from({length:104},(_,i)=>i+1).filter(n=>n!==2);
+    expect([...page.requests,...rest.requests].map(r=>r.requestNumber)).toEqual(sort==='delivery-asc'?[105,...tie,2]:[...tie,105,2]);
+  }
+});
+
+it('cria o pedido na etapa escolhida em um único envio, respeitando permissão e dados obrigatórios',async()=>{
+ const gift=payload({initialStage:{status:'fila-producao',gift:true,quotedPrice:0,deliveryDate:'2026-11-18'}});
+ await db.doc(`tenants/${tenant}`).update({assistantWorkflowUpdates:false});
+ await call('post','/requests',gift).expect(403);
+ await db.doc(`tenants/${tenant}`).update({assistantWorkflowUpdates:true});
+ await call('post','/requests',{...gift,initialStage:{...gift.initialStage,deliveryDate:''}}).expect(422);
+ await call('post','/requests',payload({initialStage:{status:'orcado'}})).expect(422);
+ expect((await db.collection(`tenants/${tenant}/customRequests`).get()).size).toBe(0);
+ const r=await call('post','/requests',gift).expect(200);
+ await call('post','/requests',gift).expect(200);
+ const read=async(id:string)=>(await db.doc(`tenants/${tenant}/customRequests/${id}`).get()).data()!;
+ expect(await read(r.body.id)).toMatchObject({status:'fila-producao',isGift:true,quotedPrice:0,approvedAt:expect.any(String),requestedDeliveryDate:'2026-11-18'});
+ expect(await read(r.body.id)).not.toHaveProperty('paidAt');
+ for (const stage of [{status:'orcado',quotedPrice:175.9},{status:'produzindo',deliveryDate:'2026-11-18'},{status:'finalizado'},{status:'cancelado'}]){
+   const result=await call('post','/requests',payload({initialStage:stage})).expect(200);
+   expect((await read(result.body.id)).status).toBe(stage.status);
+   if(stage.status==='orcado') expect((await read(result.body.id)).quotedPrice).toBe(175.9);
+ }
 });

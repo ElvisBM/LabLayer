@@ -121,3 +121,108 @@ it('falha de IA ou resposta sem intenção nunca converte consulta em novo orça
  r=await call({message:'Qual valor?',conversation:true}).expect(200);expect(r.body.draft).toBeNull();
  r=await call({message:'Boneco 12cm',conversation:true,guided:true}).expect(200);expect(r.body.draft).toBeTruthy();
 });
+
+const productionRecord = () => db.doc(`tenants/${tenant}/customRequests/approved`);
+const productionNotes = () => db.collection(`tenants/${tenant}/assistantRequests/approved/notes`);
+async function approvalSetup(patch: any = {}) {
+ await db.doc(`tenants/${tenant}`).update({assistantSharedRequests:true,assistantWorkflowUpdates:true});
+ await productionRecord().set({title:'ORC-002 — Papel e Rosa',customerName:'Maria',status:'orcado',requestedQuantity:1,quotedPrice:28.9,
+  description:'Descrição preservada',customerQuote:{name:'Chaveiro',size:'6 cm',options:[{quantity:1,unitPrice:28.9,deliveryDays:null},{quantity:10,unitPrice:22.5,deliveryDays:2}]} });
+ const message='A Maria fechou as dez peças, entrega em 8 de novembro de 2026. Pode seguir!';
+ interpret.mockResolvedValue({...actionResult('approve','Maria'),action:{intent:'approve',query:'Maria',note:'',question:'',approval:{quantity:10,deliveryDate:'2026-11-08',paid:false,personalization:[],evidence:message,...patch}}});
+ return {operationId:randomUUID(),message,attachments:[],conversation:true};
+}
+it('aprovação natural executa quantidade, preço e entrega atomicamente; retry dispensa IA', async () => {
+ const input=await approvalSetup();
+ const aiResult=await interpret.getMockImplementation()!(); interpret.mockResolvedValue({...aiResult,transcript:'Observação em áudio'});
+ const first=await call(input).expect(200);
+ expect(first.body.transcript).toBe('Observação em áudio');
+ expect(first.body.updatedRequestId).toBe('approved');
+ expect((await productionRecord().get()).data()).toMatchObject({status:'fila-producao',requestedQuantity:10,quotedPrice:225,requestedDeliveryDate:'2026-11-08',description:'Descrição preservada'});
+ expect((await productionRecord().get()).data()).not.toHaveProperty('paidAt');
+ expect((await productionNotes().get()).docs[0].data()).toMatchObject({message:input.message,interpretation:'ai',paymentReported:false});
+ await productionRecord().update({status:'produzindo'});
+ interpret.mockRejectedValue(Error('não deveria chamar'));
+ const retry=await call(input).expect(200);expect(retry.body).toEqual(first.body);
+ expect(interpret).toHaveBeenCalledTimes(1);expect((await productionNotes().get()).size).toBe(1);
+ await call({...input,message:'outro texto'}).expect(409);expect(interpret).toHaveBeenCalledTimes(1);
+ expect((await productionRecord().get()).data()?.status).toBe('produzindo');
+});
+it('código explícito prevalece sobre pedido selecionado e pagamento explícito é registrado', async () => {
+ const input=await approvalSetup({paid:true});
+ const message='O ORC 2 está fechado e pago, pode seguir com dez peças';
+ interpret.mockResolvedValue({...actionResult('approve','ORC-002'),action:{intent:'approve',query:'ORC-002',note:'',question:'',approval:{quantity:10,deliveryDate:null,paid:true,evidence:message,personalization:[]}}});
+ await db.doc(`tenants/${tenant}/customRequests/selected`).set({title:'ORC-003',status:'orcado'});
+ const result=await call({...input,message,requestId:'selected'}).expect(200);
+ expect(result.body.updatedRequestId).toBe('approved');
+ expect((await productionRecord().get()).data()?.paidAt).toEqual(expect.any(String));
+ expect((await db.doc(`tenants/${tenant}/customRequests/selected`).get()).data()?.status).toBe('orcado');
+});
+it('aprovação do pedido selecionado pode omitir quantidade, prazo e referência', async () => {
+ const input=await approvalSetup();const message='Cliente fechou, pode seguir com esse orçamento';
+ interpret.mockResolvedValue({...actionResult('approve'),action:{intent:'approve',query:'',note:'',question:'',approval:{quantity:null,deliveryDate:null,paid:false,evidence:message,personalization:[]}}});
+ await call({...input,message}).expect(200).then(r=>expect(r.body.action.intent).toBe('clarify'));
+ expect((await productionNotes().get()).empty).toBe(true);
+ await call({...input,message,requestId:'approved',operationId:randomUUID()}).expect(200);
+ expect((await productionRecord().get()).data()).toMatchObject({status:'fila-producao',requestedQuantity:1,quotedPrice:28.9});
+});
+it.each(['duplicate','missing-price','disabled','frozen','changed-state','evidence','wrong-code','restricted'])('aprovação IA recusa %s sem gravação parcial', async kind => {
+ const input=await approvalSetup();
+ if(kind==='duplicate') await db.doc(`tenants/${tenant}/customRequests/duplicate`).set({title:'Outro da Maria',customerName:'Maria',status:'orcado'});
+ if(kind==='missing-price') await productionRecord().update({customerQuote:null});
+ if(kind==='disabled') await db.doc(`tenants/${tenant}`).update({assistantWorkflowUpdates:false});
+ if(kind==='frozen') await db.doc(`tenants/${tenant}/inventoryControl/state`).set({phase:'frozen'});
+ if(kind==='changed-state') interpret.mockImplementation(async()=>{
+  await productionRecord().update({status:'finalizado'});
+  return {...actionResult('approve','Maria'),action:{intent:'approve',query:'Maria',note:'',question:'',approval:{quantity:10,deliveryDate:null,paid:false,evidence:input.message,personalization:[]}}};
+ });
+ if(kind==='evidence') input.message='Veja aprovação no anexo';
+ if(kind==='wrong-code') interpret.mockResolvedValue({...actionResult('approve','ORC-999'),action:{intent:'approve',query:'ORC-999',note:'',question:'',approval:{quantity:10,deliveryDate:null,paid:false,evidence:input.message,personalization:[]}}});
+ if(kind==='restricted') await db.doc(`tenants/${tenant}`).update({assistantSharedRequests:false});
+ const expected=['evidence','wrong-code'].includes(kind)?422:kind==='disabled'?403:409;
+ await call(input).expect(expected);
+ const row=(await productionRecord().get()).data()!;
+ expect(row.status).toBe(kind==='changed-state'?'finalizado':'orcado');
+ expect(row.requestedQuantity).toBe(1);expect(row).not.toHaveProperty('requestedDeliveryDate');
+ expect((await productionNotes().get()).empty).toBe(true);
+ expect((await db.collection(`assistantLinks/${key}/messageUpdates`).get()).empty).toBe(true);
+});
+it('dúvida, warnings e cliente antigo sem operationId pedem conferência sem aprovar', async () => {
+ const input=await approvalSetup();
+ const result=await interpret.getMockImplementation()!();
+ interpret.mockResolvedValue({...result,warnings:['Confirme se são dez ou doze unidades.']});
+ await call(input).expect(200).then(r=>expect(r.body.action.intent).toBe('clarify'));
+ interpret.mockResolvedValue(result);
+ await call({...input,operationId:undefined}).expect(200).then(r=>expect(r.body.action.intent).toBe('clarify'));
+ expect((await productionRecord().get()).data()?.status).toBe('orcado');
+});
+
+it('código sozinho seleciona pedido único sem IA, consumo de cota ou escrita', async()=>{
+ await db.doc(`tenants/${tenant}`).update({assistantSharedRequests:true});
+ await db.doc(`tenants/${tenant}/customRequests/direct`).set({title:'ORC-008 Chaveiro',status:'orcado',requestedQuantity:1,quotedPrice:25.9});
+ const result=await call({message:'ORC-008',conversation:true}).expect(200);
+ expect(result.body.selectedRequestId).toBe('direct');
+ expect(result.body.action.intent).toBe('lookup');
+ expect(interpret).not.toHaveBeenCalled();
+ expect((await db.doc(`assistantLinks/${key}`).get()).data()?.aiCount||0).toBe(0);
+ expect((await db.collection(`tenants/${tenant}/assistantRequests/direct/notes`).get()).empty).toBe(true);
+ await call({message:'ORC-008',conversation:true,attachments:['a'.repeat(64)]}).expect(422);
+});
+it('código duplicado ou fora do acesso não seleciona silenciosamente um pedido',async()=>{
+ await db.doc(`tenants/${tenant}/customRequests/hidden`).set({title:'ORC-008',status:'orcado'});
+ let result=await call({message:'ORC-008',conversation:true}).expect(200);
+ expect(result.body.candidates).toEqual([]);expect(result.body.selectedRequestId).toBeUndefined();
+ await db.doc(`tenants/${tenant}`).update({assistantSharedRequests:true});
+ await db.doc(`tenants/${tenant}/customRequests/duplicate`).set({title:'ORC-008',status:'orcado'});
+ result=await call({message:'ORC-008',conversation:true}).expect(200);
+ expect(result.body.candidates).toHaveLength(2);expect(result.body.selectedRequestId).toBeUndefined();
+ expect(interpret).not.toHaveBeenCalled();
+});
+
+it('prepara um relato de venda aprovado sem buscar pedido existente nem gravar antes da confirmação', async()=>{
+ await db.doc(`tenants/${tenant}`).update({assistantWorkflowUpdates:true});
+ const r=await call({conversation:true,operationId:randomUUID(),message:'2 potes, Cliente: Barbara, aprovado para produzir\nCada 49,90, Nome: Emerson e Yuri Aberto\nEntregar 07/11/2099',attachments:[]}).expect(200);
+ expect(r.body).toMatchObject({draft:{customerName:'Barbara',quantity:2},initialStage:{status:'fila-producao',quotedPrice:99.8,unitPrice:49.9,deliveryDate:'2099-11-07'}});
+ expect(interpret).not.toHaveBeenCalled();
+ expect((await db.collection(`tenants/${tenant}/customRequests`).get()).empty).toBe(true);
+});

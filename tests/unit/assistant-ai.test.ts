@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { N8nAssistantAi, openAiRequest, validateAiResponse } from '../../server/assistant-ai';
+import { N8nAssistantAi, openAiRequest, validateAiResponse, aiProductionCommand } from '../../server/assistant-ai';
 const input={message:'Boneca 12cm',attachments:[]};
 const suggestion={title:'Boneca',customerName:'',description:'12cm',quantity:null,warnings:['Confirmar quantidade']};
 const output=(requestId='id')=>({schemaVersion:1,requestId,suggestion,transcript:''});
@@ -58,4 +58,30 @@ it('contrato conversacional separa consulta, complemento e criação; rejeita in
    expect(()=>validateAiResponse({...output(),suggestion:{...s,...patch}},'id',true)).toThrow();
  expect(()=>validateAiResponse(output(),'id',true)).toThrow();
  expect(validateAiResponse({...output(),suggestion:{...suggestion,intent:'create',query:'',note:'',question:''}},'id',true).draft?.quantity).toBe(1);
+});
+
+const approval = { quantity: 10, deliveryDate: '2026-11-08', paid: false, evidence: 'a Maria fechou as dez peças', personalization: [] };
+const approvalSuggestion = () => ({ title:'', customerName:'', description:'', quantity:null, warnings:[], intent:'approve', query:'Maria', note:'', question:'', approval });
+it('aceita aprovação estruturada com campos estritos e preserva ausência de pagamento', () => {
+ const value = validateAiResponse({...output(), suggestion:approvalSuggestion()}, 'id', true);
+ expect(value).toMatchObject({draft:null, action:{intent:'approve', approval}});
+ expect(openAiRequest({...input,conversation:true}).text.format.schema.properties).toHaveProperty('approval');
+});
+it.each([{quantity:0},{quantity:1.2},{quantity:100001},{deliveryDate:'2026-02-30'},{deliveryDate:'08/11/2026'},{paid:'sim'},{evidence:''},{personalization:[{name:'Maria',quantity:9}]},{quotedPrice:10}])('rejeita aprovação malformada: %j', patch => {
+ expect(() => validateAiResponse({...output(),suggestion:{...approvalSuggestion(),approval:{...approval,...patch}}},'id',true)).toThrow();
+});
+it('não aceita aprovação ausente nem escondida em intenção de consulta', () => {
+ expect(() => validateAiResponse({...output(),suggestion:{...approvalSuggestion(),approval:null}},'id',true)).toThrow();
+ expect(() => validateAiResponse({...output(),suggestion:{...approvalSuggestion(),intent:'lookup'}},'id',true)).toThrow();
+});
+
+it('vincula a interpretação ao texto do vendedor e impede referências inventadas', () => {
+ const action = validateAiResponse({...output(),suggestion:approvalSuggestion()},'id',true).action!;
+ expect(aiProductionCommand(action, 'a Maria fechou as dez peças')).toMatchObject({query:'Maria',command:{code:null,quantity:10,paid:false}});
+ expect(() => aiProductionCommand(action, 'Veja o áudio anexo')).toThrow(/texto enviado/);
+ expect(() => aiProductionCommand({...action,query:'ORC-002'}, 'a Maria fechou as dez peças')).toThrow(/código/);
+ expect(() => aiProductionCommand({...action,query:'João'}, 'a Maria fechou as dez peças')).toThrow(/referência/);
+ expect(() => aiProductionCommand({...action,query:'Mar'}, 'a Maria fechou as dez peças')).toThrow(/referência/);
+ expect(() => aiProductionCommand(action, 'ORC 2 e ORC 3: a Maria fechou as dez peças')).toThrow(/um orçamento/);
+ expect(aiProductionCommand({...action,query:'ORC 2'}, 'ORC-002: a Maria fechou as dez peças').command.code).toBe('2');
 });

@@ -3,10 +3,11 @@ import React from 'react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 vi.mock('../../src/contexts/AuthContext',()=>({useAuth:()=>({})}));
+import { clearAssistantMedia } from '../../src/features/assistant/asset-loader';
 import {QuoteImage,AssistantQuoteImage} from '../../src/features/requests/QuoteImage';
 const png=()=>new Blob(['png'],{type:'image/png'});
 beforeEach(()=>{vi.stubGlobal('ClipboardItem',class{constructor(public data:any){}});URL.createObjectURL=vi.fn(()=> 'blob:quote');URL.revokeObjectURL=vi.fn();Object.defineProperty(navigator,'clipboard',{configurable:true,value:{write:vi.fn().mockResolvedValue(undefined)}});Object.defineProperty(navigator,'share',{configurable:true,value:undefined});});
-afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+afterEach(()=>{cleanup();clearAssistantMedia();vi.unstubAllGlobals();});
 it('mostra imagem, oferece download e copia conteúdo binário junto com texto comercial',async()=>{
  render(<QuoteImage imageKey="one" load={async()=>png()} text="Orçamento — R$ 19,00"/>);
  expect(await screen.findByRole('img',{name:'Imagem do orçamento'})).toBeTruthy();
@@ -34,10 +35,31 @@ it('compartilha arquivo e texto; cancelamento não anuncia envio nem dispara out
 it('requisição autenticada vincula imagem ao pedido; acesso negado não expõe imagem',async()=>{
  const fetcher=vi.fn().mockResolvedValue({ok:false});vi.stubGlobal('fetch',fetcher);
  render(<AssistantQuoteImage id="image-a" requestId="request-a" token="secret" text="Texto"/>);
- await screen.findByRole('alert');expect(fetcher).toHaveBeenCalledWith('/api/assistant/assets/image-a?requestId=request-a',{headers:{Authorization:'Bearer secret'}});expect(screen.queryByRole('img')).toBeNull();
+ await screen.findByRole('alert');expect(fetcher).toHaveBeenCalledWith('/api/assistant/assets/image-a?requestId=request-a&preview=true',{headers:{Authorization:'Bearer secret'}});expect(screen.queryByRole('img')).toBeNull();
+});
+it('imagem adiada só faz download ao solicitar e mantém autorização por pedido', async () => {
+ const fetcher=vi.fn().mockResolvedValue({ok:true,blob:async()=>png()});vi.stubGlobal('fetch',fetcher);
+ render(<AssistantQuoteImage defer id="image-a" requestId="request-a" token="secret" text="Texto"/>);
+ expect(fetcher).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'Ver imagem do orçamento'}));
+ await screen.findByRole('img',{name:'Imagem do orçamento'});
+ expect(fetcher).toHaveBeenCalledExactlyOnceWith('/api/assistant/assets/image-a?requestId=request-a&preview=true',{headers:{Authorization:'Bearer secret'}});
 });
 it('trocar pedido revoga URL antiga e não mantém imagem anterior enquanto carrega',async()=>{
  const {rerender,unmount}=render(<QuoteImage imageKey="one" load={async()=>png()} text="Um"/>);await screen.findByRole('img');
  rerender(<QuoteImage imageKey="two" load={()=>new Promise(()=>{})} text="Dois"/>);
  expect(screen.queryByRole('img')).toBeNull();expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:quote');unmount();
+});
+
+it('prévia só baixa o original ao ampliar, preservando o download em resolução original', async () => {
+ HTMLDialogElement.prototype.showModal = function(){this.open=true;}; HTMLDialogElement.prototype.close=function(){this.open=false;};
+ const fetcher=vi.fn().mockResolvedValue({ok:true,blob:async()=>png()});vi.stubGlobal('fetch',fetcher);
+ render(<AssistantQuoteImage id="photo" requestId="order" token="secret" text="Orçamento"/>);
+ await screen.findByRole('img',{name:'Imagem do orçamento'});
+ expect(fetcher).toHaveBeenCalledTimes(1);expect(fetcher.mock.calls[0][0]).toContain('preview=true');
+ expect(screen.queryByRole('link',{name:'Baixar imagem'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Ampliar Imagem do orçamento'}));
+ await screen.findByRole('link',{name:'Baixar imagem'});
+ expect(fetcher.mock.calls[1][0]).toBe('/api/assistant/assets/photo?requestId=order');
+ fireEvent.click(screen.getByRole('button',{name:'Fechar imagem'}));expect(screen.queryByRole('dialog')).toBeNull();
 });

@@ -63,3 +63,7 @@ Referências oficiais: [OpenAI GPT-4.1 mini](https://developers.openai.com/api/d
 ## Conversa com consulta e complemento (21/10/2026)
 
 O modo `conversation` estende `suggestion` com `intent`, `query`, `note` e `question` obrigatórios no esquema estrito. `title`, `customerName`, `description`, `quantity` e `warnings` continuam presentes para compatibilidade do workflow. Consulta e complemento são resolvidos pelo servidor com autorização; n8n não recebe acesso ao banco. Veja [regras e validação](../implementacao/assistente-conversa-20261021.md).
+
+## Aprovação em linguagem natural (23/10/2026)
+
+O contrato conversacional agora inclui `intent: approve` e `approval` (objeto ou null), com quantidade, data civil de entrega, pagamento informado, distribuição dos nomes e evidência literal do texto digitado. A IA interpreta a aprovação; o servidor valida referência, acesso, estado e preço e executa a transação. Esta evolução substitui a restrição histórica acima que limitava a IA a rascunhos/consultas/complementos. Não concede à IA acesso direto ao banco, preços livres ou movimentação de estoque. O workflow n8n existente encaminha o esquema e o retorno sem modificação. Regras, publicação e testes: [Aprovação pelo bot](../implementacao/bot-aprovacao-ia-20261023.md).

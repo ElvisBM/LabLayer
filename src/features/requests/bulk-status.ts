@@ -1,6 +1,6 @@
 import { doc, writeBatch, type Firestore } from 'firebase/firestore';
 
-export const REQUEST_STATUSES = ['aguardando-orcamento', 'orcado', 'fila-producao', 'produzindo', 'finalizado'] as const;
+export const REQUEST_STATUSES = ['aguardando-orcamento', 'orcado', 'fila-producao', 'produzindo', 'finalizado', 'cancelado'] as const;
 export type RequestStatus = typeof REQUEST_STATUSES[number];
 export const MAX_BULK_REQUESTS = 100;
 

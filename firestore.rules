@@ -272,7 +272,7 @@ service cloud.firestore {
              hasRequiredFields(['title', 'type', 'status', 'requestedQuantity', 'productionTimeHours', 'filaments', 'updatedAt']) &&
              isValidString('title', 1, 150) &&
              request.resource.data.type in ['orcamento', 'encomenda'] &&
-             request.resource.data.status in ['aguardando-orcamento', 'orcado', 'fila-producao', 'produzindo', 'finalizado'] &&
+             request.resource.data.status in ['aguardando-orcamento', 'orcado', 'fila-producao', 'produzindo', 'finalizado', 'cancelado'] &&
              (!('sourceChannel' in request.resource.data) || request.resource.data.sourceChannel in ['manual', 'whatsapp']) &&
              (!('customerName' in request.resource.data) || isValidString('customerName', 0, 150)) &&
              (!('customerPhone' in request.resource.data) || isValidString('customerPhone', 0, 50)) &&

@@ -59,3 +59,10 @@ it('opções comerciais e peso interno permitem salvar e finalizar sem perder da
  for(const extra of [{customerQuote:{...data.customerQuote,options:[data.customerQuote.options[0],data.customerQuote.options[0]]}},{customerQuote:{...data.customerQuote,options:[{quantity:1,unitPrice:1.001,deliveryDays:null}]}},{productionWeightGrams:-1},{customerQuote:{...data.customerQuote,options:[{quantity:0,unitPrice:22,deliveryDays:2}]}},{customerQuote:{...data.customerQuote,options:Array(6).fill(data.customerQuote.options[0])}},{customerQuote:{...data.customerQuote,private:'no'}}])await assertFails(setDoc(doc(db,'tenants/a/customRequests/bad'),{...data,...extra}));
  await assertFails(setDoc(doc(env.authenticatedContext('outsider').firestore(),'tenants/a/customRequests/options'),data));
 });
+
+it('cancelamento é aceito pelas regras sem apagar dados e continua restrito à empresa',async()=>{
+ const db=env.authenticatedContext('a').firestore();
+ await assertSucceeds(changeRequestStatuses(db as any,'a',['one'],'cancelado'));
+ expect((await getDoc(doc(db,'tenants/a/customRequests/one'))).data()).toMatchObject({...quote,status:'cancelado',updatedAt:expect.any(String)});
+ await assertFails(changeRequestStatuses(env.authenticatedContext('outsider').firestore() as any,'a',['two'],'cancelado'));
+});

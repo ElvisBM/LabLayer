@@ -40,7 +40,7 @@ const schemas: Record<string, { fields: Record<string, Rule>; required: string[]
   customRequests: {
     fields: {
       title: string(150, 1), type: enumeration('orcamento', 'encomenda'),
-      status: enumeration('aguardando-orcamento', 'orcado', 'fila-producao', 'produzindo', 'finalizado'),
+      status: enumeration('aguardando-orcamento', 'orcado', 'fila-producao', 'produzindo', 'finalizado', 'cancelado'),
       sourceChannel: enumeration('manual', 'whatsapp'), description: string(5000), customerName: string(150),
       customerPhone: string(50), sourceMessage: string(10000), requestedQuantity: number(1, true),
       productionTimeHours: number(), printerId: string(100), filaments: { kind: 'array', max: 50 },

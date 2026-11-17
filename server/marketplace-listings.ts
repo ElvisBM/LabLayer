@@ -1,3 +1,4 @@
+import { registerMarketplaceDraftRoutes } from './marketplace-drafts';
 import { registerMarketplaceListingActions } from './marketplace-listing-actions';
 import type { Express } from 'express';
 import type { DecodedIdToken } from 'firebase-admin/auth';
@@ -17,6 +18,7 @@ export function registerMarketplaceListingRoutes(app: Express, db: Firestore | n
   const pending = new Map<string, Promise<ListingResult>>();
   let generation = 0;
   registerMarketplaceListingActions(app, db, verify, loadToken, () => { generation++; cache.clear(); pending.clear(); }, fetcher);
+  registerMarketplaceDraftRoutes(app, db, verify, loadToken, () => { generation++; cache.clear(); pending.clear(); }, fetcher);
   app.get('/api/tenants/:tenantId/marketplace-listings', async (req, res) => {
     res.set('Cache-Control', 'no-store');
     try {
