@@ -23,13 +23,16 @@ it('perfil não permite autoelevação, troca de tenant, exclusão nem provision
   await assertFails(deleteDoc(doc(client('member'), 'users/member')));
   await assertFails(setDoc(doc(client('new'), 'users/new'), { tenantId: 'a', tenantRole: 'admin' }));
 });
-it('membro lê a mesma lista e cria solicitação pendente, mas não aprova nem exclui orçamento', async () => {
+it('membro lê a mesma lista, cria solicitação e atualiza status, mas não exclui orçamento', async () => {
   const db = client('member');
   await assertSucceeds(getDoc(doc(db, 'tenants/a/customRequests/existing')));
   await assertSucceeds(setDoc(doc(db, 'tenants/a/customRequests/new'), quote));
-  await assertFails(updateDoc(doc(db, 'tenants/a/customRequests/existing'), { status: 'fila-producao', approvedAt: '2026-10-21' }));
+  // Desde 05/11 (regras ativas) a equipe atualiza status dos pedidos; exclusão segue restrita ao administrador.
+  await assertSucceeds(updateDoc(doc(db, 'tenants/a/customRequests/existing'), { status: 'fila-producao', approvedAt: '2026-10-21' }));
   await assertFails(deleteDoc(doc(db, 'tenants/a/customRequests/existing')));
-  await assertFails(setDoc(doc(db, 'tenants/a/customRequests/forged'), { ...quote, approvedAt: '2026-10-21' }));
+  // Como a equipe pode aprovar por atualização, criar já com approvedAt também é permitido; campo desconhecido não.
+  await assertSucceeds(setDoc(doc(db, 'tenants/a/customRequests/forged'), { ...quote, approvedAt: '2026-10-21' }));
+  await assertFails(setDoc(doc(db, 'tenants/a/customRequests/unknown'), { ...quote, approvedBy: 'member' }));
 });
 it('administrador aprova orçamento e registra financeiro; membro não altera financeiro ou configuração', async () => {
   await assertSucceeds(updateDoc(doc(client('admin'), 'tenants/a/customRequests/existing'), { status: 'fila-producao', approvedAt: '2026-10-21' }));
