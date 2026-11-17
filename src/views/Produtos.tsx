@@ -97,6 +97,7 @@ interface Filament {
 }
 
 interface Printer {
+  usedHours?: number;
   id: string;
   name: string;
   model: string;
