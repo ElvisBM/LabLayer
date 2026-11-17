@@ -23,9 +23,9 @@ export function MarketplaceListings() {
 }
 function ListingTabs({ user, tenant }: { user: { getIdToken(): Promise<string> }; tenant: string }) {
   const [tab,setTab] = useState(new URLSearchParams(window.location.search).get('tab') === 'rascunhos' ? 'drafts' : 'live');
-  return <div className="space-y-5"><div className="flex flex-wrap gap-2" role="tablist" aria-label="Origem dos anúncios">
-    <button role="tab" aria-selected={tab === 'drafts'} onClick={()=>setTab('drafts')} className={`px-5 py-3 rounded-xl border font-semibold ${tab === 'drafts' ? 'bg-indigo-700 text-white' : 'bg-white'}`}>Rascunhos para revisar</button>
-    <button role="tab" aria-selected={tab === 'live'} onClick={()=>setTab('live')} className={`px-5 py-3 rounded-xl border font-semibold ${tab === 'live' ? 'bg-indigo-700 text-white' : 'bg-white'}`}>Anúncios nas plataformas</button>
+  return <div className="space-y-5"><div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Origem dos anúncios">
+    <button role="tab" aria-selected={tab === 'drafts'} onClick={()=>setTab('drafts')} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${tab === 'drafts' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}>Rascunhos para revisar</button>
+    <button role="tab" aria-selected={tab === 'live'} onClick={()=>setTab('live')} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${tab === 'live' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}>Anúncios nas plataformas</button>
   </div>{tab === 'drafts' ? <MarketplaceDrafts user={user} tenant={tenant} /> : <Listings user={user} tenant={tenant} />}</div>;
 }
 function Listings({ user, tenant }: { user: { getIdToken(): Promise<string> }; tenant: string }) {

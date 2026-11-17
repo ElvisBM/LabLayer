@@ -180,6 +180,30 @@ export function registerMarketplaceDraftRoutes(app: Express, db: Firestore | nul
       return res.json({ categoryId, condition, attributes });
     } catch (e) { return fail(res, e); }
   });
+  app.get(`${base}/category-suggestion`, async (req, res) => {
+    res.set('Cache-Control', 'private, max-age=300');
+    try {
+      const c = await context(req);
+      const query = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 120) : '';
+      if (query.length < 3) return res.json({ suggestion: null });
+      const headers: Record<string, string> = { Accept: 'application/json', 'User-Agent': 'LabLayer/1.0' };
+      if (c.identity) {
+        try { headers.Authorization = `Bearer ${(await loadToken(c.tenant, c.identity, true)).accessToken}`; }
+        catch { /* A sugestão também funciona sem a conta conectada. */ }
+      }
+      const params = new URLSearchParams({ q: query, limit: '3' });
+      const response = await fetcher(`https://api.mercadolibre.com/sites/MLB/domain_discovery/search?${params.toString()}`, {
+        headers, redirect: 'error', signal: AbortSignal.timeout(10000),
+      });
+      if (!response.ok) return res.json({ suggestion: null });
+      const result = await response.json() as any;
+      const tree = await loadCategoryDump();
+      const match = (Array.isArray(result) ? result : []).map((item: any) => tree[String(item?.category_id ?? '')])
+        .find((value: any) => value?.settings?.listing_allowed === true && Array.isArray(value.path_from_root) &&
+          !(Array.isArray(value.children_categories) && value.children_categories.length > 0));
+      return res.json({ suggestion: match ? { id: match.id, name: match.name, path: match.path_from_root.map((part: any) => part.name).join(' › ') } : null });
+    } catch (e) { return fail(res, e); }
+  });
   app.get(`${base}/shipping-preferences`, async (req, res) => {
     res.set('Cache-Control', 'private, no-store');
     try {
