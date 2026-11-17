@@ -1,0 +1,51 @@
+name: Diagnostico anuncios (somente leitura)
+
+on:
+  push:
+    branches: [claude/project-thread-9aqbry]
+    paths: [.github/workflows/diag-anuncios.yml]
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        env:
+          HOSTINGER_SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          HOSTINGER_KNOWN_HOSTS: ${{ secrets.HOSTINGER_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$HOSTINGER_SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$HOSTINGER_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Read-only checks on VPS
+        env:
+          HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST }}
+          HOSTINGER_USER: ${{ secrets.HOSTINGER_USER }}
+        run: |
+          ssh "$HOSTINGER_USER@$HOSTINGER_HOST" 'bash -s' <<'REMOTE' | sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]+/[email]/g'
+          set +e
+          cd /var/www/lablayer/app
+          echo "== health"; curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/api/health
+          echo "== .env.production keys"; cut -d= -f1 .env.production | grep -v '^#' | sort
+          echo "== pm2 env keys"; pm2 env 0 2>/dev/null | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\):.*/\1/p' | grep -E 'FIREBASE|FIRESTORE|LABLAYER|STORAGE|NODE_ENV' | sort -u
+          echo "== shared dir"; ls -l --time-style=full-iso /var/www/lablayer/shared/ 2>&1
+          echo "== service account files"
+          for f in /var/www/lablayer/shared/firebase-service-account.json ./firebase-service-account.json; do
+            node -e 'const f=process.argv[1];try{const a=JSON.parse(require("fs").readFileSync(f,"utf8"));console.log(f,"project",a.project_id,"type",a.type,"hasKey",!!a.private_key,"keyId",(a.private_key_id||"").slice(0,6))}catch(e){console.log(f,"ERR",e.code||e.message.slice(0,80))}' "$f"
+          done
+          echo "== pm2 logs filtered"
+          pm2 logs lablayer-app --nostream --lines 400 2>&1 | grep -iE 'firebase|erro|error|unauth|permission|credential|denied|invalid_grant|marketplace|listen' | cut -c1-200 | tail -50
+          echo "== backups"; ls -la --time-style=full-iso ~/deploy-backups 2>&1 | head -30; ls -la --time-style=full-iso /var/www/lablayer 2>&1
+          echo "== firestore counts (admin, read-only)"
+          timeout 90 node -e '
+          const {initializeApp,cert}=require("firebase-admin/app");const {getFirestore}=require("firebase-admin/firestore");
+          const fs=require("fs");const p="/var/www/lablayer/shared/firebase-service-account.json";
+          (async()=>{try{
+            initializeApp({credential:cert(JSON.parse(fs.readFileSync(p,"utf8")))});
+            const db=getFirestore("ai-studio-914d19ee-caef-46d9-9cf8-561cc915d716");
+            const ts=await db.collection("privateMarketplaceDrafts").listDocuments();
+            let total=0;for(const t of ts){const c=(await t.collection("items").count().get()).data().count;total+=c;console.log("tenant",t.id.slice(0,4)+"…","drafts",c);}
+            console.log("draftTenants",ts.length,"draftsTotal",total);
+            for(const c of ["privateMarketplaceConnections","privateMarketplaceCredentials","tenants"]){console.log(c,(await db.collection(c).count().get()).data().count);}
+          }catch(e){console.log("FIRESTORE ERR",(e.code||"")+" "+String(e.message).slice(0,160));}})();'
+          REMOTE
