@@ -27,6 +27,11 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+const statusTab = (label: string) =>
+  within(screen.getByRole('navigation', { name: 'Filtrar solicitações por status' }))
+    .getByRole('button', { name: new RegExp(`^${label}\\d+$`) });
+const filterStatus = (label: string) => fireEvent.click(statusTab(label));
+
 it('lista mostra quantidade e preço registrado, distinguindo orçamento pendente de preço zero', () => {
   render(<EncomendasOrcamentos />);
   fireEvent.click(screen.getByRole('button', { name: 'Lista simplificada' }));
@@ -43,7 +48,7 @@ it('lista mostra quantidade e preço registrado, distinguindo orçamento pendent
 it('busca por cliente e filtro de status são preservados ao alternar lista, duas e três caixas, incluindo resultado vazio', () => {
   render(<EncomendasOrcamentos />);
   fireEvent.change(screen.getByPlaceholderText('Buscar solicitação...'), { target: { value: ' boreal ' } });
-  fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar por status' }), { target: { value: 'orcado' } });
+  filterStatus('Orçado');
   expect(screen.getByRole('status').textContent).toBe('1 de 2 solicitações');
   expect(screen.queryByText('Chaveiro NFC')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '2 caixas' }));
@@ -58,7 +63,7 @@ it('busca por cliente e filtro de status são preservados ao alternar lista, dua
   fireEvent.click(screen.getByRole('button', { name: 'Lista simplificada' }));
   expect(screen.getByRole('button', { name: 'Lista simplificada' }).getAttribute('aria-pressed')).toBe('true');
   expect(screen.getByRole('status').textContent).toBe('1 de 2 solicitações');
-  fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar por status' }), { target: { value: 'finalizado' } });
+  filterStatus('Finalizado');
   expect(screen.getByText('Nenhuma encomenda ou orçamento encontrado com os filtros atuais.')).toBeTruthy();
   expect(state.writes).not.toHaveBeenCalled();
 });
@@ -80,7 +85,7 @@ for (const mode of ['Lista simplificada', '2 caixas', '3 caixas']) {
   it(`nome abre tela exclusiva e Voltar preserva busca, filtro e visualização: ${mode}`, () => {
     render(<EncomendasOrcamentos />);
     fireEvent.change(screen.getByPlaceholderText('Buscar solicitação...'), { target: { value: 'boreal' } });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar por status' }), { target: { value: 'orcado' } });
+    filterStatus('Orçado');
     fireEvent.click(screen.getByRole('button', { name: mode }));
     fireEvent.click(screen.getByRole('button', { name: 'Organizador' }));
     expect(screen.getByRole('region', { name: 'Detalhes da solicitação' })).toBeTruthy();
@@ -94,7 +99,7 @@ for (const mode of ['Lista simplificada', '2 caixas', '3 caixas']) {
     fireEvent.click(screen.getByRole('button', { name: 'Voltar para orçamentos' }));
     expect(screen.queryByRole('region', { name: 'Detalhes da solicitação' })).toBeNull();
     expect(screen.getByDisplayValue('boreal')).toBeTruthy();
-    expect((screen.getByRole('combobox', { name: 'Filtrar por status' }) as HTMLSelectElement).value).toBe('orcado');
+    expect(statusTab('Orçado').getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByRole('button', { name: mode }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByRole('status').textContent).toBe('1 de 2 solicitações');
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Organizador' }));
@@ -134,7 +139,7 @@ it('selecionar todos respeita filtro; trocar filtro limpa seleção e caixas pre
   expect(screen.getByText('1 selecionado(s)')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', {name:'2 caixas'}));
   expect((screen.getByRole('checkbox', {name:'Selecionar Organizador'}) as HTMLInputElement).checked).toBe(true);
-  fireEvent.change(screen.getByRole('combobox', {name:'Filtrar por status'}), {target:{value:'finalizado'}});
+  filterStatus('Finalizado');
   expect(screen.getByText('0 selecionado(s)')).toBeTruthy();
   expect(state.commit).not.toHaveBeenCalled();
 });

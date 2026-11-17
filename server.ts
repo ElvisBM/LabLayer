@@ -6,7 +6,6 @@ import { registerFinanceRoutes } from './server/finance';
 import { registerCatalogRoutes } from './server/catalog';
 import { registerPricingRoutes } from './server/pricing';
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import fs from "fs";
 import path from "path";
 import { createHash, randomUUID, timingSafeEqual } from "crypto";
@@ -837,6 +836,8 @@ const hasCollectionFilters = (query: express.Request["query"]) => {
 
   // Vite middleware for development
   if (options.serveFrontend && env.NODE_ENV !== "production") {
+    // Vite é dependência de desenvolvimento: carregado só neste modo.
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",

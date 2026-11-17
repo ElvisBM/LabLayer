@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, afterAll, it, expect } from 'vitest';
 import { initializeTestEnvironment, assertFails, assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { readFileSync } from 'node:fs';
 import { changeRequestStatuses } from '../../src/features/requests/bulk-status';
 let env: RulesTestEnvironment;
@@ -41,12 +41,17 @@ it('finaliza lote misto de pedidos antigos com observation preservando a observa
  expect((await getDoc(doc(db,'tenants/a/customRequests/one'))).data()?.status).toBe('finalizado');
  expect((await getDoc(doc(db,'tenants/a/customRequests/legacy'))).data()).toMatchObject({status:'finalizado',observation:'Observação histórica do cliente',requestedQuantity:10,quotedPrice:80});
 });
-it('compatibilidade não aceita observação inválida nem campos desconhecidos',async()=>{
+// Regras ativas desde 05/11: a atualização valida só os campos alterados, para que pedidos
+// antigos com dados fora do padrão ainda possam mudar de status. Gravar dado inválido segue proibido.
+it('pedido antigo com dado fora do padrão muda de status, mas a alteração não aceita dado inválido nem campo desconhecido',async()=>{
  const db=env.authenticatedContext('a').firestore();
  for(const extra of [{observation:42},{observation:'x'.repeat(5001)},{unknownField:'não permitido'}]){
   await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'tenants/a/customRequests/invalid'),{...quote,...extra}));
-  await assertFails(changeRequestStatuses(db as any,'a',['one','invalid'],'finalizado'));
-  expect((await getDoc(doc(db,'tenants/a/customRequests/one'))).data()).toEqual(quote);
+  await assertSucceeds(changeRequestStatuses(db as any,'a',['one','invalid'],'finalizado'));
+  expect((await getDoc(doc(db,'tenants/a/customRequests/invalid'))).data()).toMatchObject({...extra,status:'finalizado'});
+  await assertFails(updateDoc(doc(db,'tenants/a/customRequests/untouched'),{...extra,updatedAt:'2026-11-17'}));
+  expect((await getDoc(doc(db,'tenants/a/customRequests/untouched'))).data()).toEqual(quote);
+  await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'tenants/a/customRequests/one'),quote));
  }
 });
 
