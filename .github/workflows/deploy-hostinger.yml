@@ -1,13 +1,14 @@
 name: Deploy Hostinger VPS
 
+# Deploy só manual. O rsync usa --delete: rode primeiro com dry_run ligado
+# e confira a lista de arquivos que seriam apagados na VPS.
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - '.github/workflows/**'
-      - 'releases/**'
-      - 'firestore.rules'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Só listar o que mudaria na VPS, sem copiar nem reiniciar
+        type: boolean
+        default: true
 
 jobs:
   deploy:
@@ -61,7 +62,7 @@ jobs:
           HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST }}
           HOSTINGER_USER: ${{ secrets.HOSTINGER_USER }}
         run: |
-          rsync -az --delete \
+          rsync -az --delete ${{ inputs.dry_run && '--dry-run --itemize-changes' || '' }} \
             --exclude '.git' \
             --exclude 'node_modules' \
             --exclude '.env' \
@@ -69,6 +70,7 @@ jobs:
             ./ "$HOSTINGER_USER@$HOSTINGER_HOST:/var/www/lablayer/app/"
 
       - name: Install, Build and Restart on VPS
+        if: ${{ !inputs.dry_run }}
         env:
           HOSTINGER_HOST: ${{ secrets.HOSTINGER_HOST }}
           HOSTINGER_USER: ${{ secrets.HOSTINGER_USER }}
