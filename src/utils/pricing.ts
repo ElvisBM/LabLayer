@@ -1,3 +1,4 @@
+import { D, decimal, calculatePrice, PricingError } from '../../shared/pricing/engine';
 export interface PricingSettings {
   failureRate: number;
   maintenancePerMonth: number;
@@ -52,6 +53,10 @@ export interface PricingSupplyUsageLike {
 }
 
 export interface PricingBreakdown {
+  calculationVersion: string;
+  complete: boolean;
+  issues: string[];
+  totalDecimal: string;
   materialCostPerUnit: number;
   timeCostPerUnit: number;
   supplyCostPerUnit: number;
@@ -69,130 +74,97 @@ export const DEFAULT_PRICING_SETTINGS: PricingSettings = {
   monthlyUsageHours: 160,
 };
 
-export const normalizePricingSettings = (raw?: Partial<PricingSettings> | null): PricingSettings => {
-  return {
-    failureRate: Number(raw?.failureRate ?? DEFAULT_PRICING_SETTINGS.failureRate) || DEFAULT_PRICING_SETTINGS.failureRate,
-    maintenancePerMonth: Number(raw?.maintenancePerMonth ?? DEFAULT_PRICING_SETTINGS.maintenancePerMonth) || 0,
-    monthlyUsageHours: Number(raw?.monthlyUsageHours ?? DEFAULT_PRICING_SETTINGS.monthlyUsageHours) || DEFAULT_PRICING_SETTINGS.monthlyUsageHours,
+// Missing settings keep the documented legacy defaults; an explicit zero stays zero.
+export const normalizePricingSettings = (raw?: Partial<PricingSettings> | null): PricingSettings => ({
+  failureRate: Number(raw?.failureRate ?? DEFAULT_PRICING_SETTINGS.failureRate),
+  maintenancePerMonth: Number(raw?.maintenancePerMonth ?? DEFAULT_PRICING_SETTINGS.maintenancePerMonth),
+  monthlyUsageHours: Number(raw?.monthlyUsageHours ?? DEFAULT_PRICING_SETTINGS.monthlyUsageHours),
+});
+export const LEGACY_COST_VERSION = 'legacy-compatible-v2';
+export type VariationCostInput = {
+  variation: PricingVariationLike; fixedCost: number; filaments: PricingFilamentLike[];
+  supplies?: PricingSupplyLike[]; supplyUsages?: PricingSupplyUsageLike[]; wastes?: PricingWasteLike[];
+  printers?: PricingPrinterLike[]; energyPrice: number; pricingSettings: PricingSettings;
+};
+
+// Compatibility only: fixed costs/wastes remain per unit, reserve on the whole subtotal.
+// These legacy assumptions are NOT a confirmed recipe for the canonical v1 engine.
+export function calculateVariationUnitCostBreakdown({ variation, fixedCost, filaments, supplies = [], supplyUsages = [], wastes = [], printers = [], energyPrice, pricingSettings }: VariationCostInput): PricingBreakdown {
+  const issues: string[] = [];
+  const read = (value: unknown, field: string) => {
+    try { return decimal(value, field); }
+    catch (error) { issues.push((error as Error).message); return new D(0); }
   };
-};
-
-const calculateSupplyCostPerUnit = (
-  supplyUsages: PricingSupplyUsageLike[] = [],
-  supplies: PricingSupplyLike[] = [],
-) => {
-  return supplyUsages.reduce((sum, usage) => {
-    const supply = supplies.find(item => item.id === usage.supplyId);
-    return sum + ((Number(usage.quantityPerProduct) || 0) * (Number(supply?.costPerUnit) || 0));
-  }, 0);
-};
-
-const calculateWasteCost = (
-  wastes: PricingWasteLike[] = [],
-  filaments: PricingFilamentLike[] = [],
-) => {
-  return wastes
-    .filter(waste => waste.includeInCost)
-    .reduce((sum, waste) => {
-      const filament = filaments.find(item => item.id === waste.filamentId);
-      const costPerGram = filament ? (Number(filament.pricePerKg) || 0) / 1000 : 0;
-      return sum + ((Number(waste.weightGrams) || 0) * costPerGram);
-    }, 0);
-};
-
-const calculatePrinterCostPerHour = (
-  variation: PricingVariationLike,
-  printers: PricingPrinterLike[],
-  energyPrice: number,
-) => {
-  const calculateRegisteredPrinterCostPerHour = (printer: PricingPrinterLike) => {
-    const lifespanHours = Math.max(1, Number(printer.lifespanHours) || 10000);
-    const acquisitionCost = Number(printer.acquisitionCost) || 0;
-    const powerConsumption = Number(printer.powerConsumption) || 0;
-
-    return (acquisitionCost / lifespanHours) + (powerConsumption * energyPrice);
+  const pricePerGram = (id: string | undefined) => {
+    const filament = filaments.find(f => f.id === id);
+    return read(filament?.pricePerKg, `Preço do filamento ${id || 'não selecionado'}`).div(1000);
   };
+  const materials = variation.materials?.length ? variation.materials : [{ filamentId: variation.filamentId, weightGrams: variation.weightGrams }];
+  const materialCost = materials.reduce((sum, m) => {
+    const price = m.filamentId ? pricePerGram(m.filamentId) : read(variation.materialCostPerGram, 'Custo manual do material/g');
+    return sum.plus(read(m.weightGrams, 'Peso').plus(read(m.purgeGrams ?? 0, 'Purga')).times(price));
+  }, new D(0));
+  const yieldValue = read(variation.quantityPerPrint, 'Unidades por impressão');
+  if (!yieldValue.isInteger() || yieldValue.lt(1)) issues.push('Unidades por impressão devem ser inteiras e maiores que zero.');
+  const quantity = yieldValue.gte(1) ? yieldValue : new D(1);
+  const hours = read(variation.printTimeHours, 'Tempo de impressão');
+  let printerCost = new D(0);
+  if (variation.printerId) {
+    const printer = printers.find(p => p.id === variation.printerId);
+    if (!printer) issues.push('Impressora selecionada não encontrada.');
+    else {
+      if (printer.status === 'inativa' || printer.status === 'manutenção') issues.push('Impressora selecionada indisponível.');
+      const life = read(printer.lifespanHours, 'Vida útil da impressora');
+      if (life.lte(0)) issues.push('Vida útil deve ser maior que zero.');
+      printerCost = read(printer.acquisitionCost, 'Valor da impressora').div(life.gt(0) ? life : 1)
+        .plus(read(printer.powerConsumption, 'Potência legada em kW').times(read(energyPrice, 'Tarifa de energia')));
+    }
+  } else printerCost = read(variation.printerCostPerHour, 'Selecione impressora ou informe custo manual/h');
+  const monthlyHours = read(pricingSettings.monthlyUsageHours, 'Horas mensais');
+  const maintenance = read(pricingSettings.maintenancePerMonth, 'Manutenção mensal');
+  if (maintenance.gt(0) && monthlyHours.lte(0)) issues.push('Manutenção mensal exige horas produtivas maiores que zero.');
+  const overhead = monthlyHours.gt(0) ? maintenance.div(monthlyHours) : new D(0);
+  const materialUnit = materialCost.div(quantity), timeUnit = hours.times(printerCost.plus(overhead)).div(quantity);
+  const supplyUnit = supplyUsages.reduce((sum, u) => sum.plus(read(u.quantityPerProduct, 'Quantidade de insumo')
+    .times(read(supplies.find(s => s.id === u.supplyId)?.costPerUnit, `Custo do insumo ${u.supplyId}`))), new D(0));
+  const waste = wastes.filter(w => w.includeInCost).reduce((sum, w) => sum.plus(read(w.weightGrams, 'Perda').times(pricePerGram(w.filamentId))), new D(0));
+  const fixed = read(fixedCost, 'Custo fixo').plus(waste);
+  const subtotal = materialUnit.plus(timeUnit).plus(supplyUnit).plus(fixed);
+  const rate = read(pricingSettings.failureRate, 'Reserva percentual');
+  if (rate.gt(100)) issues.push('Reserva deve estar entre 0% e 100%.');
+  const reserve = subtotal.times(rate.div(100)), total = subtotal.plus(reserve);
+  if (total.gt('1000000000000')) issues.push('Custo calculado excede o limite suportado.');
+  return { calculationVersion: LEGACY_COST_VERSION, complete: issues.length === 0, issues: [...new Set(issues)], totalDecimal: total.toFixed(),
+    materialCostPerUnit: materialUnit.toNumber(), timeCostPerUnit: timeUnit.toNumber(), supplyCostPerUnit: supplyUnit.toNumber(),
+    fixedCost: fixed.toNumber(), failureAdjustmentPerUnit: reserve.toNumber(), printerCostPerHour: printerCost.toNumber(),
+    operationalOverheadPerHour: overhead.toNumber(), subtotal: subtotal.toNumber(), total: total.toNumber() };
+}
 
-  const selectedPrinter = printers.find(item => item.id === variation.printerId);
-
-  if (selectedPrinter) {
-    return calculateRegisteredPrinterCostPerHour(selectedPrinter);
-  }
-
-  const activePrinters = printers.filter(printer => printer.status !== 'inativa');
-  const printersPool = activePrinters.length > 0 ? activePrinters : printers;
-
-  if (printersPool.length > 0) {
-    const totalCost = printersPool.reduce((sum, printer) => sum + calculateRegisteredPrinterCostPerHour(printer), 0);
-    return totalCost / printersPool.length;
-  }
-
-  const manualCostPerHour = Number(variation.printerCostPerHour) || 0;
-  if (manualCostPerHour > 0) {
-    return manualCostPerHour;
-  }
-
-  return 0;
-};
-
-export const calculateVariationUnitCostBreakdown = ({
-  variation,
-  fixedCost,
-  filaments,
-  supplies = [],
-  supplyUsages = [],
-  wastes = [],
-  printers = [],
-  energyPrice,
-  pricingSettings,
-}: {
-  variation: PricingVariationLike;
-  fixedCost: number;
-  filaments: PricingFilamentLike[];
-  supplies?: PricingSupplyLike[];
-  supplyUsages?: PricingSupplyUsageLike[];
-  wastes?: PricingWasteLike[];
-  printers?: PricingPrinterLike[];
-  energyPrice: number;
-  pricingSettings: PricingSettings;
-}): PricingBreakdown => {
-  let materialCost = 0;
-
-  if ((variation.materials || []).length > 0) {
-    materialCost = (variation.materials || []).reduce((sum, material) => {
-      const filament = filaments.find(item => item.id === material.filamentId);
-      const costPerGram = filament ? (Number(filament.pricePerKg) || 0) / 1000 : (Number(variation.materialCostPerGram) || 0);
-      return sum + (((Number(material.weightGrams) || 0) + (Number(material.purgeGrams) || 0)) * costPerGram);
-    }, 0);
-  } else {
-    materialCost = (Number(variation.weightGrams) || 0) * (Number(variation.materialCostPerGram) || 0);
-  }
-
-  const quantityPerPrint = Math.max(1, Number(variation.quantityPerPrint) || 1);
-  const wasteCost = calculateWasteCost(wastes, filaments);
-  const printerCostPerHour = calculatePrinterCostPerHour(variation, printers, energyPrice);
-  const operationalOverheadPerHour = pricingSettings.monthlyUsageHours > 0
-    ? pricingSettings.maintenancePerMonth / pricingSettings.monthlyUsageHours
-    : 0;
-  const totalTimeCost = (Number(variation.printTimeHours) || 0) * (printerCostPerHour + operationalOverheadPerHour);
-
-  const materialCostPerUnit = materialCost / quantityPerPrint;
-  const timeCostPerUnit = totalTimeCost / quantityPerPrint;
-  const supplyCostPerUnit = calculateSupplyCostPerUnit(supplyUsages, supplies);
-  const combinedFixedCost = (Number(fixedCost) || 0) + wasteCost;
-  const subtotal = materialCostPerUnit + timeCostPerUnit + supplyCostPerUnit + combinedFixedCost;
-  const failureAdjustmentPerUnit = subtotal * (Math.max(0, Number(pricingSettings.failureRate) || 0) / 100);
-  const total = subtotal + failureAdjustmentPerUnit;
-
-  return {
-    materialCostPerUnit,
-    timeCostPerUnit,
-    supplyCostPerUnit,
-    fixedCost: combinedFixedCost,
-    failureAdjustmentPerUnit,
-    printerCostPerHour,
-    operationalOverheadPerHour,
-    subtotal,
-    total,
-  };
-};
+export function suggestedPrice(cost: number | string, quantity = 1, multiplier = '2.2') {
+  return calculatePrice({ cost: decimal(cost, 'Custo').times(quantity).toFixed(), quantity, fees: [], target: { type: 'markup', value: multiplier } }).priceCents / 100;
+}
+export type LegacyTargetType = 'profit' | 'margin' | 'markup' | 'custom';
+export type LegacyChannel = { commissionPercent?: number; fixedFee?: number; averageShipping?: number; affiliateCommission?: number; status?: string };
+export function calculateChannelPrice(cost: number | string, channel: LegacyChannel, targetType: LegacyTargetType, targetValue: number, includeAffiliate = false) {
+  if (channel.status === 'inativo') throw new PricingError('Canal inativo.');
+  const coveredCost = decimal(cost, 'Custo').plus(decimal(channel.averageShipping ?? 0, 'Frete'));
+  const commission = decimal(channel.commissionPercent ?? 0, 'Comissão').div(100);
+  const affiliate = includeAffiliate ? decimal(channel.affiliateCommission ?? 0, 'Afiliados').div(100) : new D(0);
+  const value = decimal(targetValue, 'Meta');
+  const target = { type: targetType === 'custom' ? 'manual' as const : targetType, value: (targetType === 'margin' ? value.div(100) : value).toFixed() };
+  const input = { cost: coveredCost.toFixed(), quantity: 1, fees: [
+    { id: 'commission', rate: commission.toFixed(), basis: 'gross' as const },
+    { id: 'affiliate', rate: affiliate.toFixed(), basis: 'gross' as const },
+    { id: 'fixed', amount: decimal(channel.fixedFee ?? 0, 'Taxa fixa').toFixed(), incidence: 'order' as const },
+  ], target };
+  const result = calculatePrice(input);
+  const minPrice = calculatePrice({ ...input, target: { type: 'profit', value: '0' } }).priceCents / 100;
+  const aggressiveTarget = targetType === 'markup' ? { type: 'markup' as const, value: D.max(1, value.minus('0.5')).toFixed() }
+    : targetType === 'custom' ? { type: 'profit' as const, value: '0' } : { ...target, value: new D(target.value).div(2).toFixed() };
+  const aggressivePrice = calculatePrice({ ...input, target: aggressiveTarget }).priceCents / 100;
+  return { input, result, cost: coveredCost.toNumber(), finalPrice: result.priceCents / 100, totalFees: result.feeCents / 100,
+    percentFeesAmount: result.feeLines.filter(f => f.id !== 'fixed').reduce((a, f) => a + f.cents, 0) / 100,
+    netRevenue: Number(result.netRevenue), netProfit: Number(result.profit),
+    realMargin: result.margin === null ? null : new D(result.margin).times(100).toNumber(),
+    realMarkup: coveredCost.isZero() ? null : new D(result.netRevenue).div(coveredCost).toNumber(), minPrice, aggressivePrice };
+}

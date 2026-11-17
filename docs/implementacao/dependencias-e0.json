@@ -1,0 +1,349 @@
+{
+  "date": "2026-10-05",
+  "productionGate": "npm audit --omit=dev --audit-level=high",
+  "production": {
+    "counts": {
+      "info": 0,
+      "low": 1,
+      "moderate": 8,
+      "high": 0,
+      "critical": 0,
+      "total": 9
+    },
+    "packages": [
+      {
+        "name": "@google-cloud/firestore",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-admin",
+          "version": "14.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "@google-cloud/storage",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-admin",
+          "version": "14.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "esbuild",
+        "severity": "low",
+        "direct": false,
+        "advisories": [
+          {
+            "title": "esbuild allows arbitrary file read when running the development server on Windows",
+            "url": "https://github.com/advisories/GHSA-g7r4-m6w7-qqqr"
+          }
+        ],
+        "fixAvailable": true
+      },
+      {
+        "name": "firebase-admin",
+        "severity": "moderate",
+        "direct": true,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-admin",
+          "version": "14.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "gaxios",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "fixAvailable": true
+      },
+      {
+        "name": "google-gax",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-admin",
+          "version": "14.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "retry-request",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-admin",
+          "version": "14.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "teeny-request",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-admin",
+          "version": "14.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "uuid",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [
+          {
+            "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided",
+            "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq"
+          }
+        ],
+        "fixAvailable": {
+          "name": "firebase-admin",
+          "version": "14.5.0",
+          "isSemVerMajor": true
+        }
+      }
+    ]
+  },
+  "fullTree": {
+    "counts": {
+      "info": 0,
+      "low": 1,
+      "moderate": 10,
+      "high": 7,
+      "critical": 0,
+      "total": 18
+    },
+    "packages": [
+      {
+        "name": "@google-cloud/firestore",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-admin",
+          "version": "14.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "@google-cloud/pubsub",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-tools",
+          "version": "14.23.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "@google-cloud/storage",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-admin",
+          "version": "14.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "@opentelemetry/core",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [
+          {
+            "title": "OpenTelemetry Core: Unbounded memory allocation in W3C Baggage propagation",
+            "url": "https://github.com/advisories/GHSA-8988-4f7v-96qf"
+          }
+        ],
+        "fixAvailable": {
+          "name": "firebase-tools",
+          "version": "14.23.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "basic-ftp",
+        "severity": "high",
+        "direct": false,
+        "advisories": [
+          {
+            "title": "basic-ftp: Quadratic-time CPU denial of service in Client.list() Unix directory-listing parser (RE_LINE backtracking)",
+            "url": "https://github.com/advisories/GHSA-c475-qrg2-pj4r"
+          }
+        ],
+        "fixAvailable": {
+          "name": "firebase-tools",
+          "version": "14.23.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "braces",
+        "severity": "high",
+        "direct": false,
+        "advisories": [
+          {
+            "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns",
+            "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm"
+          }
+        ],
+        "fixAvailable": {
+          "name": "firebase-tools",
+          "version": "14.23.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "chokidar",
+        "severity": "high",
+        "direct": false,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-tools",
+          "version": "14.23.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "esbuild",
+        "severity": "low",
+        "direct": false,
+        "advisories": [
+          {
+            "title": "esbuild allows arbitrary file read when running the development server on Windows",
+            "url": "https://github.com/advisories/GHSA-g7r4-m6w7-qqqr"
+          }
+        ],
+        "fixAvailable": true
+      },
+      {
+        "name": "firebase-admin",
+        "severity": "moderate",
+        "direct": true,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-admin",
+          "version": "14.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "firebase-tools",
+        "severity": "high",
+        "direct": true,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-tools",
+          "version": "14.23.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "gaxios",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-tools",
+          "version": "14.23.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "get-uri",
+        "severity": "high",
+        "direct": false,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-tools",
+          "version": "14.23.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "google-gax",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-admin",
+          "version": "14.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "pac-proxy-agent",
+        "severity": "high",
+        "direct": false,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-tools",
+          "version": "14.23.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "proxy-agent",
+        "severity": "high",
+        "direct": false,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-tools",
+          "version": "14.23.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "retry-request",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-admin",
+          "version": "14.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "teeny-request",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "fixAvailable": {
+          "name": "firebase-admin",
+          "version": "14.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      {
+        "name": "uuid",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [
+          {
+            "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided",
+            "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq"
+          }
+        ],
+        "fixAvailable": {
+          "name": "firebase-tools",
+          "version": "14.23.0",
+          "isSemVerMajor": true
+        }
+      }
+    ]
+  },
+  "note": "Contagens são de pacotes reportados, não vulnerabilidades independentes. O gate não afirma ausência de vulnerabilidades."
+}

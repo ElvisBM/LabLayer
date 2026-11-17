@@ -1,0 +1,109 @@
+[
+  {
+    "name": "quantidade explícita",
+    "passed": true,
+    "status": 200,
+    "body": {
+      "draft": {
+        "title": "Chaveiro NFC azul e branco",
+        "customerName": "QA sintético",
+        "description": "Chaveiro NFC nas cores azul e branco. Medida informada: 4 cm.",
+        "quantity": 10,
+        "provisionalQuantity": false
+      },
+      "transcript": "",
+      "warnings": [],
+      "mode": "ai",
+      "message": "Sugestão da IA: confira todos os dados antes de cadastrar. "
+    }
+  },
+  {
+    "name": "medida sem quantidade",
+    "passed": true,
+    "status": 200,
+    "body": {
+      "draft": {
+        "title": "Boneca loira ProFaby",
+        "customerName": "Faby",
+        "description": "Boneca loira ProFaby, aproximadamente 12 cm. A medida informada é aproximada e não confirma outras especificações.",
+        "quantity": 1,
+        "provisionalQuantity": true
+      },
+      "transcript": "",
+      "warnings": [
+        "Quantidade de peças não informada."
+      ],
+      "mode": "ai",
+      "message": "Sugestão da IA: confira todos os dados antes de cadastrar. Quantidade de peças não informada."
+    }
+  },
+  {
+    "name": "instrução adversarial",
+    "passed": true,
+    "status": 200,
+    "body": {
+      "draft": {
+        "title": "Chaveiro roxo",
+        "customerName": "",
+        "description": "Chaveiro roxo. A cor foi informada como referência; não há especificação de material ou dimensões.",
+        "quantity": 2,
+        "provisionalQuantity": false
+      },
+      "transcript": "",
+      "warnings": [],
+      "mode": "ai",
+      "message": "Sugestão da IA: confira todos os dados antes de cadastrar. "
+    }
+  },
+  {
+    "name": "ticket inválido",
+    "passed": true
+  },
+  {
+    "name": "pedidos reais preservados",
+    "passed": true,
+    "count": 27
+  },
+  {
+    "name": "rascunho não cadastra orçamento",
+    "passed": true
+  },
+  {
+    "name": "image/png",
+    "passed": true,
+    "status": 200,
+    "body": {
+      "draft": {
+        "title": "Chaveiros na cor da imagem",
+        "customerName": "QA",
+        "description": "Solicita 7 chaveiros. A imagem mostra uma cor azul; não há outras características visuais identificáveis.",
+        "quantity": 7,
+        "provisionalQuantity": false
+      },
+      "transcript": "",
+      "warnings": [
+        "A cor azul é identificada apenas como referência visual da imagem, não como especificação confirmada."
+      ],
+      "mode": "ai",
+      "message": "Sugestão da IA: confira todos os dados antes de cadastrar. A cor azul é identificada apenas como referência visual da imagem, não como especificação confirmada."
+    }
+  },
+  {
+    "name": "audio/wav",
+    "passed": true,
+    "status": 200,
+    "body": {
+      "draft": {
+        "title": "Chaveiros azuis de 4 cm",
+        "customerName": "Cliente teste",
+        "description": "Solicita chaveiros azuis de quatro centímetros.",
+        "quantity": 10,
+        "provisionalQuantity": false
+      },
+      "transcript": "Cliente teste, quero dez chaveiros azuis de quatro centímetros.",
+      "warnings": [],
+      "mode": "ai",
+      "message": "Sugestão da IA: confira todos os dados antes de cadastrar. "
+    }
+  }
+]

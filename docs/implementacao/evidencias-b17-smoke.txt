@@ -1,0 +1,75 @@
+
+> react-example@0.0.0 build
+> vite build --outDir <fixture-temporaria>/dist
+
+vite v6.4.4 building for production...
+transforming...
+✓ 1734 modules transformed.
+rendering chunks...
+computing gzip size...
+../../../../../..<fixture-temporaria>/dist/lablayer-environment.json                  0.34 kB │ gzip:   0.23 kB
+../../../../../..<fixture-temporaria>/dist/index.html                                 0.47 kB │ gzip:   0.29 kB
+../../../../../..<fixture-temporaria>/dist/assets/index-BnxtkBgN.css                 49.15 kB │ gzip:   8.71 kB
+../../../../../..<fixture-temporaria>/dist/assets/plus-KUtDb0IA.js                    0.32 kB │ gzip:   0.26 kB
+../../../../../..<fixture-temporaria>/dist/assets/circle-check-CQklcBO_.js            0.35 kB │ gzip:   0.28 kB
+../../../../../..<fixture-temporaria>/dist/assets/dollar-sign-DBopwjqd.js             0.39 kB │ gzip:   0.30 kB
+../../../../../..<fixture-temporaria>/dist/assets/target-DomPj4gh.js                  0.40 kB │ gzip:   0.27 kB
+../../../../../..<fixture-temporaria>/dist/assets/pen-BOM8Oh92.js                     0.41 kB │ gzip:   0.31 kB
+../../../../../..<fixture-temporaria>/dist/assets/percent-DERv2zJe.js                 0.42 kB │ gzip:   0.30 kB
+../../../../../..<fixture-temporaria>/dist/assets/circle-alert-B5S7R8GJ.js            0.42 kB │ gzip:   0.29 kB
+../../../../../..<fixture-temporaria>/dist/assets/link--hEZ8oP4.js                    0.43 kB │ gzip:   0.30 kB
+../../../../../..<fixture-temporaria>/dist/assets/save-BiUM5Nlc.js                    0.50 kB │ gzip:   0.33 kB
+../../../../../..<fixture-temporaria>/dist/assets/trash-2-sWZ2U4xz.js                 0.50 kB │ gzip:   0.32 kB
+../../../../../..<fixture-temporaria>/dist/assets/product-protection-DaW_LlRp.js      0.54 kB │ gzip:   0.39 kB
+../../../../../..<fixture-temporaria>/dist/assets/model-DnVrZgVS.js                   1.86 kB │ gzip:   0.94 kB
+../../../../../..<fixture-temporaria>/dist/assets/Configuracoes-BV6GSwx4.js           3.27 kB │ gzip:   1.34 kB
+../../../../../..<fixture-temporaria>/dist/assets/AssetControls-DCSobfhg.js           3.60 kB │ gzip:   1.68 kB
+../../../../../..<fixture-temporaria>/dist/assets/SearchableSelect-BOSiYl6N.js        4.12 kB │ gzip:   1.53 kB
+../../../../../..<fixture-temporaria>/dist/assets/pricing-D6yAnKkP.js                 4.47 kB │ gzip:   2.03 kB
+../../../../../..<fixture-temporaria>/dist/assets/EstoqueInteligente-3V0Y3DOf.js      4.85 kB │ gzip:   1.22 kB
+../../../../../..<fixture-temporaria>/dist/assets/model-CKz-b4Cv.js                   5.89 kB │ gzip:   2.53 kB
+../../../../../..<fixture-temporaria>/dist/assets/ControlePerdas-65x88hH9.js          6.24 kB │ gzip:   1.95 kB
+../../../../../..<fixture-temporaria>/dist/assets/SuperAdmin-BEDowOY1.js              8.86 kB │ gzip:   2.45 kB
+../../../../../..<fixture-temporaria>/dist/assets/ValoresSugeridos-CH3QWKzp.js        9.17 kB │ gzip:   3.10 kB
+../../../../../..<fixture-temporaria>/dist/assets/Marketplaces-dbYsDfgm.js           10.00 kB │ gzip:   2.47 kB
+../../../../../..<fixture-temporaria>/dist/assets/Insumos-t_FSyN-E.js                10.51 kB │ gzip:   2.56 kB
+../../../../../..<fixture-temporaria>/dist/assets/Fornecedores-tMRZ7xK_.js           10.65 kB │ gzip:   2.91 kB
+../../../../../..<fixture-temporaria>/dist/assets/Dashboard-CW7gT2hH.js              11.98 kB │ gzip:   2.68 kB
+../../../../../..<fixture-temporaria>/dist/assets/Impressoras-dWmhhI5F.js            13.35 kB │ gzip:   3.47 kB
+../../../../../..<fixture-temporaria>/dist/assets/InventoryPage-DngBhjmS.js          16.30 kB │ gzip:   6.05 kB
+../../../../../..<fixture-temporaria>/dist/assets/FinancePage-Cm5bqON3.js            18.26 kB │ gzip:   6.40 kB
+../../../../../..<fixture-temporaria>/dist/assets/Vendas-DroYuCOR.js                 19.41 kB │ gzip:   4.46 kB
+../../../../../..<fixture-temporaria>/dist/assets/Financeiro-mkuoukqw.js             22.77 kB │ gzip:   4.63 kB
+../../../../../..<fixture-temporaria>/dist/assets/Precificacao-B4l2ndHs.js           23.45 kB │ gzip:   5.56 kB
+../../../../../..<fixture-temporaria>/dist/assets/CatalogPage-DHd0ATJd.js            23.72 kB │ gzip:   6.93 kB
+../../../../../..<fixture-temporaria>/dist/assets/QuotesPage-DeaoAFxR.js             24.76 kB │ gzip:   7.99 kB
+../../../../../..<fixture-temporaria>/dist/assets/AgendaProducao-DVokfhQr.js         27.63 kB │ gzip:   7.12 kB
+../../../../../..<fixture-temporaria>/dist/assets/Filamentos-C2-O7zRd.js             31.68 kB │ gzip:   7.79 kB
+../../../../../..<fixture-temporaria>/dist/assets/EncomendasOrcamentos-CiHV9YJ9.js   32.34 kB │ gzip:   6.99 kB
+../../../../../..<fixture-temporaria>/dist/assets/engine-C6yJj52a.js                 35.19 kB │ gzip:  14.27 kB
+../../../../../..<fixture-temporaria>/dist/assets/Produtos-CII9ogrU.js               93.05 kB │ gzip:  19.79 kB
+../../../../../..<fixture-temporaria>/dist/assets/index-D1UYCQRn.js                 242.72 kB │ gzip:  76.04 kB
+../../../../../..<fixture-temporaria>/dist/assets/firebase-Biho0XRD.js              471.82 kB │ gzip: 110.91 kB
+✓ built in 2.96s
+
+(!) outDir <fixture-temporaria>/dist is not inside project root and will not be emptied.
+Use --emptyOutDir to override.
+
+
+CLI offline com fixture (não é autenticação real):
+{
+  "status": "configuracao-local-consistente",
+  "schemaVersion": 1,
+  "environment": "homologation",
+  "projectId": "demo-lablayer-staging",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "demo-lablayer-staging.firebasestorage.app",
+  "authDomain": "demo-lablayer-staging.firebaseapp.com",
+  "configHash": "419ed37f4fd272fc425f3940b68b609a671ec0e9749053418caf3fb511d59506",
+  "next": "Validar acesso, IAM, rules, backup e jornada real no ambiente identificado. Esta conferência não acessa serviços nem libera o piloto."
+}
+
+Divergência recusada (exit 1):
+Servidor e cliente divergem: configure FIRESTORE_DATABASE_ID e FIREBASE_STORAGE_BUCKET explicitamente.
+
+Conferido: bundle usa projeto fictício; não inclui identificador do projeto de produção nem chave privada. Nenhuma chamada a Firebase foi feita pelo preflight.

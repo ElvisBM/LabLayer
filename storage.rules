@@ -1,0 +1,8 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Managed assets are read/written only through the authenticated application API.
+    // Do not add overlapping broad client grants; matching allows are ORed.
+    match /{path=**} { allow read, write: if false; }
+  }
+}

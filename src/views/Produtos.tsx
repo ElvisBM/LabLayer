@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Plus, MoreVertical, Box, Calculator, FileText, Layers, FileUp, Settings, Trash2, Save, TrendingUp, AlertTriangle, DollarSign, Target, Edit2, Upload, X, LayoutGrid, List, Search } from 'lucide-react';
-import { collection, onSnapshot, updateDoc, deleteDoc, doc, query, where, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, onSnapshot, doc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { SearchableSelect, SelectOption } from '../components/SearchableSelect';
 import toast from 'react-hot-toast';
-import { DEFAULT_PRICING_SETTINGS, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings } from '../utils/pricing';
+import { archiveProduct } from '../services/product-protection';
+import { DEFAULT_PRICING_SETTINGS, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings, suggestedPrice } from '../utils/pricing';
 
 function SearchableSelectFilament({ value, onChange, filaments, placeholder = "Buscar..." }: { value: string, onChange: (v: string) => void, filaments: Filament[], placeholder?: string }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -96,6 +97,7 @@ interface Filament {
 }
 
 interface Printer {
+  usedHours?: number;
   id: string;
   name: string;
   model: string;
@@ -362,6 +364,7 @@ const normalizeProductionOrderFallback = (order: ProductionOrderFallback): Produ
 };
 
 interface Product {
+  createdAt?: string;
   id: string;
   name: string;
   baseSku: string;
@@ -408,7 +411,6 @@ const PRODUCT_RECORD_TYPE_OPTIONS: Array<{ value: ProductRecordType; label: stri
   { value: 'orcamento', label: 'Orcamento' },
 ];
 
-const PRODUCT_SUGGESTED_MARKUP_MULTIPLIER = 2.2;
 
 const getProductRecordTypeLabel = (type?: string) => {
   const option = PRODUCT_RECORD_TYPE_OPTIONS.find(item => item.value === type);
@@ -463,6 +465,7 @@ const mockProducts: Product[] = [
 ];
 
 interface ProdutosProps {
+  onOpenCatalog?: () => void;
   mode?: 'list' | 'editor';
   editorMode?: 'new' | 'edit';
   editorProductId?: string | null;
@@ -471,6 +474,7 @@ interface ProdutosProps {
 }
 
 export function Produtos({
+  onOpenCatalog,
   mode = 'list',
   editorMode = 'new',
   editorProductId = null,
@@ -1067,68 +1071,12 @@ export function Produtos({
   const handleDelete = async (id: string) => {
     if (!tenantId) return;
     try {
-      const productToDelete = products.find(p => p.id === id);
-      
-      if (productToDelete) {
-        const batch = writeBatch(db);
-
-        // Restaurar estoque de filamentos
-        const usageToReturn = calculateFilamentUsageMap(productToDelete);
-        const supplyUsageToReturn = calculateSupplyUsageMap(productToDelete);
-        for (const [fId, amount] of Object.entries(usageToReturn)) {
-            const filament = filaments.find(f => f.id === fId);
-            if (filament) {
-              batch.update(doc(db, `tenants/${tenantId}/filaments`, filament.id), {
-                stockKg: (filament.stockKg || 0) + amount
-              });
-            }
-        }
-
-        for (const [supplyId, amount] of Object.entries(supplyUsageToReturn)) {
-          const supply = supplies.find(item => item.id === supplyId);
-          if (supply) {
-            batch.update(doc(db, `tenants/${tenantId}/supplies`, supply.id), {
-              quantity: (Number(supply.quantity) || 0) + amount,
-            });
-          }
-        }
-
-        for (const variation of productToDelete.variations) {
-          // Restore print hours
-          if (variation.printerId && variation.printTimeHours) {
-             const printer = printers.find(p => p.id === variation.printerId);
-             if (printer && printer.usedHours) {
-               let totalHoursUsed = 0;
-               if (variation.materials && variation.materials.some(m => m.printTimeHours !== undefined)) {
-                 totalHoursUsed = variation.materials.reduce((sum, mat) => sum + (mat.printTimeHours || 0), 0);
-               } else {
-                 totalHoursUsed = variation.printTimeHours;
-               }
-
-               await updateDoc(doc(db, `tenants/${tenantId}/printers`, printer.id), {
-                 usedHours: Math.max(0, printer.usedHours - totalHoursUsed)
-               });
-             }
-          }
-        }
-
-        // Excluir registros de perdas (purgas) associados a este produto
-        const lossesQuery = query(collection(db, `tenants/${tenantId}/losses`), where("productId", "==", id));
-        const lossesSnapshot = await getDocs(lossesQuery);
-        lossesSnapshot.docs.forEach(lossDoc => {
-          batch.delete(doc(db, `tenants/${tenantId}/losses`, lossDoc.id));
-        });
-
-        batch.delete(doc(db, `tenants/${tenantId}/products`, id));
-        await batch.commit();
-      } else {
-        await deleteDoc(doc(db, `tenants/${tenantId}/products`, id));
-      }
+      await archiveProduct(db, tenantId, id);
       setDeleteTargetId(null);
-      toast.success("Produto excluído com sucesso!");
+      toast.success('Produto arquivado. Histórico e estoque preservados.');
     } catch (error) {
-      console.error("Error deleting product:", error);
-      toast.error("Erro ao excluir produto.");
+      console.error('Error archiving product:', error);
+      toast.error('Erro ao arquivar produto.');
     }
   };
 
@@ -1554,19 +1502,8 @@ export function Produtos({
     };
   };
 
-  const getProductPricingVariations = (product: Product | Partial<Product>) => {
-    const baseVariations = product.variations || [];
-    const productionTables = getProductProductionTables(product);
-
-    if (productionTables.length === 0) {
-      return baseVariations;
-    }
-
-    const primaryVariation = buildVariationFromProductionTables(productionTables, baseVariations[0]);
-    return baseVariations.length > 0
-      ? [primaryVariation, ...baseVariations.slice(1)]
-      : [primaryVariation];
-  };
+  // Cost estimates use saved recipe variations only; scheduling/name matches are not recipes.
+  const getProductPricingVariations = (product: Product | Partial<Product>) => product.variations || [];
 
   const getProductProductionTables = (product: Product | Partial<Product>) => {
     if (product.productionTables && product.productionTables.length > 0) {
@@ -1676,6 +1613,7 @@ export function Produtos({
 
   const generateIntelligenceData = () => {
     const alerts: string[] = [];
+    (formData.variations || []).forEach(v => alerts.push(...calculateUnitCostBreakdown(v, formData.fixedCost ?? 0, liveFormProduct).issues));
     let bestMargin = -100;
     let worstMargin = 100;
     let bestChannel = '';
@@ -1684,7 +1622,9 @@ export function Produtos({
     let count = 0;
 
     const variationsData = (formData.variations || []).map(v => {
-      const unitCost = calculateUnitCost(v, formData.fixedCost || 0, liveFormProduct);
+      const breakdown = calculateUnitCostBreakdown(v, formData.fixedCost ?? 0, liveFormProduct);
+      const unitCost = breakdown.total;
+      if (!breakdown.complete) return { ...v, unitCost, channels: [] };
       
       const channels = v.channelPrices.map(cp => {
         const fee = cp.price * (cp.feePercentage / 100);
@@ -1718,10 +1658,12 @@ export function Produtos({
   };
 
   const intel = generateIntelligenceData();
+  const liveCostBreakdown = livePrimaryVariation ? calculateUnitCostBreakdown(livePrimaryVariation, formData.fixedCost ?? 0, liveFormProduct) : null;
 
   const getProductCostRange = (product: Product) => {
     const pricingVariations = getProductPricingVariations(product);
-    if (pricingVariations.length === 0) return 'R$ 0,00';
+    if (pricingVariations.length === 0) return 'Ficha pendente';
+    if (pricingVariations.some(v => !calculateUnitCostBreakdown(v, product.fixedCost ?? 0, product).complete)) return 'Revisar custos';
     const costs = pricingVariations.map(v => calculateUnitCost(v, product.fixedCost || 0, product));
     const minCost = Math.min(...costs);
     const maxCost = Math.max(...costs);
@@ -1739,14 +1681,9 @@ export function Produtos({
 
   const getLiveSuggestedPrices = (product: Product) => {
     const pricingVariations = getProductPricingVariations(product);
-    if (pricingVariations.length === 0) {
-      const fallback = Number(product.fixedCost) || 0;
-      return fallback > 0 ? [Number((fallback * PRODUCT_SUGGESTED_MARKUP_MULTIPLIER).toFixed(2))] : [];
-    }
-
-    return pricingVariations.map(variation => (
-      Number((calculateUnitCost(variation, product.fixedCost || 0, product) * PRODUCT_SUGGESTED_MARKUP_MULTIPLIER).toFixed(2))
-    ));
+    const breakdowns = pricingVariations.map(v => calculateUnitCostBreakdown(v, product.fixedCost ?? 0, product));
+    if (!breakdowns.length || breakdowns.some(b => !b.complete)) return [];
+    return breakdowns.map(b => suggestedPrice(b.totalDecimal));
   };
 
   const getProductPriceRange = (product: Product) => {
@@ -1791,6 +1728,7 @@ export function Produtos({
 
   return (
     <div className="space-y-8">
+      {mode === 'list' && onOpenCatalog && <div className="flex items-center justify-between gap-4 rounded border border-outline-variant/30 p-4"><p className="text-sm">Prepare fichas versionadas sem alterar o estoque atual.</p><button type="button" className="bg-primary text-on-primary rounded p-2" onClick={onOpenCatalog}>Catálogo e fichas</button></div>}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
           <h2 className="font-headline text-3xl font-bold text-primary tracking-tighter">
@@ -2198,14 +2136,14 @@ export function Produtos({
                       <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
                         <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Custo Total da Impressão</p>
                         <p className="text-xl font-bold text-on-surface">
-                          R$ {(calculateUnitCost(livePrimaryVariation, formData.fixedCost || 0, liveFormProduct) * (livePrimaryVariation.quantityPerPrint || 1)).toFixed(2)}
+                          {liveCostBreakdown?.complete ? `R$ ${(liveCostBreakdown.total * livePrimaryVariation.quantityPerPrint).toFixed(2)}` : 'Revisar custos'}
                         </p>
                       </div>
                       
                       <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
                         <p className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Custo por Unidade</p>
                         <p className="text-xl font-bold text-primary">
-                          R$ {calculateUnitCost(livePrimaryVariation, formData.fixedCost || 0, liveFormProduct).toFixed(2)}
+                          {liveCostBreakdown?.complete ? `R$ ${liveCostBreakdown.total.toFixed(2)}` : 'Revisar custos'}
                         </p>
                       </div>
 
@@ -2325,6 +2263,7 @@ export function Produtos({
                       const unitCost = costBreakdown.total;
                       return (
                         <div key={v.id} className="flex flex-col gap-3 p-4 bg-surface-container-lowest border border-outline-variant/20 rounded-lg">
+                          {!costBreakdown.complete && <p role="alert" className="text-error text-sm">{costBreakdown.issues.join(' ')}</p>}
                           <div className="flex justify-between items-center border-b border-outline-variant/10 pb-2">
                             <h5 className="font-bold text-sm flex items-center gap-2">
                               <span className="w-3 h-3 rounded-full border border-outline-variant/30" style={{ backgroundColor: v.color === 'Preto' ? '#000' : v.color === 'Branco' ? '#fff' : '#ccc' }}></span>
@@ -2333,7 +2272,7 @@ export function Produtos({
                             <div className="flex items-center gap-4">
                               <div className="text-right">
                                 <span className="text-[10px] uppercase tracking-widest text-on-surface-variant block">Custo Unitário Final</span>
-                                <span className="font-bold text-primary tabular-nums">R$ {unitCost.toFixed(2)}</span>
+                                <span className="font-bold text-primary tabular-nums">{costBreakdown.complete ? `R$ ${unitCost.toFixed(2)}` : 'Revisar custos'}</span>
                               </div>
                               <button onClick={() => removeVariation(v.id)} className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error/10 rounded">
                                 <Trash2 className="w-4 h-4" />
@@ -2989,7 +2928,7 @@ export function Produtos({
                         <button type="button" onClick={(e) => { e.stopPropagation(); handleEdit(p); }} className="p-1.5 text-slate-400 hover:text-primary hover:bg-surface-container transition-colors rounded">
                           <Edit2 className="w-4 h-4" />
                         </button>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); requestDelete(p.id); }} className="p-1.5 text-slate-400 hover:text-error hover:bg-error/10 transition-colors rounded">
+                        <button type="button" aria-label={`Arquivar ${p.name}`} onClick={(e) => { e.stopPropagation(); requestDelete(p.id); }} className="p-1.5 text-slate-400 hover:text-error hover:bg-error/10 transition-colors rounded">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
@@ -3017,7 +2956,7 @@ export function Produtos({
                     <button type="button" onClick={(e) => { e.stopPropagation(); handleEdit(p); }} className="p-1.5 text-slate-400 hover:text-primary transition-colors rounded opacity-0 group-hover:opacity-100">
                       <Edit2 className="w-4 h-4" />
                     </button>
-                    <button type="button" onClick={(e) => { e.stopPropagation(); requestDelete(p.id); }} className="p-1.5 text-slate-400 hover:text-error transition-colors rounded opacity-0 group-hover:opacity-100">
+                    <button type="button" aria-label={`Arquivar ${p.name}`} onClick={(e) => { e.stopPropagation(); requestDelete(p.id); }} className="p-1.5 text-slate-400 hover:text-error transition-colors rounded opacity-0 group-hover:opacity-100">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -3105,9 +3044,9 @@ export function Produtos({
           <div className="w-full max-w-md rounded-2xl bg-surface-container-lowest border border-outline-variant/20 shadow-2xl">
             <div className="p-6 space-y-4">
               <div>
-                <h3 className="text-lg font-bold text-on-surface">Excluir Produto</h3>
+                <h3 className="text-lg font-bold text-on-surface">Arquivar Produto</h3>
                 <p className="text-sm text-on-surface-variant mt-1">
-                  Tem certeza que quer excluir este produto permanentemente e devolver o saldo dos materiais?
+                  O produto ficará inativo. A ficha, o histórico e os saldos serão preservados. Você pode reativá-lo alterando o status no cadastro.
                 </p>
               </div>
 
@@ -3128,7 +3067,7 @@ export function Produtos({
                   onClick={() => handleDelete(deleteTargetId)}
                   className="px-4 py-2 bg-error text-on-error rounded-lg text-sm font-bold hover:opacity-90 transition-all"
                 >
-                  Excluir
+                  Arquivar
                 </button>
               </div>
             </div>

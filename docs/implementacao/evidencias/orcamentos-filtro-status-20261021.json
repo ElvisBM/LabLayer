@@ -1,0 +1,54 @@
+[
+  {
+    "case": "active",
+    "passed": true,
+    "http": 200,
+    "count": 2
+  },
+  {
+    "case": "all",
+    "passed": true,
+    "http": 200,
+    "count": 5
+  },
+  {
+    "case": "aguardando-orcamento",
+    "passed": true,
+    "http": 200,
+    "count": 1
+  },
+  {
+    "case": "orcado",
+    "passed": true,
+    "http": 200,
+    "count": 1
+  },
+  {
+    "case": "fila-producao",
+    "passed": true,
+    "http": 200,
+    "count": 1
+  },
+  {
+    "case": "produzindo",
+    "passed": true,
+    "http": 200,
+    "count": 1
+  },
+  {
+    "case": "finalizado",
+    "passed": true,
+    "http": 200,
+    "count": 1
+  },
+  {
+    "case": "invalid",
+    "passed": true,
+    "http": 422
+  },
+  {
+    "case": "Orçamentos reais preservados",
+    "passed": true,
+    "count": 27
+  }
+]

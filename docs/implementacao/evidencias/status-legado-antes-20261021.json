@@ -1,0 +1,8 @@
+{
+  "mode": "prepare",
+  "http": 403,
+  "ruleResult": "PERMISSION_DENIED",
+  "passed": true,
+  "realRequestsPreserved": true,
+  "realCount": 27
+}

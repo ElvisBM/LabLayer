@@ -1,0 +1,77 @@
+[
+  {
+    "name": "criação",
+    "passed": true,
+    "intent": "create"
+  },
+  {
+    "name": "consulta específica",
+    "passed": true,
+    "intent": "lookup",
+    "candidates": 1
+  },
+  {
+    "name": "consulta específica identifica",
+    "passed": true
+  },
+  {
+    "name": "consulta ambígua",
+    "passed": true,
+    "intent": "lookup",
+    "candidates": 2
+  },
+  {
+    "name": "ambiguidade preservada",
+    "passed": true
+  },
+  {
+    "name": "pedido inexistente",
+    "passed": true,
+    "intent": "lookup",
+    "candidates": 0
+  },
+  {
+    "name": "não inventa cadastro",
+    "passed": true
+  },
+  {
+    "name": "solicitar atualização do andamento",
+    "passed": true,
+    "intent": "lookup",
+    "candidates": 1
+  },
+  {
+    "name": "complemento",
+    "passed": true,
+    "intent": "update",
+    "candidates": 1
+  },
+  {
+    "name": "contexto selecionado",
+    "passed": true,
+    "intent": "lookup",
+    "candidates": 1
+  },
+  {
+    "name": "contexto selecionado identifica",
+    "passed": true
+  },
+  {
+    "name": "referência ausente",
+    "passed": true,
+    "intent": "clarify"
+  },
+  {
+    "name": "interpretação não grava",
+    "passed": true
+  },
+  {
+    "name": "confirmação idempotente e valores reais",
+    "passed": true
+  },
+  {
+    "name": "orçamentos reais preservados",
+    "passed": true,
+    "count": 27
+  }
+]

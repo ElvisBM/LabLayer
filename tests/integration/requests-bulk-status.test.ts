@@ -1,0 +1,73 @@
+import { beforeAll, beforeEach, afterAll, it, expect } from 'vitest';
+import { initializeTestEnvironment, assertFails, assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { readFileSync } from 'node:fs';
+import { changeRequestStatuses } from '../../src/features/requests/bulk-status';
+let env: RulesTestEnvironment;
+const quote={title:'Pedido QA',type:'orcamento',status:'aguardando-orcamento',requestedQuantity:10,productionTimeHours:0,filaments:[],quotedPrice:80,updatedAt:'2026-10-21'};
+beforeAll(async()=>{env=await initializeTestEnvironment({projectId:'demo-lablayer-test',firestore:{host:'127.0.0.1',port:8088,rules:readFileSync('firestore.rules','utf8')}})});
+beforeEach(async()=>{
+ await env.clearFirestore();
+ await env.withSecurityRulesDisabled(async c=>{
+  const db=c.firestore();
+  await setDoc(doc(db,'tenants/a'),{ownerUid:'a',status:'active'});
+  await setDoc(doc(db,'users/member'),{tenantId:'a',tenantRole:'member',role:'user'});
+  for(const id of ['one','two','untouched'])await setDoc(doc(db,`tenants/a/customRequests/${id}`),quote);
+ });
+});
+afterAll(async()=>env.cleanup());
+it('lote autorizado muda só status/data e preserva valores e itens não selecionados',async()=>{
+ const db=env.authenticatedContext('a').firestore();
+ await assertSucceeds(changeRequestStatuses(db as any,'a',['one','two'],'orcado'));
+ for(const id of ['one','two'])expect((await getDoc(doc(db,`tenants/a/customRequests/${id}`))).data()).toMatchObject({...quote,status:'orcado',updatedAt:expect.any(String)});
+ expect((await getDoc(doc(db,'tenants/a/customRequests/untouched'))).data()).toEqual(quote);
+});
+it('documento inexistente ou outro tenant impedem todo o lote',async()=>{
+ const db=env.authenticatedContext('a').firestore();
+ await assertFails(changeRequestStatuses(db as any,'a',['one','missing'],'orcado'));
+ expect((await getDoc(doc(db,'tenants/a/customRequests/one'))).data()).toEqual(quote);
+ await assertFails(changeRequestStatuses(env.authenticatedContext('outsider').firestore() as any,'a',['one','two'],'orcado'));
+});
+it('rejeita status inválido, ids duplicados e lote excessivo antes de escrever',async()=>{
+ const db=env.authenticatedContext('a').firestore();
+ for(const [ids,status] of [[['one'],'invalid'],[['one','one'],'orcado'],[Array.from({length:101},(_,i)=>String(i)),'orcado'],[[],'orcado']] as any)
+   await expect(changeRequestStatuses(db as any,'a',ids,status)).rejects.toThrow('Selecione');
+ expect((await getDoc(doc(db,'tenants/a/customRequests/one'))).data()).toEqual(quote);
+});
+it('finaliza lote misto de pedidos antigos com observation preservando a observação',async()=>{
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'tenants/a/customRequests/legacy'),{...quote,observation:'Observação histórica do cliente'}));
+ const db=env.authenticatedContext('a').firestore();
+ await assertSucceeds(changeRequestStatuses(db as any,'a',['one','legacy'],'finalizado'));
+ expect((await getDoc(doc(db,'tenants/a/customRequests/one'))).data()?.status).toBe('finalizado');
+ expect((await getDoc(doc(db,'tenants/a/customRequests/legacy'))).data()).toMatchObject({status:'finalizado',observation:'Observação histórica do cliente',requestedQuantity:10,quotedPrice:80});
+});
+// Regras ativas desde 05/11: a atualização valida só os campos alterados, para que pedidos
+// antigos com dados fora do padrão ainda possam mudar de status. Gravar dado inválido segue proibido.
+it('pedido antigo com dado fora do padrão muda de status, mas a alteração não aceita dado inválido nem campo desconhecido',async()=>{
+ const db=env.authenticatedContext('a').firestore();
+ for(const extra of [{observation:42},{observation:'x'.repeat(5001)},{unknownField:'não permitido'}]){
+  await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'tenants/a/customRequests/invalid'),{...quote,...extra}));
+  await assertSucceeds(changeRequestStatuses(db as any,'a',['one','invalid'],'finalizado'));
+  expect((await getDoc(doc(db,'tenants/a/customRequests/invalid'))).data()).toMatchObject({...extra,status:'finalizado'});
+  await assertFails(updateDoc(doc(db,'tenants/a/customRequests/untouched'),{...extra,updatedAt:'2026-11-17'}));
+  expect((await getDoc(doc(db,'tenants/a/customRequests/untouched'))).data()).toEqual(quote);
+  await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'tenants/a/customRequests/one'),quote));
+ }
+});
+
+it('opções comerciais e peso interno permitem salvar e finalizar sem perder dados',async()=>{
+ const db=env.authenticatedContext('a').firestore();
+ const data={...quote,customerQuote:{name:'Zalma',size:'5 cm',options:[{quantity:1,unitPrice:22,deliveryDays:2},{quantity:10,unitPrice:14.5,deliveryDays:2}]},productionWeightGrams:10};
+ await assertSucceeds(setDoc(doc(db,'tenants/a/customRequests/options'),data));
+ await assertSucceeds(changeRequestStatuses(db as any,'a',['options','one'],'finalizado'));
+ expect((await getDoc(doc(db,'tenants/a/customRequests/options'))).data()).toMatchObject({...data,status:'finalizado',updatedAt:expect.any(String)});
+ for(const extra of [{customerQuote:{...data.customerQuote,options:[data.customerQuote.options[0],data.customerQuote.options[0]]}},{customerQuote:{...data.customerQuote,options:[{quantity:1,unitPrice:1.001,deliveryDays:null}]}},{productionWeightGrams:-1},{customerQuote:{...data.customerQuote,options:[{quantity:0,unitPrice:22,deliveryDays:2}]}},{customerQuote:{...data.customerQuote,options:Array(6).fill(data.customerQuote.options[0])}},{customerQuote:{...data.customerQuote,private:'no'}}])await assertFails(setDoc(doc(db,'tenants/a/customRequests/bad'),{...data,...extra}));
+ await assertFails(setDoc(doc(env.authenticatedContext('outsider').firestore(),'tenants/a/customRequests/options'),data));
+});
+
+it('cancelamento é aceito pelas regras sem apagar dados e continua restrito à empresa',async()=>{
+ const db=env.authenticatedContext('a').firestore();
+ await assertSucceeds(changeRequestStatuses(db as any,'a',['one'],'cancelado'));
+ expect((await getDoc(doc(db,'tenants/a/customRequests/one'))).data()).toMatchObject({...quote,status:'cancelado',updatedAt:expect.any(String)});
+ await assertFails(changeRequestStatuses(env.authenticatedContext('outsider').firestore() as any,'a',['two'],'cancelado'));
+});

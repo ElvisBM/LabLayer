@@ -903,14 +903,14 @@ export function AgendaProducao() {
                             Iniciar
                           </button>
                         )}
-                        <button type="button" onClick={() => openEditForm(order)} className="px-3 py-1.5 rounded text-xs font-bold bg-surface-container text-on-surface flex items-center gap-1.5">
+                        <button type="button" disabled={order.status === 'concluida'} onClick={() => openEditForm(order)} className="px-3 py-1.5 rounded text-xs font-bold bg-surface-container text-on-surface flex items-center gap-1.5">
                           <Edit2 className="w-3.5 h-3.5" />
                           Editar
                         </button>
-                        <button type="button" onClick={() => handleComplete(order)} className="px-3 py-1.5 rounded text-xs font-bold bg-tertiary-fixed text-on-tertiary-fixed-variant">
+                        <button type="button" disabled={order.status === 'concluida'} onClick={() => handleComplete(order)} className="px-3 py-1.5 rounded text-xs font-bold bg-tertiary-fixed text-on-tertiary-fixed-variant">
                           Concluir e Enviar para Produtos
                         </button>
-                        <button type="button" onClick={() => handleDelete(order.id)} className="px-3 py-1.5 rounded text-xs font-bold bg-error-container text-on-error-container">
+                        <button type="button" disabled={order.status === 'concluida'} title={order.status === 'concluida' ? 'Produção concluída preservada no histórico' : 'Excluir da fila'} onClick={() => handleDelete(order.id)} className="px-3 py-1.5 rounded text-xs font-bold bg-error-container text-on-error-container">
                           Excluir
                         </button>
                       </div>

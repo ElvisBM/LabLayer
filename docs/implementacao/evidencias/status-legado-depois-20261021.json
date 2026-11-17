@@ -1,0 +1,8 @@
+{
+  "mode": "verify",
+  "http": 200,
+  "ruleResult": "allowed",
+  "passed": true,
+  "realRequestsPreserved": true,
+  "realCount": 27
+}
