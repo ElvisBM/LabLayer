@@ -18,7 +18,7 @@ interface Printer {
   status?: 'operacional' | 'manutenção' | 'inativa';
 }
 
-export function Impressoras() {
+export function Impressoras({ inventoryActive = false }: { inventoryActive?: boolean }) {
   const { tenantId } = useAuth();
   const [printers, setPrinters] = useState<Printer[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -131,6 +131,7 @@ export function Impressoras() {
 
   return (
     <div className="space-y-8">
+      {inventoryActive && <p role="note">As horas anteriores ao corte são históricas. Consulte as horas das novas execuções em Estoque e produção. Os custos por hora desta tela são estimativas; a execução registra os custos reais confirmados. Para retirar uma impressora de uso, altere a situação para inativa.</p>}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
           <h2 className="font-headline text-3xl font-bold text-primary tracking-tighter">Frota de Impressoras</h2>
@@ -283,7 +284,7 @@ export function Impressoras() {
                         <span>{p.lifespanHours.toLocaleString('pt-BR')} h</span>
                         {p.usedHours !== undefined && (
                           <span className="text-[10px] text-on-surface-variant font-normal">
-                            Usado: {p.usedHours.toFixed(1)} h
+                            {inventoryActive ? 'Anterior ao corte:' : 'Usado:'} {p.usedHours.toFixed(1)} h
                           </span>
                         )}
                       </div>
@@ -306,9 +307,9 @@ export function Impressoras() {
                         <button onClick={() => handleEdit(p)} className="p-1.5 text-slate-400 hover:text-primary transition-colors rounded">
                           <Edit2 className="w-4 h-4" />
                         </button>
-                        <button onClick={() => handleDelete(p.id)} className="p-1.5 text-slate-400 hover:text-error transition-colors rounded">
+                        {!inventoryActive && <button onClick={() => handleDelete(p.id)} className="p-1.5 text-slate-400 hover:text-error transition-colors rounded">
                           <Trash2 className="w-4 h-4" />
-                        </button>
+                        </button>}
                       </div>
                     </td>
                   </tr>

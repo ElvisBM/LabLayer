@@ -1,0 +1,118 @@
+
+> react-example@0.0.0 quality
+> npm run lint && npm test && npm run build && npm run audit:production
+
+
+> react-example@0.0.0 lint
+> tsc --noEmit
+
+
+> react-example@0.0.0 test
+> npm run test:unit && npm run test:integration
+
+
+> react-example@0.0.0 test:unit
+> vitest run --config vitest.config.ts
+
+
+ RUN  v4.1.11 /Users/PCNOTES/Workspace/3D/lablayer/LabLayer
+
+
+ Test Files  18 passed (18)
+      Tests  158 passed (158)
+   Start at  10:16:47
+   Duration  6.46s (transform 3.16s, setup 0ms, import 8.09s, tests 11.13s, environment 17.95s)
+
+
+> react-example@0.0.0 test:integration
+> firebase emulators:exec --project demo-lablayer-test --config firebase.test.json --only firestore "vitest run --config vitest.integration.config.ts"
+
+i  emulators: Starting emulators: firestore
+i  emulators: Detected demo project ID "demo-lablayer-test", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail.
+i  firestore: Firestore Emulator logging to firestore-debug.log
+✔  firestore: Firestore Emulator was started in standard edition.
+✔  firestore: Firestore Emulator UI websocket is running on 9150.
+i  Running script: vitest run --config vitest.integration.config.ts
+
+ RUN  v4.1.11 /Users/PCNOTES/Workspace/3D/lablayer/LabLayer
+
+(node:11545) MetadataLookupWarning: received unexpected error = All promises were rejected code = ETIMEDOUT, ENOTFOUND
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:11581) MetadataLookupWarning: received unexpected error = All promises were rejected code = ETIMEDOUT, ENOTFOUND
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:11605) MetadataLookupWarning: received unexpected error = All promises were rejected code = ETIMEDOUT, ENOTFOUND
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:11628) MetadataLookupWarning: received unexpected error = All promises were rejected code = ETIMEDOUT, ENOTFOUND
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:11682) MetadataLookupWarning: received unexpected error = All promises were rejected code = ETIMEDOUT, ENOTFOUND
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:11686) MetadataLookupWarning: received unexpected error = All promises were rejected code = ETIMEDOUT, ENOTFOUND
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ Test Files  11 passed (11)
+      Tests  143 passed (143)
+   Start at  10:16:57
+   Duration  100.50s (transform 386ms, setup 43ms, import 5.74s, tests 93.50s, environment 1ms)
+
+✔  Script exited successfully (code 0)
+i  emulators: Shutting down emulators.
+i  firestore: Stopping Firestore Emulator
+i  hub: Stopping emulator hub
+i  logging: Stopping Logging Emulator
+
+> react-example@0.0.0 build
+> vite build
+
+vite v6.4.4 building for production...
+transforming...
+✓ 1735 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                 0.47 kB │ gzip:   0.30 kB
+dist/assets/index-CsY9BTew.css                 49.13 kB │ gzip:   8.71 kB
+dist/assets/plus-BTYkfYbQ.js                    0.32 kB │ gzip:   0.26 kB
+dist/assets/circle-check-Dz1BN9iT.js            0.35 kB │ gzip:   0.28 kB
+dist/assets/dollar-sign-BCOjXkc6.js             0.39 kB │ gzip:   0.30 kB
+dist/assets/target-BFtSQ95x.js                  0.40 kB │ gzip:   0.27 kB
+dist/assets/pen-DdKq_IDG.js                     0.41 kB │ gzip:   0.31 kB
+dist/assets/percent-CIA-vDW6.js                 0.42 kB │ gzip:   0.30 kB
+dist/assets/circle-alert-iydPGSMU.js            0.42 kB │ gzip:   0.29 kB
+dist/assets/link-D0CZTKT4.js                    0.43 kB │ gzip:   0.30 kB
+dist/assets/save-D_NPAcVQ.js                    0.50 kB │ gzip:   0.33 kB
+dist/assets/trash-2-BZm5PEnN.js                 0.50 kB │ gzip:   0.32 kB
+dist/assets/product-protection-DaW_LlRp.js      0.54 kB │ gzip:   0.39 kB
+dist/assets/model-DnVrZgVS.js                   1.86 kB │ gzip:   0.94 kB
+dist/assets/Configuracoes-Y9RMYLRv.js           3.27 kB │ gzip:   1.34 kB
+dist/assets/AssetControls-Ci3m2h8c.js           3.60 kB │ gzip:   1.68 kB
+dist/assets/SearchableSelect-6u4SCei2.js        4.12 kB │ gzip:   1.53 kB
+dist/assets/pricing-D6yAnKkP.js                 4.47 kB │ gzip:   2.03 kB
+dist/assets/EstoqueInteligente-B6SO1qfT.js      4.85 kB │ gzip:   1.22 kB
+dist/assets/model-CKz-b4Cv.js                   5.89 kB │ gzip:   2.53 kB
+dist/assets/ControlePerdas-DUK5lWZo.js          6.24 kB │ gzip:   1.95 kB
+dist/assets/SuperAdmin-Cx_xTKJ4.js              8.86 kB │ gzip:   2.45 kB
+dist/assets/ValoresSugeridos-CsXajF_l.js        9.17 kB │ gzip:   3.11 kB
+dist/assets/Marketplaces-BSbY05se.js           10.00 kB │ gzip:   2.47 kB
+dist/assets/Insumos-CsJc8PHl.js                10.51 kB │ gzip:   2.56 kB
+dist/assets/Fornecedores-xOFTecwt.js           10.65 kB │ gzip:   2.91 kB
+dist/assets/Dashboard-CSA25qoF.js              11.98 kB │ gzip:   2.68 kB
+dist/assets/Impressoras-B7u2ZuCc.js            13.35 kB │ gzip:   3.47 kB
+dist/assets/InventoryPage-BfmQu2Pb.js          16.30 kB │ gzip:   6.05 kB
+dist/assets/FinancePage-CUJ68fUO.js            18.26 kB │ gzip:   6.40 kB
+dist/assets/Vendas-DgINHSdA.js                 19.41 kB │ gzip:   4.46 kB
+dist/assets/Financeiro-BWwZHQl8.js             22.77 kB │ gzip:   4.63 kB
+dist/assets/Precificacao-Bu1AxhPi.js           23.45 kB │ gzip:   5.57 kB
+dist/assets/CatalogPage-Dqf5D659.js            23.72 kB │ gzip:   6.93 kB
+dist/assets/QuotesPage-BYvwUN3U.js             24.76 kB │ gzip:   7.99 kB
+dist/assets/AgendaProducao-xTac9vnP.js         27.63 kB │ gzip:   7.12 kB
+dist/assets/Filamentos-C1wQNsaH.js             31.68 kB │ gzip:   7.79 kB
+dist/assets/EncomendasOrcamentos-CVUTZIQK.js   32.34 kB │ gzip:   6.99 kB
+dist/assets/engine-C6yJj52a.js                 35.19 kB │ gzip:  14.27 kB
+dist/assets/Produtos-Bh65Ltws.js               93.05 kB │ gzip:  19.80 kB
+dist/assets/index-B_eHM3mX.js                 242.87 kB │ gzip:  76.20 kB
+dist/assets/firebase-Biho0XRD.js              471.82 kB │ gzip: 110.91 kB
+✓ built in 2.19s
+
+> react-example@0.0.0 audit:production
+> npm audit --omit=dev --audit-level=high
+
+found 0 vulnerabilities

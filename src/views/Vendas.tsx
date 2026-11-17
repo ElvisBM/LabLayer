@@ -1,5 +1,6 @@
+import { calculateRecordedSale } from '../utils/sales';
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Upload, Plus, Search, Eye, FileSpreadsheet, CheckCircle2, Package, Clock, RefreshCw, Settings } from 'lucide-react';
+import { ShoppingCart, Plus, Search, Eye, CheckCircle2, Package, Clock } from 'lucide-react';
 import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -29,22 +30,15 @@ export function Vendas() {
   
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showManualForm, setShowManualForm] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [showApiModal, setShowApiModal] = useState(false);
   const [manualFormTab, setManualFormTab] = useState<'sale' | 'customer'>('sale');
   
-  const [apiKeys, setApiKeys] = useState({
-    mercadoLivre: '',
-    shopee: ''
-  });
-  const [isSyncing, setIsSyncing] = useState(false);
-
   const [formData, setFormData] = useState({
     productId: '',
     channelId: '',
     quantity: 1,
     soldPrice: 0,
     fees: 0,
+    totalCost: '',
     status: 'pago' as 'pago' | 'produzindo' | 'enviado',
     customerName: '',
     customerPhone: '',
@@ -93,9 +87,9 @@ export function Vendas() {
       return;
     }
 
-    // Simplified cost calculation for now, just using product base cost or 0
-    const realCost = (product.cost || 0) * formData.quantity;
-    const realProfit = formData.soldPrice - formData.fees - realCost;
+    let costs: ReturnType<typeof calculateRecordedSale>;
+    try { costs = calculateRecordedSale({ ...formData, totalCost: formData.totalCost.replace(',', '.') }); }
+    catch (error) { alert((error as Error).message); return; }
 
     const newOrder = {
       orderNumber: `MANUAL-${Math.floor(Math.random() * 90000) + 10000}`,
@@ -109,8 +103,7 @@ export function Vendas() {
       quantity: formData.quantity,
       soldPrice: formData.soldPrice,
       fees: formData.fees,
-      realCost,
-      realProfit,
+      ...costs,
       createdAt: new Date().toISOString()
     };
 
@@ -124,6 +117,7 @@ export function Vendas() {
         quantity: 1,
         soldPrice: 0,
         fees: 0,
+        totalCost: '',
         status: 'pago',
         customerName: '',
         customerPhone: '',
@@ -133,16 +127,6 @@ export function Vendas() {
       console.error("Error adding order: ", error);
       alert('Erro ao salvar pedido.');
     }
-  };
-
-  const handleSync = () => {
-    setIsSyncing(true);
-    // Simulate API fetch delay
-    setTimeout(() => {
-      alert('Configure os tokens da API para sincronizar.');
-      setIsSyncing(false);
-      setShowApiModal(false);
-    }, 1500);
   };
 
   const getStatusBadge = (status: Order['status']) => {
@@ -166,23 +150,12 @@ export function Vendas() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
           <h2 className="font-headline text-3xl font-bold text-primary tracking-tighter">Vendas e Pedidos</h2>
-          <p className="text-on-surface-variant font-sans text-sm mt-1">Gerencie pedidos, acompanhe o status e analise o lucro real.</p>
+          <p className="text-on-surface-variant font-sans text-sm mt-1">Gerencie pedidos, acompanhe o status e analise o resultado informado.</p>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-          <button 
-            onClick={() => setShowApiModal(true)}
-            className="flex-1 sm:flex-none px-4 py-2 bg-secondary-container text-on-secondary-container text-sm font-bold rounded-md hover:bg-secondary-container/80 active:scale-95 transition-all flex items-center justify-center gap-2"
-          >
-            <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">Sincronizar</span>
-          </button>
-          <button 
-            onClick={() => setShowImportModal(true)}
-            className="flex-1 sm:flex-none px-4 py-2 bg-surface-container-high text-on-surface text-sm font-bold rounded-md hover:bg-surface-container-highest active:scale-95 transition-all flex items-center justify-center gap-2"
-          >
-            <Upload className="w-4 h-4" />
-            <span className="hidden sm:inline">Importar</span>
-          </button>
+          <span className="self-center text-xs text-on-surface-variant">
+            Importação CSV e sincronização: em desenvolvimento.
+          </span>
           <button 
             onClick={() => setShowManualForm(!showManualForm)}
             className="flex-1 sm:flex-none px-4 py-2 bg-primary text-on-primary text-sm font-bold rounded-md hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2"
@@ -193,6 +166,7 @@ export function Vendas() {
         </div>
       </div>
 
+      <p role="note" className="text-sm text-on-surface-variant">Novas vendas exigem custo total confirmado. Vendas antigas podem ter custo ausente registrado como zero e precisam de conferência; seus valores históricos foram preservados.</p>
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm relative overflow-hidden">
@@ -303,6 +277,13 @@ export function Vendas() {
               />
             </div>
             <div className="space-y-1.5">
+              <label htmlFor="sale-total-cost" className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Custo total confirmado (R$)</label>
+              <input id="sale-total-cost" type="number" min="0" step="0.01" required value={formData.totalCost}
+                onChange={e => setFormData({ ...formData, totalCost: e.target.value })}
+                className="w-full bg-surface-container rounded p-2.5 text-sm" />
+              <p className="text-xs text-on-surface-variant">Informe o custo de todas as unidades. Custo desconhecido não é zero; não use sugestão de preço como custo realizado.</p>
+            </div>
+            <div className="space-y-1.5">
               <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Status</label>
               <select 
                 value={formData.status || 'pago'}
@@ -370,108 +351,6 @@ export function Vendas() {
               </button>
             </div>
           </form>
-        </div>
-      )}
-
-      {/* Modal de Importação CSV */}
-      {showImportModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-surface-container-lowest rounded-xl max-w-md w-full p-6 shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-primary-container rounded-full flex items-center justify-center">
-                <FileSpreadsheet className="w-5 h-5 text-on-primary-container" />
-              </div>
-              <div>
-                <h3 className="font-headline font-bold text-lg">Importar Vendas</h3>
-                <p className="text-xs text-on-surface-variant">Faça upload do relatório da plataforma</p>
-              </div>
-            </div>
-            
-            <div className="border-2 border-dashed border-outline-variant/50 rounded-lg p-8 text-center hover:bg-surface-container-low transition-colors cursor-pointer mb-6">
-              <Upload className="w-8 h-8 text-on-surface-variant mx-auto mb-3" />
-              <p className="text-sm font-bold text-primary mb-1">Clique para selecionar o arquivo</p>
-              <p className="text-xs text-on-surface-variant">Suporta CSV da Shopee e Mercado Livre</p>
-            </div>
-
-            <div className="flex justify-end gap-3">
-              <button 
-                onClick={() => setShowImportModal(false)}
-                className="px-4 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded transition-colors"
-              >
-                Cancelar
-              </button>
-              <button 
-                onClick={() => setShowImportModal(false)}
-                className="px-6 py-2 bg-primary text-on-primary rounded font-bold text-sm hover:opacity-90 transition-all"
-              >
-                Processar Arquivo
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Configuração de API */}
-      {showApiModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-surface-container-lowest rounded-xl max-w-md w-full p-6 shadow-2xl">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 bg-secondary-container rounded-full flex items-center justify-center">
-                <Settings className="w-5 h-5 text-on-secondary-container" />
-              </div>
-              <div>
-                <h3 className="font-headline font-bold text-lg">Sincronização via API</h3>
-                <p className="text-xs text-on-surface-variant">Configure seus tokens para importar automaticamente</p>
-              </div>
-            </div>
-            
-            <div className="space-y-4 mb-6">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Token Mercado Livre (Access Token)</label>
-                <input 
-                  type="password" 
-                  value={apiKeys.mercadoLivre}
-                  onChange={(e) => setApiKeys({...apiKeys, mercadoLivre: e.target.value})}
-                  className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" 
-                  placeholder="APP_USR-..." 
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Token Shopee (Partner ID / Key)</label>
-                <input 
-                  type="password" 
-                  value={apiKeys.shopee}
-                  onChange={(e) => setApiKeys({...apiKeys, shopee: e.target.value})}
-                  className="w-full bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none" 
-                  placeholder="Insira o token da Shopee..." 
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3">
-              <button 
-                onClick={() => setShowApiModal(false)}
-                className="px-4 py-2 text-sm font-bold text-on-surface-variant hover:bg-surface-container rounded transition-colors"
-                disabled={isSyncing}
-              >
-                Cancelar
-              </button>
-              <button 
-                onClick={handleSync}
-                disabled={isSyncing || (!apiKeys.mercadoLivre && !apiKeys.shopee)}
-                className="px-6 py-2 bg-primary text-on-primary rounded font-bold text-sm hover:opacity-90 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isSyncing ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    Sincronizando...
-                  </>
-                ) : (
-                  'Sincronizar Pedidos'
-                )}
-              </button>
-            </div>
-          </div>
         </div>
       )}
 

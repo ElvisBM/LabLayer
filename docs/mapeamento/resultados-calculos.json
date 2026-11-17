@@ -1,0 +1,234 @@
+{
+  "finalidade": "Caracterização do comportamento atual; confirmado não significa regra de negócio correta.",
+  "execucao": "Código puro real extraído por AST, sem montar React ou conectar Firebase.",
+  "total": 24,
+  "confirmados": 24,
+  "casos": [
+    {
+      "id": "C01",
+      "description": "Custo completo do motor compartilhado",
+      "status": "confirmado",
+      "evidence": {
+        "materialCostPerUnit": 1.1,
+        "timeCostPerUnit": 0.26,
+        "supplyCostPerUnit": 1,
+        "fixedCost": 3,
+        "failureAdjustmentPerUnit": 0.268,
+        "printerCostPerHour": 0.30000000000000004,
+        "operationalOverheadPerHour": 1,
+        "subtotal": 5.36,
+        "total": 5.628
+      }
+    },
+    {
+      "id": "C02",
+      "description": "Chamadas sem insumos e perdas subestimam o mesmo cenário",
+      "status": "confirmado",
+      "evidence": {
+        "catalogo": 5.628,
+        "simulador": 2.478,
+        "valoresSugeridos": 3.5280000000000005
+      }
+    },
+    {
+      "id": "C03",
+      "description": "Desperdício marcado não é dividido pelo rendimento",
+      "status": "confirmado",
+      "evidence": {
+        "rendimento": 100,
+        "custoFixoMaisPerdaPorUnidade": 3
+      }
+    },
+    {
+      "id": "C04",
+      "description": "Taxa de falha zero normalizada volta a cinco",
+      "status": "confirmado",
+      "evidence": {
+        "failureRate": 5,
+        "maintenancePerMonth": 0,
+        "monthlyUsageHours": 160
+      }
+    },
+    {
+      "id": "C05",
+      "description": "Variação legada usa custo manual por grama",
+      "status": "confirmado",
+      "evidence": {
+        "custoMaterial": 12,
+        "precoCadastroPorGrama": 0.1
+      }
+    },
+    {
+      "id": "C06",
+      "description": "Média da frota prevalece sobre custo manual",
+      "status": "confirmado",
+      "evidence": 0.30000000000000004
+    },
+    {
+      "id": "C07",
+      "description": "Impressora selecionada inativa continua precificando",
+      "status": "confirmado",
+      "evidence": 0.30000000000000004
+    },
+    {
+      "id": "C08",
+      "description": "Vida útil zero recebe dez mil horas no motor",
+      "status": "confirmado",
+      "evidence": 0.30000000000000004
+    },
+    {
+      "id": "C09",
+      "description": "Rendimento zero vira um e preço ausente pode zerar material",
+      "status": "confirmado",
+      "evidence": 0
+    },
+    {
+      "id": "C10",
+      "description": "Manutenção individual não altera o cálculo",
+      "status": "confirmado",
+      "evidence": 5.628
+    },
+    {
+      "id": "C11",
+      "description": "Quatro metas de preço e limite de margem",
+      "status": "confirmado",
+      "evidence": {
+        "lucro": 18.89,
+        "margem": 17.14,
+        "markup": 26.67,
+        "manual": 30,
+        "inviavel": 0
+      }
+    },
+    {
+      "id": "C12",
+      "description": "API arredonda custo antes de aplicar 2,2",
+      "status": "confirmado",
+      "evidence": {
+        "api": 12.39,
+        "catalogo": 12.38
+      }
+    },
+    {
+      "id": "C13",
+      "description": "Normalização de PATCH só com status injeta defaults",
+      "status": "confirmado",
+      "evidence": {
+        "title": "",
+        "requestedQuantity": 1,
+        "quotedPrice": 0,
+        "filaments": [],
+        "createdAtPresenteComoUndefined": true
+      }
+    },
+    {
+      "id": "C14",
+      "description": "Alias de observação permanece no documento normalizado",
+      "status": "confirmado",
+      "evidence": {
+        "description": "Texto",
+        "observation": "Texto"
+      }
+    },
+    {
+      "id": "C15",
+      "description": "Ator de auditoria vem do header e não da chave escopada",
+      "status": "confirmado",
+      "evidence": "Header ou api-token"
+    },
+    {
+      "id": "C16",
+      "description": "Ficha com peso e zero peças consome um lote",
+      "status": "confirmado",
+      "evidence": {
+        "f": 0.1
+      }
+    },
+    {
+      "id": "C17",
+      "description": "Peças acima do rendimento arredondam lotes para cima",
+      "status": "confirmado",
+      "evidence": {
+        "f": 0.2
+      }
+    },
+    {
+      "id": "C18",
+      "description": "Perda fora do custo continua consumindo estoque",
+      "status": "confirmado",
+      "evidence": {
+        "f": 0.02
+      }
+    },
+    {
+      "id": "C19",
+      "description": "Fallback de materiais cria mesas e soma componentes como produtos",
+      "status": "confirmado",
+      "evidence": {
+        "calculado": 16,
+        "seForemKitsBaseETampa": 6
+      }
+    },
+    {
+      "id": "C20",
+      "description": "Conversão de materiais para mesas perde purga e arredonda gramas",
+      "status": "confirmado",
+      "evidence": {
+        "id": "a",
+        "filamentId": "f",
+        "weightGrams": 0,
+        "purgeGrams": 0,
+        "objectName": "Mesa",
+        "pieces": 1,
+        "printTimeHours": 0,
+        "startTime": "",
+        "endTime": ""
+      }
+    },
+    {
+      "id": "C21",
+      "description": "Tempo com datas atravessa meia noite e rejeita fim anterior",
+      "status": "confirmado",
+      "evidence": {
+        "valido": 1.5,
+        "invertido": 0
+      }
+    },
+    {
+      "id": "C22",
+      "description": "Tela de impressoras zera custo se vida útil for zero",
+      "status": "confirmado",
+      "evidence": {
+        "tela": 0,
+        "motor": 0.3
+      }
+    },
+    {
+      "id": "C23",
+      "description": "Média de compras ponderada pelos quilos de todo histórico",
+      "status": "confirmado",
+      "evidence": {
+        "precoPorKg": 85,
+        "comprado": 340
+      }
+    },
+    {
+      "id": "C24",
+      "description": "API sem variações pode informar preço sugerido mas resolução indisponível",
+      "status": "confirmado",
+      "evidence": {
+        "calculatedUnitCost": 10,
+        "calculatedUnitCostRange": [],
+        "calculatedUnitCostLabel": "Nao definido",
+        "calculatedSuggestedSalePrice": 22,
+        "calculatedSuggestedSalePriceRange": [],
+        "calculatedSuggestedSalePriceLabel": "Nao definido",
+        "resolvedSalePrice": 0,
+        "resolvedSalePriceRange": [],
+        "resolvedSalePriceLabel": "Nao definido",
+        "resolvedSalePriceSource": "unavailable",
+        "hasSavedSalePrice": false
+      }
+    }
+  ]
+}

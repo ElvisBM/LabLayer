@@ -1,0 +1,28 @@
+{
+  "scope": "Artefatos JS referenciados diretamente pelo HTML (entrada e modulepreload), sem CSS ou telas carregadas posteriormente",
+  "baseline": {
+    "bytes": 1190360,
+    "gzipBytes": 291280,
+    "source": "evidencias-b15-quality.txt; tamanhos arredondados pelo Vite"
+  },
+  "initialFiles": [
+    {
+      "file": "/assets/index-B_eHM3mX.js",
+      "bytes": 242872,
+      "gzipBytes": 76021
+    },
+    {
+      "file": "/assets/firebase-Biho0XRD.js",
+      "bytes": 471817,
+      "gzipBytes": 110636
+    }
+  ],
+  "initialBytes": 714689,
+  "initialGzipBytes": 186657,
+  "largestChunkBytes": 471817,
+  "browserSmoke": {
+    "url": "http://127.0.0.1:4187/",
+    "result": "Login renderizado com usuário/e-mail, senha, Entrar e Esqueci minha senha; sem logs de erro/aviso no console consultado. Nenhuma credencial inserida ou operação enviada."
+  },
+  "gzipMethod": "gzip nível 6; comparação com arredondamento do Vite"
+}

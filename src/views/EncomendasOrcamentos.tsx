@@ -1,14 +1,23 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { PlatformOrderCard } from '../features/requests/PlatformOrderCard';
+import { requestCode, requestNumber, existingRequestNumber, withoutRequestCode } from '../../shared/requests/number';
+import { TenantQuoteImage } from '../features/requests/QuoteImage';
+import { CustomerQuoteEditor, CustomerQuotePreview } from '../features/requests/CustomerQuote';
+import { formatCustomerQuote, validCustomerQuote, optionTotal, type CustomerQuote } from '../../shared/requests/quote';
+import { compareRequests, REQUEST_SORT_OPTIONS, type RequestSortField, type RequestSortDirection } from "../features/requests/sort";
+import { changeRequestStatuses, MAX_BULK_REQUESTS } from "../features/requests/bulk-status";
+import { AssistantRequestNotes } from '../features/assistant/Assistant';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { Calculator, CheckCircle2, Clock3, Edit2, FileText, ImagePlus, Link as LinkIcon, Package, Plus, Printer, Trash2 } from 'lucide-react';
+import { ArrowLeft, Calculator, CheckCircle2, Clock3, Edit2, FileText, ImagePlus, Link as LinkIcon, Package, Plus, Printer, Trash2 } from 'lucide-react';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { SearchableSelect, SelectOption } from '../components/SearchableSelect';
 import toast from 'react-hot-toast';
-import { DEFAULT_PRICING_SETTINGS, type PricingPrinterLike, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings } from '../utils/pricing';
+import { RequestImage, uploadRequestImage } from '../components/RequestImage';
+import { DEFAULT_PRICING_SETTINGS, type PricingPrinterLike, type PricingSettings, calculateVariationUnitCostBreakdown, normalizePricingSettings, suggestedPrice } from '../utils/pricing';
 
 type RequestType = 'orcamento' | 'encomenda';
-type RequestStatus = 'aguardando-orcamento' | 'orcado' | 'fila-producao' | 'produzindo' | 'finalizado';
+type RequestStatus = 'aguardando-orcamento' | 'orcado' | 'fila-producao' | 'produzindo' | 'finalizado' | 'cancelado';
 type RequestSourceChannel = 'manual' | 'whatsapp';
 
 interface RequestFilament {
@@ -21,6 +30,9 @@ interface RequestFilament {
 interface CustomRequest {
   id: string;
   title: string;
+  code?: string;
+  requestNumber?: string | number;
+  requestedDeliveryDate?: string;
   type: RequestType;
   status: RequestStatus;
   sourceChannel?: RequestSourceChannel;
@@ -38,6 +50,8 @@ interface CustomRequest {
   estimatedUnitCost?: number;
   suggestedUnitPrice?: number;
   quotedPrice?: number;
+  customerQuote?: CustomerQuote | null;
+  productionWeightGrams?: number;
   createdAt?: string;
   quoteSentAt?: string;
   approvedAt?: string;
@@ -73,9 +87,9 @@ const STATUS_OPTIONS: Array<{ value: RequestStatus; label: string }> = [
   { value: 'fila-producao', label: 'Fila de produção' },
   { value: 'produzindo', label: 'Produzindo' },
   { value: 'finalizado', label: 'Finalizado' },
+  { value: 'cancelado', label: 'Cancelado' },
 ];
 
-const SUGGESTED_MARKUP_MULTIPLIER = 2.2;
 
 const createFilamentEntry = (): RequestFilament => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -113,6 +127,8 @@ const getDefaultFormData = (): Omit<CustomRequest, 'id'> => ({
 
 const getStatusClasses = (status: RequestStatus) => {
   switch (status) {
+    case 'cancelado':
+      return 'bg-red-100 text-red-700';
     case 'finalizado':
       return 'bg-emerald-100 text-emerald-700';
     case 'produzindo':
@@ -152,7 +168,8 @@ const formatDateTimeInputValue = (value?: string) => {
 };
 
 export function EncomendasOrcamentos() {
-  const { tenantId } = useAuth();
+  const { tenantId, user } = useAuth();
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [requests, setRequests] = useState<CustomRequest[]>([]);
   const [filaments, setFilaments] = useState<FilamentOption[]>([]);
   const [printers, setPrinters] = useState<PrinterOption[]>([]);
@@ -161,11 +178,35 @@ export function EncomendasOrcamentos() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [displayMode, setDisplayMode] = useState<'orders' | 'list' | 'cards-2' | 'cards-3'>('orders');
+  const [sortField, setSortField] = useState<RequestSortField>('updatedAt');
+  const [sortDirection, setSortDirection] = useState<RequestSortDirection>('desc');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkStatus, setBulkStatus] = useState<RequestStatus>('orcado');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const bulkLock = useRef(false);
   const [statusFilter, setStatusFilter] = useState<'all' | RequestStatus>('all');
   const [formData, setFormData] = useState<Omit<CustomRequest, 'id'>>(getDefaultFormData());
   const [isQuotePriceManual, setIsQuotePriceManual] = useState(false);
+  const detailHeading = useRef<HTMLHeadingElement>(null);
+  const returnPosition = useRef({ top: 0, titleId: '' });
+  const wasShowingForm = useRef(false);
+
+  useLayoutEffect(() => {
+    if (showForm) {
+      detailHeading.current?.focus({ preventScroll: true });
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    } else if (wasShowingForm.current) {
+      document.getElementById(returnPosition.current.titleId)?.focus({ preventScroll: true });
+      window.scrollTo({ top: returnPosition.current.top, behavior: 'instant' });
+    }
+    wasShowingForm.current = showForm;
+  }, [showForm]);
+
 
   useEffect(() => {
+    setSelectedIds([]);
+    setRequests([]);
     if (!tenantId) return;
 
     const unsubRequests = onSnapshot(collection(db, `tenants/${tenantId}/customRequests`), (snapshot) => {
@@ -185,7 +226,7 @@ export function EncomendasOrcamentos() {
 
     const unsubPrinterSettings = onSnapshot(doc(db, `tenants/${tenantId}/settings/printer`), (snapshot) => {
       if (snapshot.exists() && snapshot.data().energyPrice !== undefined) {
-        setEnergyPrice(Number(snapshot.data().energyPrice) || 0.95);
+        setEnergyPrice(Number(snapshot.data().energyPrice ?? 0.95));
       }
     });
 
@@ -229,6 +270,7 @@ export function EncomendasOrcamentos() {
 
     if (materials.length === 0 || Number(formData.productionTimeHours) <= 0) {
       return {
+        complete: false, issues: ['Informe material e tempo por unidade.'],
         estimatedUnitCost: 0,
         suggestedUnitPrice: 0,
         totalSuggestedPrice: 0,
@@ -249,11 +291,14 @@ export function EncomendasOrcamentos() {
       pricingSettings,
     });
 
-    const estimatedUnitCost = Number(breakdown.total.toFixed(2));
-    const suggestedUnitPrice = Number((estimatedUnitCost * SUGGESTED_MARKUP_MULTIPLIER).toFixed(2));
-    const totalSuggestedPrice = Number((suggestedUnitPrice * Math.max(1, Number(formData.requestedQuantity) || 1)).toFixed(2));
+    const quantity = Number(formData.requestedQuantity);
+    const complete = breakdown.complete && Number.isSafeInteger(quantity) && quantity > 0;
+    const estimatedUnitCost = complete ? breakdown.total : 0;
+    const suggestedUnitPrice = complete ? suggestedPrice(breakdown.totalDecimal) : 0;
+    const totalSuggestedPrice = complete ? suggestedPrice(breakdown.totalDecimal, quantity) : 0;
 
     return {
+      complete, issues: complete ? [] : [...breakdown.issues, ...(!Number.isSafeInteger(quantity) || quantity <= 0 ? ['Quantidade deve ser inteira e positiva.'] : [])],
       estimatedUnitCost,
       suggestedUnitPrice,
       totalSuggestedPrice,
@@ -275,11 +320,41 @@ export function EncomendasOrcamentos() {
     return requests
       .filter(item => statusFilter === 'all' || item.status === statusFilter)
       .filter(item => {
-        const haystack = `${item.title} ${item.description}`.toLowerCase();
+        const number = requestNumber(search.trim());
+        if (number !== null) return existingRequestNumber(item) === number;
+        const haystack = `${requestCode(item) || ''} ${item.title} ${item.description} ${item.customerName || ''}`.toLowerCase();
         return haystack.includes(search.trim().toLowerCase());
       })
-      .sort((a, b) => (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || ''));
-  }, [requests, search, statusFilter]);
+      .sort((a, b) => compareRequests(a, b, sortField, sortDirection));
+  }, [requests, search, statusFilter, sortField, sortDirection]);
+
+  const sortBy = (field: RequestSortField) => {
+    setSortDirection(sortField === field ? (sortDirection === 'asc' ? 'desc' : 'asc') : field === 'updatedAt' || field === 'createdAt' ? 'desc' : 'asc');
+    setSortField(field);
+  };
+
+  // Only currently visible records are eligible; filtering cannot silently change hidden rows.
+  const visibleSelected = selectedIds.filter(id => filteredRequests.some(row => row.id === id));
+  const allSelected = filteredRequests.length > 0 && visibleSelected.length === filteredRequests.length;
+  const toggleSelected = (id: string) => {
+    setSelectedIds(current => {
+      if (current.includes(id)) return current.filter(value => value !== id);
+      if (current.length >= MAX_BULK_REQUESTS) { toast.error('Selecione no máximo 100 solicitações por vez.'); return current; }
+      return [...current, id];
+    });
+  };
+  const applyBulkStatus = async () => {
+    if (!tenantId || bulkLock.current || !visibleSelected.length) return;
+    bulkLock.current = true; setBulkBusy(true);
+    try {
+      await changeRequestStatuses(db, tenantId, visibleSelected, bulkStatus);
+      toast.success(`Status de ${visibleSelected.length} solicitação(ões) atualizado.`);
+      setSelectedIds([]);
+    } catch {
+      toast.error('Não foi possível confirmar a alteração. Confira sua conexão, permissão e a lista atualizada antes de tentar novamente.');
+    } finally { bulkLock.current = false; setBulkBusy(false); }
+  };
+  const selectionCheckbox = (request: CustomRequest) => <input type="checkbox" aria-label={`Selecionar ${request.title}`} checked={visibleSelected.includes(request.id)} disabled={bulkBusy} onChange={() => toggleSelected(request.id)} className="h-5 w-5 shrink-0 accent-primary" />;
 
   const resetForm = () => {
     setFormData(getDefaultFormData());
@@ -326,24 +401,25 @@ export function EncomendasOrcamentos() {
     }));
   };
 
-  const readImageFile = (file: File, onLoad: (result: string) => void) => {
-    if (file.size > 1024 * 1024) {
-      toast.error('A imagem deve ter no máximo 1MB.');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      onLoad(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+  const readImageFile = async (file: File, onLoad: (result: string) => void) => {
+    if (!tenantId || !user || isUploadingImage) return;
+    setIsUploadingImage(true);
+    try { onLoad(await uploadRequestImage(file, tenantId, user)); }
+    catch (error) { toast.error(error instanceof Error ? error.message : 'Falha no envio da imagem.'); }
+    finally { setIsUploadingImage(false); }
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tenantId) return;
+    if (!tenantId || isUploadingImage) return;
 
+    const quote = formData.customerQuote;
+    if (quote && !validCustomerQuote(quote)) { toast.error('Confira nome, quantidades únicas, preços com até 2 casas decimais e prazos do orçamento.'); return; }
+    const selectedOption = quote?.options.find(o => o.quantity === Number(formData.requestedQuantity));
+    if (quote && !selectedOption) { toast.error('Adicione uma opção para a quantidade pedida ou ajuste a quantidade do pedido.'); return; }
     try {
+      if (!Number.isSafeInteger(Number(formData.requestedQuantity)) || Number(formData.requestedQuantity) <= 0) throw new Error('Quantidade deve ser inteira e positiva.');
+      if (!Number.isFinite(Number(formData.quotedPrice)) || Number(formData.quotedPrice) < 0) throw new Error('Preço inválido.');
       const payload = {
         title: formData.title.trim(),
         type: formData.type,
@@ -367,7 +443,9 @@ export function EncomendasOrcamentos() {
         quoteMediaUrl: formData.quoteMediaUrl?.trim() || '',
         estimatedUnitCost: pricingPreview.estimatedUnitCost,
         suggestedUnitPrice: pricingPreview.suggestedUnitPrice,
-        quotedPrice: Number(formData.quotedPrice) || pricingPreview.totalSuggestedPrice,
+        quotedPrice: selectedOption ? optionTotal(selectedOption) : Number(formData.quotedPrice ?? pricingPreview.totalSuggestedPrice),
+        customerQuote: quote || null,
+        productionWeightGrams: Number(formData.productionWeightGrams) || 0,
         createdAt: formData.createdAt || new Date().toISOString(),
         quoteSentAt: formData.quoteSentAt || '',
         approvedAt: formData.approvedAt || '',
@@ -394,15 +472,15 @@ export function EncomendasOrcamentos() {
   };
 
   const handleEdit = (request: CustomRequest) => {
+    returnPosition.current = { top: window.scrollY, titleId: `request-title-${request.id}` };
     setEditingId(request.id);
     setFormData({
       ...getDefaultFormData(),
       ...request,
       filaments: request.filaments && request.filaments.length > 0 ? request.filaments : [createFilamentEntry()],
     });
-    setIsQuotePriceManual(Number(request.quotedPrice) > 0 && Number(request.quotedPrice) !== Number((request.suggestedUnitPrice || 0) * Math.max(1, request.requestedQuantity || 1)));
+    setIsQuotePriceManual(true); // Stored quote totals are never automatically repriced on edit.
     setShowForm(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDelete = async (requestId: string) => {
@@ -426,17 +504,16 @@ export function EncomendasOrcamentos() {
 
   return (
     <div className="space-y-8">
+      {!showForm && <>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
           <h2 className="font-headline text-3xl font-bold text-primary tracking-tighter">Encomendas e Orçamentos</h2>
-          <p className="text-on-surface-variant font-sans text-sm mt-1">Suba a solicitação, anexe referência, calcule o orçamento e acompanhe a fila de produção em um lugar só.</p>
+          <p className="text-on-surface-variant font-sans text-sm mt-1">Acompanhe seus pedidos por número, cliente e entrega. Abra um pedido para conferir ou editar os detalhes.</p>
         </div>
         <button
+          id="new-request"
           onClick={() => {
-            if (showForm && !editingId) {
-              setShowForm(false);
-              return;
-            }
+            returnPosition.current = { top: window.scrollY, titleId: 'new-request' };
             resetForm();
             setShowForm(true);
           }}
@@ -447,26 +524,20 @@ export function EncomendasOrcamentos() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 xl:grid-cols-6 gap-4">
-        <div className="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/20 shadow-sm">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Total</div>
-          <div className="text-2xl font-headline font-bold text-on-surface">{requests.length}</div>
-        </div>
-        {STATUS_OPTIONS.map(option => (
-          <div key={option.value} className="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/20 shadow-sm">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">{option.label}</div>
-            <div className="text-2xl font-headline font-bold text-on-surface">{statusCounts[option.value] || 0}</div>
-          </div>
-        ))}
-      </div>
-
+      </>}
       {showForm && (
-        <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/20 shadow-sm space-y-6">
+        <section aria-label="Detalhes da solicitação" className="space-y-4">
+          <button type="button" disabled={isUploadingImage} onClick={() => { setShowForm(false); resetForm(); }} className="inline-flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm font-bold text-primary hover:bg-surface-container focus-visible:ring-2 focus-visible:ring-primary">
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Voltar para orçamentos
+          </button>
+        <div className="bg-surface-container-lowest p-4 sm:p-6 rounded-xl border border-outline-variant/20 shadow-sm space-y-6">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-primary" />
-            <h3 className="font-headline font-bold text-lg">{editingId ? 'Editar Solicitação' : 'Nova Solicitação'}</h3>
+            <h2 ref={detailHeading} tabIndex={-1} className="font-headline font-bold text-lg break-words">{editingId ? 'Editar Solicitação' : 'Nova Solicitação'}</h2>
           </div>
 
+          {editingId && <p className="text-sm font-bold text-primary">{requestCode({ ...formData, id: editingId }) || 'Sem número atribuído'} · {withoutRequestCode(formData.title)}</p>}
+          {editingId && <AssistantRequestNotes requestId={editingId} />}
           <form onSubmit={handleSave} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="space-y-1.5 md:col-span-2">
@@ -565,10 +636,11 @@ export function EncomendasOrcamentos() {
                   <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Foto / Logo da Solicitação</label>
                   <label className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-outline-variant/30 bg-surface-container px-4 py-5 text-sm text-on-surface-variant cursor-pointer hover:border-primary/40">
                     <ImagePlus className="w-4 h-4" />
-                    <span>Selecionar imagem</span>
+                    <span>Selecionar imagem (até 10 MB)</span>
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/png,image/jpeg,image/webp"
+                      disabled={isUploadingImage}
                       className="hidden"
                       onChange={e => {
                         const file = e.target.files?.[0];
@@ -579,7 +651,7 @@ export function EncomendasOrcamentos() {
                     />
                   </label>
                   {formData.referenceImageUrl && (
-                    <img src={formData.referenceImageUrl} alt="Referência" className="h-28 w-full object-cover rounded-lg border border-outline-variant/20" />
+                    <RequestImage reference={formData.referenceImageUrl} alt="Referência" className="h-28 w-full object-contain rounded-lg border border-outline-variant/20" />
                   )}
                 </div>
 
@@ -587,10 +659,11 @@ export function EncomendasOrcamentos() {
                   <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Foto do Orçamento / Resultado</label>
                   <label className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-outline-variant/30 bg-surface-container px-4 py-4 text-sm text-on-surface-variant cursor-pointer hover:border-primary/40">
                     <ImagePlus className="w-4 h-4" />
-                    <span>Selecionar imagem</span>
+                    <span>Selecionar imagem (até 10 MB)</span>
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/png,image/jpeg,image/webp"
+                      disabled={isUploadingImage}
                       className="hidden"
                       onChange={e => {
                         const file = e.target.files?.[0];
@@ -601,7 +674,7 @@ export function EncomendasOrcamentos() {
                     />
                   </label>
                   {formData.quoteMediaImageUrl && (
-                    <img src={formData.quoteMediaImageUrl} alt="Mídia do orçamento" className="h-24 w-full object-cover rounded-lg border border-outline-variant/20" />
+                    <RequestImage reference={formData.quoteMediaImageUrl} alt="Mídia do orçamento" className="h-24 w-full object-contain rounded-lg border border-outline-variant/20" />
                   )}
                 </div>
 
@@ -693,6 +766,8 @@ export function EncomendasOrcamentos() {
                 </button>
               </div>
 
+              <p role="note" className="text-sm text-on-surface-variant">Estimativa preliminar: pesos e tempo abaixo são por unidade. Não inclui insumos, embalagem, trabalho manual ou taxas do canal. Para lotes, confirme a ficha de produção antes de emitir proposta.</p>
+              {!pricingPreview.complete && <p role="alert" className="text-error text-sm">{pricingPreview.issues.join(' ')}</p>}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Impressora</label>
@@ -704,7 +779,7 @@ export function EncomendasOrcamentos() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Tempo de Produção (h)</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Tempo por unidade (h)</label>
                   <input
                     type="number"
                     min="0"
@@ -732,7 +807,8 @@ export function EncomendasOrcamentos() {
                     type="number"
                     min="0"
                     step="0.01"
-                    value={formData.quotedPrice || ''}
+                    readOnly={!!formData.customerQuote}
+                    value={formData.customerQuote ? optionTotal(formData.customerQuote.options.find(o => o.quantity === Number(formData.requestedQuantity)) || { quantity: 1, unitPrice: 0, deliveryDays: null }) : formData.quotedPrice || ''}
                     onChange={e => {
                       setIsQuotePriceManual(true);
                       setFormData(prev => ({ ...prev, quotedPrice: Number(e.target.value) || 0 }));
@@ -742,6 +818,10 @@ export function EncomendasOrcamentos() {
                 </div>
               </div>
 
+              <label className="block text-sm">Peso de produção informado (g, referência interna)
+                <input type="number" min="0" step="0.1" className="block rounded border p-2" value={formData.productionWeightGrams ?? ''} onChange={e => setFormData(prev => ({...prev, productionWeightGrams: Number(e.target.value) || 0}))} />
+              </label>
+              <CustomerQuoteEditor quote={formData.customerQuote || null} onChange={quote => { setIsQuotePriceManual(true); setFormData(prev => ({...prev, customerQuote: quote})); }} />
               <div className="space-y-3">
                 {formData.filaments.map(entry => (
                   <div key={entry.id} className="grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_160px_auto] gap-3 items-end bg-surface-container rounded-xl p-4 border border-outline-variant/10">
@@ -777,22 +857,24 @@ export function EncomendasOrcamentos() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
                   <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Custo Unitário</div>
-                  <div className="text-2xl font-headline font-bold text-on-surface">{formatCurrency(pricingPreview.estimatedUnitCost)}</div>
+                  <div className="text-2xl font-headline font-bold text-on-surface">{pricingPreview.complete ? formatCurrency(pricingPreview.estimatedUnitCost) : 'Pendente'}</div>
                 </div>
                 <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
                   <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Sugestão por Unidade</div>
-                  <div className="text-2xl font-headline font-bold text-primary">{formatCurrency(pricingPreview.suggestedUnitPrice)}</div>
+                  <div className="text-2xl font-headline font-bold text-primary">{pricingPreview.complete ? formatCurrency(pricingPreview.suggestedUnitPrice) : 'Pendente'}</div>
                 </div>
                 <div className="bg-surface-container-low p-4 rounded-lg border border-outline-variant/10">
                   <div className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Sugestão Total</div>
-                  <div className="text-2xl font-headline font-bold text-on-surface">{formatCurrency(pricingPreview.totalSuggestedPrice)}</div>
+                  <div className="text-2xl font-headline font-bold text-on-surface">{pricingPreview.complete ? formatCurrency(pricingPreview.totalSuggestedPrice) : 'Pendente'}</div>
                 </div>
               </div>
             </div>
 
+            {isUploadingImage && <p role="status">Enviando imagem original... Aguarde antes de salvar.</p>}
             <div className="flex justify-end gap-3 pt-4 border-t border-outline-variant/20">
               <button
                 type="button"
+                disabled={isUploadingImage}
                 onClick={() => {
                   setShowForm(false);
                   resetForm();
@@ -803,6 +885,7 @@ export function EncomendasOrcamentos() {
               </button>
               <button
                 type="submit"
+                disabled={isUploadingImage}
                 className="px-8 py-2.5 bg-primary text-on-primary rounded font-bold text-sm hover:opacity-90 transition-all active:scale-95"
               >
                 {editingId ? 'Atualizar' : 'Salvar'}
@@ -810,45 +893,124 @@ export function EncomendasOrcamentos() {
             </div>
           </form>
         </div>
+        </section>
       )}
 
-      <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/10">
-        <div className="relative w-full lg:max-w-sm">
+      {!showForm && <>
+      <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center bg-surface-container-lowest p-3 sm:p-4 rounded-xl border border-outline-variant/10">
+        <div className="relative w-full min-w-0 flex-1">
           <input
             type="text"
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            disabled={bulkBusy}
+            onChange={e => { setSearch(e.target.value); setSelectedIds([]); }}
             placeholder="Buscar solicitação..."
-            className="w-full bg-surface-container border-none rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
+            className="w-full min-h-12 bg-surface-container border-none rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-primary outline-none"
           />
         </div>
-        <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value as 'all' | RequestStatus)}
-          className="bg-surface-container border-none rounded p-2.5 text-sm focus:ring-2 focus:ring-primary outline-none"
-        >
-          <option value="all">Todos os status</option>
-          {STATUS_OPTIONS.map(option => (
-            <option key={option.value} value={option.value}>{option.label}</option>
+        <div role="group" aria-label="Visualização das solicitações" className="grid w-full grid-cols-4 gap-1 rounded-lg bg-surface-container p-1 md:w-auto md:flex-shrink-0">
+          {([{ value: 'orders', label: 'Pedidos', shortLabel: 'Pedidos' }, { value: 'list', label: 'Lista simplificada', shortLabel: 'Lista' }, { value: 'cards-2', label: '2 caixas', shortLabel: '2 col.' }, { value: 'cards-3', label: '3 caixas', shortLabel: '3 col.' }] as const).map(({ value, label, shortLabel }) => (
+            <button key={value} type="button" aria-label={label} title={label} aria-pressed={displayMode === value} onClick={() => setDisplayMode(value)} className={`min-h-10 rounded-md px-2 sm:px-3 text-xs sm:text-sm font-semibold whitespace-nowrap ${displayMode === value ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:bg-surface-container-high'}`}>
+              {shortLabel}
+            </button>
           ))}
-        </select>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <nav aria-label="Filtrar solicitações por status" className="-mt-5 flex gap-1 overflow-x-auto border-b border-outline-variant/20 px-1">
+        {[{ value: 'all', label: 'Todos' }, ...STATUS_OPTIONS].map(option => <button key={option.value} type="button" disabled={bulkBusy} aria-pressed={statusFilter === option.value} onClick={() => { setStatusFilter(option.value as 'all' | RequestStatus); setSelectedIds([]); }} className={`inline-flex min-h-10 shrink-0 items-center gap-1.5 border-b-2 px-3 text-sm whitespace-nowrap ${statusFilter === option.value ? 'border-primary font-semibold text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'}`}>
+          {option.label}<span className="text-xs opacity-70">{option.value === 'all' ? requests.length : statusCounts[option.value as RequestStatus] || 0}</span>
+        </button>)}
+      </nav>
+
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <label className="flex items-center gap-2">Ordenar por
+          <select aria-label="Ordenar orçamentos por" value={sortField} onChange={e => sortBy(e.target.value as RequestSortField)} className="rounded bg-surface-container p-2">
+            {REQUEST_SORT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <button type="button" aria-label="Inverter direção da ordenação" onClick={() => setSortDirection(current => current === 'asc' ? 'desc' : 'asc')} className="rounded border border-outline-variant/30 px-3 py-2">{sortDirection === 'asc' ? 'Crescente ↑' : 'Decrescente ↓'}</button>
+        <span className="text-on-surface-variant">Finalizados sempre por último.</span>
+      </div>
+      <p className="text-sm text-on-surface-variant" role="status">{filteredRequests.length} de {requests.length} solicitações</p>
+
+      <section aria-label="Alterar status em lote" className="flex flex-wrap items-center gap-3 rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" aria-label="Selecionar todos os resultados" checked={allSelected} ref={el => { if (el) el.indeterminate = visibleSelected.length > 0 && !allSelected; }} disabled={bulkBusy || !filteredRequests.length} onChange={() => {
+            if (!allSelected && filteredRequests.length > MAX_BULK_REQUESTS) { toast.error('Há mais de 100 resultados. Refine os filtros ou selecione até 100 individualmente.'); return; }
+            setSelectedIds(allSelected ? [] : filteredRequests.map(row => row.id));
+          }} className="h-5 w-5 accent-primary" />
+          Selecionar todos os resultados
+        </label>
+        <span className="text-sm">{visibleSelected.length} selecionado(s)</span>
+        {!!visibleSelected.length && <>
+        <label className="flex items-center gap-2 text-sm">Novo status
+          <select aria-label="Novo status em lote" value={bulkStatus} disabled={bulkBusy} onChange={e => setBulkStatus(e.target.value as RequestStatus)} className="rounded bg-surface-container p-2">
+            {STATUS_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <button type="button" disabled={bulkBusy || !visibleSelected.length} onClick={applyBulkStatus} className="rounded bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-50">{bulkBusy ? 'Salvando…' : `Alterar status de ${visibleSelected.length} selecionado(s)`}</button>
+        <button type="button" disabled={bulkBusy} onClick={() => setSelectedIds([])} className="text-sm text-primary underline">Limpar seleção</button>
+        </>}
+      </section>
+
+      {displayMode === 'orders' ? (
+        <div className="space-y-4" aria-label="Pedidos e orçamentos">
+          {!filteredRequests.length && <p className="rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-8 text-center text-on-surface-variant">Nenhuma encomenda ou orçamento encontrado com os filtros atuais.</p>}
+          {filteredRequests.map(request => <PlatformOrderCard key={request.id} order={request} selection={selectionCheckbox(request)} statusLabel={STATUS_OPTIONS.find(option => option.value === request.status)?.label || request.status} statusClass={getStatusClasses(request.status)} onOpen={() => handleEdit(request)} />)}
+        </div>
+      ) : displayMode === 'list' ? (
+        <div className="overflow-x-auto rounded-xl border border-outline-variant/20 bg-surface-container-lowest">
+          <table className="w-full min-w-[760px] text-sm text-left">
+            <caption className="sr-only">Lista simplificada de encomendas e orçamentos</caption>
+            <thead className="bg-surface-container text-on-surface-variant">
+              <tr>
+                <th scope="col" className="p-3 font-semibold">Selecionar</th>
+                {REQUEST_SORT_OPTIONS.filter(option => !['updatedAt', 'createdAt'].includes(option.value)).map(option => <th key={option.value} scope="col" aria-sort={sortField === option.value ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'} className="p-3 font-semibold">
+                  <button type="button" onClick={() => sortBy(option.value)} aria-label={`Ordenar por ${option.label}`} className="inline-flex min-h-11 items-center gap-1 rounded text-left hover:underline focus-visible:ring-2 focus-visible:ring-primary">
+                    {option.label} <span aria-hidden="true">{sortField === option.value ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}</span>
+                  </button>
+                </th>)}
+                <th scope="col" className="p-3 font-semibold">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant/20">
+              {filteredRequests.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-on-surface-variant">Nenhuma encomenda ou orçamento encontrado com os filtros atuais.</td></tr>}
+              {filteredRequests.map(request => (
+                <tr key={request.id} className="hover:bg-surface-container/50 align-top">
+                  <td className="p-3">{selectionCheckbox(request)}</td>
+                  <th scope="row" className="p-3 max-w-sm font-normal">
+                    <button id={`request-title-${request.id}`} aria-label={requestCode(request) ? `${requestCode(request)} — ${withoutRequestCode(request.title) || request.title}` : request.title} type="button" onClick={() => handleEdit(request)} className="block min-h-11 text-left font-semibold text-primary break-words hover:underline focus-visible:ring-2 focus-visible:ring-primary rounded">{requestCode(request) && <span className="block text-xs font-bold text-primary">{requestCode(request)}</span>}{withoutRequestCode(request.title) || request.title}</button>
+                    <span className="text-xs text-on-surface-variant">{REQUEST_TYPE_OPTIONS.find(option => option.value === request.type)?.label || 'Solicitação'}</span>
+                    <CustomerQuotePreview quote={request.customerQuote} image={<TenantQuoteImage reference={request.quoteMediaImageUrl || request.referenceImageUrl} text={request.customerQuote ? formatCustomerQuote(request.customerQuote) : ''} />} />
+                  </th>
+                  <td className="p-3 text-on-surface-variant">{request.customerName || 'Não informado'}</td>
+                  <td className="p-3 tabular-nums whitespace-nowrap">{request.requestedQuantity > 0 ? `${request.requestedQuantity} un` : 'A confirmar'}</td>
+                  <td className="p-3"><span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${getStatusClasses(request.status)}`}>{STATUS_OPTIONS.find(option => option.value === request.status)?.label || request.status}</span></td>
+                  <td className="p-3 tabular-nums whitespace-nowrap">{request.status === 'aguardando-orcamento' && !request.quotedPrice ? 'A calcular' : request.quotedPrice == null ? 'Não informado' : formatCurrency(request.quotedPrice)}</td>
+                  <td className="p-3"><button type="button" aria-label={`Abrir detalhes de ${request.title}`} onClick={() => handleEdit(request)} className="rounded border border-outline-variant/30 px-3 py-1.5 text-primary font-semibold hover:bg-surface-container">Detalhes</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+      <div className={`grid grid-cols-1 gap-6 ${displayMode === 'cards-3' ? 'md:grid-cols-2 xl:grid-cols-3' : 'md:grid-cols-2'}`}>
         {filteredRequests.length === 0 && (
-          <div className="lg:col-span-2 bg-surface-container-lowest rounded-xl border border-outline-variant/10 p-10 text-center text-sm text-on-surface-variant">
+          <div className="col-span-full bg-surface-container-lowest rounded-xl border border-outline-variant/10 p-10 text-center text-sm text-on-surface-variant">
             Nenhuma encomenda ou orçamento encontrado com os filtros atuais.
           </div>
         )}
 
         {filteredRequests.map(request => {
-          const totalFilamentGrams = (request.filaments || []).reduce((sum, entry) => sum + (Number(entry.weightGrams) || 0), 0);
+          const totalFilamentGrams = request.productionWeightGrams || (request.filaments || []).reduce((sum, entry) => sum + (Number(entry.weightGrams) || 0), 0);
           const typeLabel = REQUEST_TYPE_OPTIONS.find(option => option.value === request.type)?.label || 'Solicitação';
           const statusLabel = STATUS_OPTIONS.find(option => option.value === request.status)?.label || request.status;
 
           return (
-            <div key={request.id} className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 shadow-sm overflow-hidden">
+            <div key={request.id} className="min-w-0 bg-surface-container-lowest rounded-xl border border-outline-variant/10 shadow-sm overflow-hidden">
               <div className="p-5 space-y-4">
+                <label className="flex items-center gap-2 text-sm">{selectionCheckbox(request)} Selecionar</label>
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -858,8 +1020,8 @@ export function EncomendasOrcamentos() {
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700">WhatsApp</span>
                       )}
                     </div>
-                    <h3 className="text-lg font-bold text-on-surface leading-tight">{request.title}</h3>
-                    {request.description && <p className="text-sm text-on-surface-variant mt-2 leading-relaxed">{request.description}</p>}
+                    <h3 className="text-lg font-bold leading-tight break-words"><button id={`request-title-${request.id}`} aria-label={requestCode(request) ? `${requestCode(request)} — ${withoutRequestCode(request.title) || request.title}` : request.title} type="button" onClick={() => handleEdit(request)} className="min-h-11 text-left text-primary hover:underline focus-visible:ring-2 focus-visible:ring-primary rounded">{requestCode(request) && <span className="block text-xs font-bold tracking-wide mb-1">{requestCode(request)}</span>}{withoutRequestCode(request.title) || request.title}</button></h3>
+                    {request.description && <p className="text-sm text-on-surface-variant mt-2 leading-relaxed break-words">{request.description}</p>}
                     {(request.customerName || request.customerPhone) && (
                       <div className="mt-3 flex flex-wrap gap-3 text-xs text-on-surface-variant">
                         {request.customerName && <span>Cliente: <strong className="text-on-surface">{request.customerName}</strong></span>}
@@ -868,7 +1030,7 @@ export function EncomendasOrcamentos() {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => handleEdit(request)} className="p-2 text-slate-400 hover:text-primary hover:bg-surface-container rounded">
+                    <button type="button" aria-label={`Abrir detalhes de ${request.title}`} onClick={() => handleEdit(request)} className="p-2 text-slate-400 hover:text-primary hover:bg-surface-container rounded">
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button type="button" onClick={() => handleDelete(request.id)} className="p-2 text-slate-400 hover:text-error hover:bg-surface-container rounded">
@@ -880,15 +1042,16 @@ export function EncomendasOrcamentos() {
                 {(request.referenceImageUrl || request.quoteMediaImageUrl) && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {request.referenceImageUrl && (
-                      <img src={request.referenceImageUrl} alt="Referência" className="h-36 w-full object-cover rounded-lg border border-outline-variant/20" />
+                      <RequestImage reference={request.referenceImageUrl} alt="Referência" className="h-36 w-full object-contain rounded-lg border border-outline-variant/20" />
                     )}
                     {request.quoteMediaImageUrl && (
-                      <img src={request.quoteMediaImageUrl} alt="Mídia do orçamento" className="h-36 w-full object-cover rounded-lg border border-outline-variant/20" />
+                      <RequestImage reference={request.quoteMediaImageUrl} alt="Mídia do orçamento" className="h-36 w-full object-contain rounded-lg border border-outline-variant/20" />
                     )}
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <CustomerQuotePreview quote={request.customerQuote} image={<TenantQuoteImage reference={request.quoteMediaImageUrl || request.referenceImageUrl} text={request.customerQuote ? formatCustomerQuote(request.customerQuote) : ''} />} />
+                <div className={`grid grid-cols-2 gap-3 ${displayMode === 'cards-2' ? '2xl:grid-cols-4' : ''}`}>
                   <div className="bg-surface-container p-3 rounded-lg border border-outline-variant/10">
                     <div className="text-[10px] uppercase tracking-widest font-bold text-on-surface-variant mb-1">Filamento</div>
                     <div className="font-bold text-on-surface tabular-nums">{totalFilamentGrams.toFixed(0)} g</div>
@@ -950,6 +1113,8 @@ export function EncomendasOrcamentos() {
           );
         })}
       </div>
+      )}
+      </>}
     </div>
   );
 }
