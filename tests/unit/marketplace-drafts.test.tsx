@@ -1,12 +1,22 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MarketplaceDrafts } from '../../src/features/integrations/MarketplaceDrafts';
 import { normalizeDraft, publicationPayload } from '../../shared/marketplaces/drafts';
 const mock=vi.hoisted(()=>({call:vi.fn(),upload:vi.fn()}));
 vi.mock('../../src/features/integrations/draft-photo-upload',()=>({uploadDraftPhoto:(...args:any[])=>mock.upload(...args)}));
-vi.mock('../../src/features/catalog/client',()=>({catalogRequest:(...args:any[])=>mock.call(...args)}));
+// Consultas auxiliares da tela de revisão (categorias, frete, atributos, tarifas) respondem
+// com valores fixos, para que mock.call só receba as chamadas de rascunho que o teste controla.
+const lookup=(path:string)=>{
+  if(path.includes('/categories?'))return {groups:[],categories:[{id:'MLB123',name:'Chaveiros',path:'Chaveiros'}],selected:{id:'MLB123',name:'Chaveiros',path:'Chaveiros'},total:1,hasMore:false};
+  if(path.endsWith('/shipping-preferences'))return {modes:['me2'],logisticType:'drop_off',logistics:['drop_off']};
+  if(path.includes('/category-attributes?'))return {attributes:[]};
+  if(path.includes('/cost-estimate?'))return {price:15,saleFee:2,listingFee:0,shippingCost:null,net:13,netPercent:86.7,listingTypeName:'Clássico',shippingMessage:''};
+  return null;
+};
+vi.mock('../../src/features/catalog/client',()=>({catalogRequest:(user:any,path:string,...rest:any[])=>{const fixed=lookup(path);return fixed?Promise.resolve(fixed):mock.call(user,path,...rest);}}));
+const ready=(name:string)=>waitFor(()=>expect((screen.getByRole('button',{name}) as HTMLButtonElement).disabled).toBe(false));
 const data=normalizeDraft({externalId:'teste-1',title:'Chaveiro',description:'PLA',price:15,quantity:2,pictures:['https://example.com/foto.jpg'],categoryId:'MLB123'});
 const draft={id:'a'.repeat(64),data,revision:1,status:'draft',createdAt:'2026-10-29',updatedAt:'2026-10-29'};
 const user={getIdToken:vi.fn()};
@@ -21,10 +31,10 @@ it('valida dados, rejeita campos de publicação e aceita rascunho incompleto',(
 it('aprovação não publica, exige confirmação inline e mostra sucesso local',async()=>{
   mock.call.mockResolvedValueOnce({drafts:[draft],canManage:true,nextCursor:null});
   render(<MarketplaceDrafts user={user} tenant="a"/>);fireEvent.click(await screen.findByRole('button',{name:'Revisar rascunho'}));
-  mock.call.mockResolvedValueOnce({...draft,status:'approved'});fireEvent.click(screen.getByRole('button',{name:'Validar e aprovar rascunho'}));
+  await ready('Validar e aprovar rascunho');mock.call.mockResolvedValueOnce({...draft,status:'approved'});fireEvent.click(screen.getByRole('button',{name:'Validar e aprovar rascunho'}));
   await screen.findByText(/Aprovado. O anúncio só/);
   expect(mock.call.mock.calls.at(-1)?.[2]).toEqual({action:'approve',revision:1});
-  fireEvent.click(screen.getByRole('button',{name:'Publicar no Mercado Livre'}));
+  await ready('Publicar no Mercado Livre');fireEvent.click(screen.getByRole('button',{name:'Publicar no Mercado Livre'}));
   const confirm=screen.getByRole('group',{name:'Confirmar publicação'});expect(within(confirm).getByText(/R\$\s*15,00/)).toBeTruthy();
   expect(mock.call).toHaveBeenCalledTimes(2);
   mock.call.mockResolvedValueOnce({...draft,status:'published',itemId:'MLB900'});fireEvent.click(within(confirm).getByRole('button',{name:'Confirmar publicação'}));
@@ -32,14 +42,14 @@ it('aprovação não publica, exige confirmação inline e mostra sucesso local'
 });
 it('alterações bloqueiam aprovação/publicação até salvar; leitor não aprova',async()=>{
   mock.call.mockResolvedValue({drafts:[draft],canManage:true,nextCursor:null});render(<MarketplaceDrafts user={user} tenant="a"/>);
-  fireEvent.click(await screen.findByRole('button',{name:'Revisar rascunho'}));fireEvent.change(screen.getByLabelText('Preço (R$)'),{target:{value:'19'}});
+  fireEvent.click(await screen.findByRole('button',{name:'Revisar rascunho'}));await ready('Validar e aprovar rascunho');fireEvent.change(screen.getByLabelText('Preço do anúncio (R$)'),{target:{value:'19'}});
   expect((screen.getByRole('button',{name:'Validar e aprovar rascunho'}) as HTMLButtonElement).disabled).toBe(true);
   cleanup();mock.call.mockResolvedValue({drafts:[draft],canManage:false,nextCursor:null});render(<MarketplaceDrafts user={user} tenant="a"/>);
   fireEvent.click(await screen.findByRole('button',{name:'Revisar rascunho'}));expect(screen.queryByRole('button',{name:'Validar e aprovar rascunho'})).toBeNull();
 });
 it('erro de publicação atualiza estado e oferece conclusão sem publicar novamente',async()=>{
   mock.call.mockResolvedValueOnce({drafts:[{...draft,status:'approved'}],canManage:true,nextCursor:null});render(<MarketplaceDrafts user={user} tenant="a"/>);
-  fireEvent.click(await screen.findByRole('button',{name:'Revisar rascunho'}));fireEvent.click(screen.getByRole('button',{name:'Publicar no Mercado Livre'}));
+  fireEvent.click(await screen.findByRole('button',{name:'Revisar rascunho'}));await ready('Publicar no Mercado Livre');fireEvent.click(screen.getByRole('button',{name:'Publicar no Mercado Livre'}));
   mock.call.mockRejectedValueOnce(Error('Descrição pendente')).mockResolvedValueOnce({...draft,status:'attention',itemId:'MLB900'});
   fireEvent.click(screen.getByRole('button',{name:'Confirmar publicação'}));await screen.findByRole('button',{name:'Concluir publicação'});
   expect(screen.queryByRole('button',{name:'Publicar no Mercado Livre'})).toBeNull();expect(screen.getByRole('alert').textContent).toContain('Descrição pendente');

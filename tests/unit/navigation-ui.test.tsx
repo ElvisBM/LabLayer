@@ -65,11 +65,13 @@ it('preserva lista/editor legado, produto selecionado e acesso explícito ao nov
   fireEvent.click(screen.getByRole('button', { name: 'Voltar à lista' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Preparar catálogo' }));
   expect(await screen.findByText('Catálogo preparação')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Orçamentos e pedidos' }));
-  expect(await screen.findByText('Orçamento canônico')).toBeTruthy();
+  // Os atalhos fixos para as telas novas saíram do topo na sincronização de 17/11.
+  expect(screen.queryByRole('button', { name: 'Orçamentos e pedidos' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'menu-encomendas' }));
+  expect(screen.queryByText('Orçamento canônico')).toBeNull();
 });
 
-it('não abre operações enquanto autenticação/estado do estoque estão incertos', async () => {
+it('não abre operações do estoque novo enquanto autenticação/estado do estoque estão incertos', async () => {
   context.auth.user = null;
   const view = render(<App />);
   expect(screen.getByText('Login isolado')).toBeTruthy();
@@ -77,11 +79,15 @@ it('não abre operações enquanto autenticação/estado do estoque estão incer
   context.auth.user = { uid: 'operator' };
   context.phase = 'loading';
   view.rerender(<App />);
-  expect(screen.getByText('Conferindo estado do estoque...')).toBeTruthy();
+  // Estoque incerto: as telas legadas continuam disponíveis e as canônicas não abrem.
+  expect(await screen.findByText('Dashboard legado')).toBeTruthy();
   expect(screen.queryByText('Financeiro canônico')).toBeNull();
   context.phase = 'error';
   view.rerender(<App />);
-  expect(screen.getByRole('alert').textContent).toContain('Não foi possível conferir');
+  expect(await screen.findByText('Dashboard legado')).toBeTruthy();
+  expect(screen.queryByText('Financeiro canônico')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'menu-estoque' }));
+  expect(screen.queryByText('Estoque canônico')).toBeNull();
   context.phase = 'active';
   context.auth.initializationError = 'Vínculo da empresa não confirmado';
   view.rerender(<App />);

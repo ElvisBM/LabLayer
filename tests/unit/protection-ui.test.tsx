@@ -19,7 +19,10 @@ afterEach(cleanup);
 
 it('E0.6 integrações não simulam conexão; credenciais ML exigem autorização do servidor', async () => {
   render(<Configuracoes />);
-  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Somente administradores');
+  // Credenciais e conexão do Mercado Livre consultam o servidor separadamente; ambos recusam.
+  const alerts = await screen.findAllByRole('alert');
+  expect(alerts.length).toBeGreaterThan(0);
+  for (const alert of alerts) expect(alert.textContent).toBe('Somente administradores');
   expect(screen.getAllByText('Em desenvolvimento')).toHaveLength(3);
   expect(screen.queryByRole('button', { name: /autorizar|salvar credenciais/i })).toBeNull();
   expect(document.querySelector('input[type=password]')).toBeNull();
