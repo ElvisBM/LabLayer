@@ -12,7 +12,7 @@ import type { TokenLoader } from './marketplace-listings';
 /**
  * MCP (Model Context Protocol) server for the connected Mercado Livre account.
  *
- * Auth: `Authorization: Bearer ll_mcp_…`. Keys live in `privateMcpKeys/{sha256(key)}` (no client grants),
+ * Auth: `Authorization: Bearer ll_mcp_…`, or an OAuth access token (server/mcp-oauth.ts) derived from such a key. Keys live in `privateMcpKeys/{sha256(key)}` (no client grants),
  * are created with `tools/mcp-key.ts`, belong to one company and act as the admin who created them.
  * Every call re-checks the key, the creator's company access and the Mercado Livre connection by reusing
  * the same token loader (refresh lease, encryption) as the web app. Write tools require the
@@ -61,16 +61,20 @@ const pickOrder = (o: any) => ({
 });
 
 export function registerMercadoLivreMcp(app: Express, db: Firestore | null, loadToken: TokenLoader,
-  options: { claims: Claims; fetcher?: typeof fetch; rateLimitPerMinute?: number }) {
+  options: { claims: Claims; fetcher?: typeof fetch; rateLimitPerMinute?: number;
+    oauth?: { lookupAccessToken: (token: string) => Promise<{ keyHash: string } | null>; resourceMetadataUrl: string } }) {
   const fetcher = options.fetcher ?? fetch;
   const limit = options.rateLimitPerMinute ?? 120;
   const usage = new Map<string, { windowStart: number; count: number }>();
 
   async function authenticate(req: Request): Promise<KeyContext> {
     if (!db) throw new BusinessError(503, 'Serviço indisponível.');
-    const token = req.headers.authorization?.match(/^Bearer (ll_mcp_[\w-]{20,200})$/)?.[1];
-    if (!token) throw new BusinessError(401, 'Chave MCP ausente ou inválida.');
-    const ref = db.doc(`privateMcpKeys/${hashMcpKey(token)}`);
+    const bearer = req.headers.authorization?.match(/^Bearer (\S{20,300})$/)?.[1];
+    let keyHash: string | undefined;
+    if (bearer && /^ll_mcp_[\w-]{20,200}$/.test(bearer)) keyHash = hashMcpKey(bearer);
+    else if (bearer && options.oauth) keyHash = (await options.oauth.lookupAccessToken(bearer))?.keyHash;
+    if (!keyHash) throw new BusinessError(401, 'Chave MCP ausente ou inválida.');
+    const ref = db.doc(`privateMcpKeys/${keyHash}`);
     const key = (await ref.get()).data();
     if (!key || key.active !== true || (key.expiresAt && key.expiresAt <= now())) throw new BusinessError(401, 'Chave MCP inválida, expirada ou revogada.');
     if (!validId(key.tenantId) || !validId(key.createdBy) || !Array.isArray(key.scopes) || !key.scopes.includes('mercadolivre:read'))
@@ -360,7 +364,8 @@ export function registerMercadoLivreMcp(app: Express, db: Firestore | null, load
 
   const fail = (res: Response, e: unknown) => {
     const status = e instanceof BusinessError ? e.status : 503;
-    if (status === 401) res.set('WWW-Authenticate', 'Bearer realm="lablayer-mcp"');
+    if (status === 401) res.set('WWW-Authenticate', options.oauth
+      ? `Bearer realm="lablayer-mcp", resource_metadata="${options.oauth.resourceMetadataUrl}"` : 'Bearer realm="lablayer-mcp"');
     return res.status(status).json({ jsonrpc: '2.0', error: { code: -32001, message: e instanceof BusinessError ? e.message : 'Serviço indisponível.' }, id: null });
   };
   app.post(MCP_PATH, async (req, res) => {

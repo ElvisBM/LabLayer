@@ -40,7 +40,14 @@ Claude Desktop (`claude_desktop_config.json`), via `mcp-remote`:
   "env": { "LABLAYER_MCP": "Bearer ll_mcp_..." } } } }
 ```
 
-Conector personalizado no claude.ai exige OAuth; ainda não implementado (próximo passo, se necessário).
+claude.ai / app Claude (conector personalizado, OAuth): em Configurações > Conectores > Adicionar conector personalizado, informe `https://app.lablayer.com.br/api/mcp`. O Claude registra o cliente sozinho e abre a página de consentimento da LabLayer, onde você cola a chave `ll_mcp_…` uma vez.
+
+### OAuth (`server/mcp-oauth.ts`)
+
+- Metadados: `/.well-known/oauth-protected-resource/api/mcp` e `/.well-known/oauth-authorization-server`; endpoints em `/api/oauth/{authorize,token,register,revoke}`. O 401 do `/api/mcp` traz `resource_metadata` no `WWW-Authenticate`.
+- PKCE S256 obrigatório, registro dinâmico de clientes, código de uso único (5 min), access token de 1 h e refresh token de 30 dias com rotação. Tudo salvo por SHA-256 em `privateMcpOAuthCodes`/`privateMcpOAuthTokens`; clientes em `privateMcpOAuthClients`.
+- Os tokens ficam presos à chave usada no consentimento: revogar ou expirar a chave corta na hora o acesso e o refresh. Cada autorização gera `marketplace.mcp.oauth.authorized` na auditoria.
+- `LABLAYER_PUBLIC_URL` (padrão `https://app.lablayer.com.br`) define o emissor.
 
 ## Ferramentas
 
@@ -62,4 +69,4 @@ Toda escrita confere que o anúncio/venda pertence ao vendedor conectado, relê 
 
 ## Testes
 
-`tests/integration/mcp-mercadolivre.test.ts` (emulador): autenticação/revogação, perda de acesso, leitura sem escrita, chave somente leitura, preço/estoque com auditoria, variações, vendedor diferente e resposta a pergunta.
+`tests/integration/mcp-oauth.test.ts` (fluxo OAuth completo, PKCE, código único, rotação de refresh, revogação pela chave, redirect e recurso inválidos) e `tests/integration/mcp-mercadolivre.test.ts` (emulador): autenticação/revogação, perda de acesso, leitura sem escrita, chave somente leitura, preço/estoque com auditoria, variações, vendedor diferente e resposta a pergunta.
