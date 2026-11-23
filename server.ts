@@ -6,6 +6,7 @@ import { registerFinanceRoutes } from './server/finance';
 import { registerCatalogRoutes } from './server/catalog';
 import { registerPricingRoutes } from './server/pricing';
 import { registerMercadoLivreMcp } from './server/mcp-mercadolivre';
+import { registerMcpOAuth } from './server/mcp-oauth';
 import express from "express";
 import fs from "fs";
 import path from "path";
@@ -512,8 +513,9 @@ const hasCollectionFilters = (query: express.Request["query"]) => {
   registerTeamRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
   const loadMercadoLivreToken = registerMarketplaceCredentialRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)), loadMarketplaceKey(env.LABLAYER_MARKETPLACE_KEY_FILE || path.resolve(process.cwd(), '../shared/marketplace-credentials.key')));
   if (env.LABLAYER_MCP_ENABLED !== 'false') {
+    const oauth = registerMcpOAuth(app, db, env.LABLAYER_PUBLIC_URL || 'https://app.lablayer.com.br');
     registerMercadoLivreMcp(app, db, loadMercadoLivreToken, {
-      claims: options.mcpClaims ?? (async uid => (await getAuth().getUser(uid)).customClaims),
+      claims: options.mcpClaims ?? (async uid => (await getAuth().getUser(uid)).customClaims), oauth,
     });
   }
   registerSessionRoute(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
