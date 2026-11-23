@@ -8,6 +8,9 @@ import { z } from 'zod';
 import { BusinessError, validId } from './session';
 import { marketplaceViewerAccess } from './marketplace-security';
 import type { TokenLoader } from './marketplace-listings';
+import type { AssetStore } from './assets';
+import { createLocalAssetStore } from './local-assets';
+import { registerListingTools, registerMcpPhotoUpload } from './mcp-ml-listing';
 
 /**
  * MCP (Model Context Protocol) server for the connected Mercado Livre account.
@@ -22,7 +25,7 @@ export const MCP_PATH = '/api/mcp';
 export const MCP_SCOPES = ['mercadolivre:read', 'mercadolivre:write'] as const;
 type Scope = typeof MCP_SCOPES[number];
 type Claims = (uid: string) => Promise<Record<string, unknown> | undefined>;
-type KeyContext = { keyId: string; tenant: string; uid: string; scopes: Scope[]; actor: DecodedIdToken };
+type KeyContext = { keyId: string; keyHash: string; tenant: string; uid: string; scopes: Scope[]; actor: DecodedIdToken };
 
 export const hashMcpKey = (token: string) => createHash('sha256').update(token).digest('hex');
 const ML = 'https://api.mercadolibre.com';
@@ -62,10 +65,14 @@ const pickOrder = (o: any) => ({
 
 export function registerMercadoLivreMcp(app: Express, db: Firestore | null, loadToken: TokenLoader,
   options: { claims: Claims; fetcher?: typeof fetch; rateLimitPerMinute?: number;
-    oauth?: { lookupAccessToken: (token: string) => Promise<{ keyHash: string } | null>; resourceMetadataUrl: string } }) {
+    oauth?: { lookupAccessToken: (token: string) => Promise<{ keyHash: string } | null>; resourceMetadataUrl: string };
+    photoStore?: AssetStore | null; publicUrl?: string }) {
   const fetcher = options.fetcher ?? fetch;
   const limit = options.rateLimitPerMinute ?? 120;
   const usage = new Map<string, { windowStart: number; count: number }>();
+  const photoStore = options.photoStore !== undefined ? options.photoStore
+    : process.env.LABLAYER_ASSET_DIR ? createLocalAssetStore(process.env.LABLAYER_ASSET_DIR) : null;
+  const publicUrl = (options.publicUrl || 'https://app.lablayer.com.br').replace(/\/+$/, '');
 
   async function authenticate(req: Request): Promise<KeyContext> {
     if (!db) throw new BusinessError(503, 'Serviço indisponível.');
@@ -89,14 +96,15 @@ export function registerMercadoLivreMcp(app: Express, db: Firestore | null, load
     const actor = { uid: key.createdBy, superadmin: claims?.superadmin === true } as unknown as DecodedIdToken;
     // Fails fast (403) if the creator lost access to the company.
     await db.runTransaction(tx => marketplaceViewerAccess(db, tx, key.tenantId, actor));
-    return { keyId: String(key.id), tenant: key.tenantId, uid: key.createdBy, scopes: key.scopes, actor };
+    return { keyId: String(key.id), keyHash, tenant: key.tenantId, uid: key.createdBy, scopes: key.scopes, actor };
   }
 
   function buildServer(ctx: KeyContext) {
     const server = new McpServer({ name: 'lablayer-mercadolivre', version: '1.0.0' }, {
-      instructions: 'Ferramentas da LabLayer para a conta do Mercado Livre conectada à empresa. Ferramentas ml_alterar_*, ml_pausar/reativar, '
-        + 'ml_responder_pergunta e ml_enviar_mensagem_venda alteram dados reais na loja: confirme com o usuário antes de usá-las. '
-        + 'Valores em BRL. Aprovação e publicação de rascunhos continuam exigindo um administrador na LabLayer.',
+      instructions: 'Ferramentas da LabLayer para a conta do Mercado Livre conectada à empresa. Valores em BRL. Ferramentas ml_alterar_*, ml_pausar/reativar, '
+        + 'ml_responder_pergunta, ml_enviar_mensagem_venda e ml_publicar_anuncio alteram dados reais na loja: confirme com o usuário, '
+        + 'salvo se ele pediu para publicar direto. Novo anúncio: ml_link_fotos (fotos anexadas no chat não chegam ao servidor) → ml_ver_fotos → '
+        + 'ml_buscar_categoria → ml_atributos_categoria → ml_publicar_anuncio. Rascunhos da tela Anúncios seguem exigindo um administrador na LabLayer.',
     });
 
     async function session(write: boolean) {
@@ -105,7 +113,8 @@ export function registerMercadoLivreMcp(app: Express, db: Firestore | null, load
         const loaded = await loadToken(ctx.tenant, ctx.actor, !write);
         const sellerId = String(loaded.context.connection.userId);
         if (!/^[1-9]\d{0,19}$/.test(sellerId)) throw new ToolError('Conexão do Mercado Livre inválida.');
-        return { accessToken: loaded.accessToken, sellerId, nickname: String(loaded.context.connection.nickname || '') };
+        const stamp = createHash('sha256').update(JSON.stringify([sellerId, loaded.context.connection.connectedAt, loaded.context.creds?.revision])).digest('hex');
+        return { accessToken: loaded.accessToken, sellerId, nickname: String(loaded.context.connection.nickname || ''), stamp };
       } catch (e) {
         if (e instanceof BusinessError || e instanceof ToolError) throw new ToolError(e.message);
         throw new ToolError('Não foi possível obter acesso ao Mercado Livre. Verifique a conexão em Configurações > Integrações.');
@@ -154,7 +163,7 @@ export function registerMercadoLivreMcp(app: Express, db: Firestore | null, load
     function tool<T extends z.ZodRawShape>(name: string, description: string, shape: T, annotations: { readOnlyHint: boolean; destructiveHint?: boolean; idempotentHint?: boolean },
       run: (args: z.infer<z.ZodObject<T>>) => Promise<unknown>) {
       server.registerTool(name, { description, inputSchema: shape, annotations: { openWorldHint: true, ...annotations } }, (async (args: any) => {
-        try { return text(await run(args)); }
+        try { const out: any = await run(args); return out?.__content ? { content: out.__content } : text(out); }
         catch (e) {
           const message = e instanceof ToolError ? e.message : 'Falha inesperada. Nenhuma alteração adicional foi tentada.';
           if (!(e instanceof ToolError)) console.error('MCP Mercado Livre:', name, (e as Error)?.name);
@@ -359,6 +368,8 @@ export function registerMercadoLivreMcp(app: Express, db: Firestore | null, load
       return { total: result?.paging?.total ?? 0, reclamacoes: (result?.data || []).map((c: any) => ({ id: c.id, tipo: c.type, etapa: c.stage, status: c.status,
         motivo: c.reason_id, recurso: c.resource, recurso_id: c.resource_id, criada_em: c.date_created, atualizada_em: c.last_updated })) };
     });
+    registerListingTools({ ctx, db: db!, store: photoStore, publicUrl, fetcher, session, ml, audit, tool: tool as any,
+      fail: (message: string) => { throw new ToolError(message); } });
     return server;
   }
 
@@ -384,6 +395,7 @@ export function registerMercadoLivreMcp(app: Express, db: Firestore | null, load
     }
   });
   const notAllowed = (_req: Request, res: Response) => res.status(405).set('Allow', 'POST').json({ jsonrpc: '2.0', error: { code: -32000, message: 'Use POST.' }, id: null });
+  registerMcpPhotoUpload(app, db, photoStore, options.claims);
   app.get(MCP_PATH, notAllowed);
   app.delete(MCP_PATH, notAllowed);
 }
