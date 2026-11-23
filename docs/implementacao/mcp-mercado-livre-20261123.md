@@ -65,7 +65,23 @@ Escrita (marcadas `destructiveHint`, exigem `mercadolivre:write`, auditadas em `
 | `ml_responder_pergunta` | resposta pública | só pergunta pendente da conta |
 | `ml_enviar_mensagem_venda` | mensagem pós-venda (até 350) | só venda da conta |
 
-Toda escrita confere que o anúncio/venda pertence ao vendedor conectado, relê o estado depois e informa `confirmado`. Variações são enviadas com todos os ids (exigência da API para não apagar as demais). Aprovação e publicação de rascunhos continuam exclusivas da tela Anúncios. A lista de anúncios da tela tem cache de 60 s; use Atualizar após mudanças pelo MCP.
+### Criar anúncio a partir de fotos (2026-11-23)
+
+Fluxo pensado para uma conversa "mando fotos e preço, o Claude publica":
+
+| Ferramenta | O que faz |
+|---|---|
+| `ml_link_fotos` | cria um lote e um link (`/api/mcp/fotos/{lote}.{segredo}`, 2 h) para enviar até 12 fotos pelo celular. O mesmo link aceita `POST` com a imagem no corpo (sandbox com rede). Exige `mercadolivre:write`. |
+| `ml_ver_fotos` | ids das fotos do lote e miniaturas de 320 px para o Claude ver as fotos. |
+| `ml_buscar_categoria` | `domain_discovery` + caminho da categoria (até 3 sugestões). |
+| `ml_atributos_categoria` | atributos obrigatórios com valores aceitos (até 30) e lista compacta dos demais; `ids` detalha outros. |
+| `ml_publicar_anuncio` | monta o payload com `normalizeDraft`/`publicationPayload` (o mesmo da tela Anúncios), confere modo de frete, `/items/validate`, tarifa (`listing_prices`) e cria o anúncio + descrição. `apenas_validar` só confere. |
+
+Fotos anexadas no chat do claude.ai não chegam ao servidor MCP; por isso o link. As fotos passam pela mesma conversão das fotos de rascunho (JPEG sem EXIF, deduplicadas, `/api/listing-photos/{id}.jpg`). URLs HTTPS públicas também são aceitas.
+
+A publicação grava um rascunho em `privateMarketplaceDrafts/{empresa}/items/{sha256(referência)}` (`createdBy: mcp:{id}`) antes do `POST /items`. Repetir a chamada com os mesmos dados (ou a mesma `referencia`) devolve o anúncio existente; resposta ambígua vira status `attention`, que se conclui pela tela Anúncios sem criar outro. Auditoria: `marketplace.mcp.listing.create`. O link de fotos revalida a chave e o acesso de administrador a cada envio.
+
+Toda escrita confere que o anúncio/venda pertence ao vendedor conectado, relê o estado depois e informa `confirmado`. Variações são enviadas com todos os ids (exigência da API para não apagar as demais). Aprovação de rascunhos criados na tela Anúncios continua exclusiva dela; `ml_publicar_anuncio` publica apenas o que o próprio MCP montou. A lista de anúncios da tela tem cache de 60 s; use Atualizar após mudanças pelo MCP.
 
 ## Testes
 
