@@ -254,4 +254,5 @@ export function registerMarketplaceOAuthRoutes(
       return fail(res, error);
     }
   });
+  return connectionToken;
 }

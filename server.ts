@@ -5,6 +5,7 @@ import { registerQuoteRoutes } from './server/quotes';
 import { registerFinanceRoutes } from './server/finance';
 import { registerCatalogRoutes } from './server/catalog';
 import { registerPricingRoutes } from './server/pricing';
+import { registerMercadoLivreMcp } from './server/mcp-mercadolivre';
 import express from "express";
 import fs from "fs";
 import path from "path";
@@ -33,6 +34,7 @@ export type AppOptions = {
   verifyIdToken?: (token: string) => Promise<DecodedIdToken>;
   env?: NodeJS.ProcessEnv;
   serveFrontend?: boolean;
+  mcpClaims?: (uid: string) => Promise<Record<string, unknown> | undefined>;
 };
 
 // Importing the module never reads credentials, starts a server or opens a database.
@@ -508,7 +510,12 @@ const hasCollectionFilters = (query: express.Request["query"]) => {
     getUser: uid => getAuth().getUser(uid), createUser: input => getAuth().createUser(input), updateUser: (uid, input) => getAuth().updateUser(uid, input),
   });
   registerTeamRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
-  registerMarketplaceCredentialRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)), loadMarketplaceKey(env.LABLAYER_MARKETPLACE_KEY_FILE || path.resolve(process.cwd(), '../shared/marketplace-credentials.key')));
+  const loadMercadoLivreToken = registerMarketplaceCredentialRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)), loadMarketplaceKey(env.LABLAYER_MARKETPLACE_KEY_FILE || path.resolve(process.cwd(), '../shared/marketplace-credentials.key')));
+  if (env.LABLAYER_MCP_ENABLED !== 'false') {
+    registerMercadoLivreMcp(app, db, loadMercadoLivreToken, {
+      claims: options.mcpClaims ?? (async uid => (await getAuth().getUser(uid)).customClaims),
+    });
+  }
   registerSessionRoute(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
   registerPricingRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));
   registerCatalogRoutes(app, db, options.verifyIdToken ?? ((token) => getAuth().verifyIdToken(token, true)));

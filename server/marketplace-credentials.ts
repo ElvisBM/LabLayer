@@ -68,6 +68,8 @@ export function registerMarketplaceCredentialRoutes(
   const route = '/api/tenants/:tenantId/integrations/mercadolivre/credentials';
   app.get(route, handler(false));
   app.post(route, handler(true));
-  registerMarketplaceOAuthRoutes(app, db, verify, key);
+  const loadToken = registerMarketplaceOAuthRoutes(app, db, verify, key);
   registerTikTokRoutes(app, db, verify, key);
+  // Exposed so server-side integrations (MCP) reuse the same refresh/lease logic.
+  return loadToken;
 }
